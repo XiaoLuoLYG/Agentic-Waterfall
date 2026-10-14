@@ -1,6 +1,6 @@
 # Waterfall Anything 独立仓库与 Hive 模块迁移设计
 
-状态：待用户审阅；尚未创建 GitHub 仓库或迁移产品代码。
+状态：用户已于 2026-10-14 确认并授权直接执行。实现与验证进度见 implementation-plan.md 和 validation.md。
 
 ## 目标与已确认事项
 
@@ -73,7 +73,7 @@ Rust 后续优先替换内容处理与调度实现；HarmonyOS UI、语音和系
 
 移除独立 App 中的 DM 登录和账号管理、主聊天与数字分身、BIM、日历/邮件/外卖/出行/支付/购物、原子服务宿主、无关工具发现和相应 SDK、资源及权限。Waterfall 的内容 AI 与偏好调整保留，通用跨应用业务执行不属于这个 App。
 
-不复制 DM 的个人数据、模型密钥、签名材料或生产账户配置。新的 App 使用独立应用身份；建议包名 `com.xiaoluolyg.waterfallanything`，后续签名必须与该身份匹配。
+不复制 DM 的个人数据、签名材料或无关账户配置。用户后续明确授权复用 Waterfall 相关模型和来源凭据，只导入本地调试配置和新应用，不提交 Git。新的 App 使用独立应用身份；建议包名 `com.xiaoluolyg.waterfallanything`，后续签名必须与该身份匹配。
 
 ## 具体行为例子
 
