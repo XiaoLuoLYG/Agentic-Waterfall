@@ -24,4 +24,6 @@
 
 ## 宿主任务桥接
 
-`WaterfallView` 可接收 `tasksEnabled`、`task`（id/prompt/reply/running/failed）和 `taskProgress`。通过 `onTaskSubmit(text, taskId)` 返回是否接受任务，再由宿主发布新快照；`onOpenTask` 打开宿主对话。覆盖页面时保持挂载，设置 `hostVisible=false` 暂停媒体和语音；以 `searchQuery` 加递增 `searchRequestTick` 打开关键词内容流。任务卡复用 DM 原实现。Rust 重写需继续遵守这些宿主所有权边界，本分支仍无 Rust 执行实现。
+`WaterfallView` 可接收 `tasksEnabled`、`task`（id/prompt/reply/running/failed）和 `taskProgress`。通过 `onTaskSubmit(text, taskId)` 返回是否接受任务，再由宿主发布新快照；`onOpenTask` 打开宿主对话。覆盖页面时保持挂载，设置 `hostVisible=false` 暂停媒体和语音；宿主不再提供聚合搜索工具或关键词搜索跳转。任务卡复用 DM 原实现。Rust 重写需继续遵守这些宿主所有权边界，本分支仍无 Rust 执行实现。
+
+release 的聊天外壳复用 HyperAgent 原 UI、DM 的上下文轨迹面板及 Swiper 切页；这些属于宿主，不进入可插拔 Waterfall 模块。
