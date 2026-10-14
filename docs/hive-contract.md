@@ -14,10 +14,14 @@
 
 将 hos 的 `hive/waterfall` 原样放到 `entry/src/main/hive/waterfall`，复制其三个图标到 entry 资源，配置两个 Worker 打包入口。所需权限为网络与使用中麦克风。无需原生聊天库或 DM 账号。
 
-宿主通过 `waterfallAppActive` 通知前后台，通过递增 `waterfallBackTick` 处理返回。退出时模块停止任务、作废迟到结果并落盘。首版拔出方式为删除组件挂载、模块目录和专用 Worker 入口；已在独立宿主副本中验证可构建。
+宿主通过 `waterfallAppActive` 通知前后台，通过递增 `waterfallBackTick` 处理返回。退出时模块停止内容 Worker、作废迟到内容结果并落盘；宿主任务由宿主独立持有。首版拔出方式为删除组件挂载、模块目录和专用 Worker 入口；已在独立宿主副本中验证可构建。
 
 ## 实现替换边界
 
 推荐和关键词搜索必须保持独立来源集合、游标与生命周期；不能因搜索耗尽而变为推荐。保留现有反馈、偏好、P/S/E策略、稳定可见窗口、收藏和库存恢复语义。网络/凭据失败必须真实返回，不得以示例卡片充当结果。
 
 未来 Rust 版本需通过当前核心与宿主集成回归，再选择实际平台桥接方式。本次未定义未经验证的FFI结构或动态插件机制。
+
+## 宿主任务桥接
+
+`WaterfallView` 可接收 `tasksEnabled`、`task`（id/prompt/reply/running/failed）和 `taskProgress`。通过 `onTaskSubmit(text, taskId)` 返回是否接受任务，再由宿主发布新快照；`onOpenTask` 打开宿主对话。覆盖页面时保持挂载，设置 `hostVisible=false` 暂停媒体和语音；以 `searchQuery` 加递增 `searchRequestTick` 打开关键词内容流。任务卡复用 DM 原实现。Rust 重写需继续遵守这些宿主所有权边界，本分支仍无 Rust 执行实现。
