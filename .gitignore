@@ -1,0 +1,17 @@
+node_modules/
+oh_modules/
+.hvigor/
+.idea/
+**/build/
+**/.test/
+.verification/
+.superpowers/
+local.properties
+.DS_Store
+*.hap
+*.app
+*.p12
+*.p7b
+*.cer
+**/aiphone_provider_config.json
+**/waterfall_config.local.json
