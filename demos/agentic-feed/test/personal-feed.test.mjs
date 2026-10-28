@@ -112,3 +112,35 @@ test('xuanji request parameters reach both model calls; progress and traces reta
   assert.deepEqual(stages, ['planning', 'retrieving', 'ranking', 'complete']); assert.deepEqual(result.slate, [video]);
   assert(!JSON.stringify(result).includes('private-api-key')); assert(!JSON.stringify(result).includes('private-reasoning'));
 });
+
+test('planning considers feedback as evidence for a scoped state update', async t => {
+  const {store,create}=setup(t);const sid=create('profile-evidence');
+  const feedback=store.record('feedback',sid,{track:'feed',value:'save',title:'摄影教程',topic:'摄影'});
+  const snapshot=inputSnapshot(store,sid,'');let planPrompt='';
+  const mock=http.createServer(async(req,res)=>{
+    let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);
+    const plan=body.messages[0].content.includes('Phase plan.');
+    if(plan)planPrompt=body.messages[0].content;
+    const actions=plan?[
+      {type:'update_state',target:'memory',value:'近期关注摄影教程',scope:'topic',topic:'摄影',lifetime:'session',version:snapshot.state.version,evidence_ids:[feedback.id]},
+      {type:'acquire',source:'local',mode:'explore',modality:'text',query:'摄影'}
+    ]:[{type:'recommend',candidate_ids:['item-profile'],reason:'摄影'}];
+    res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({actions})},finish_reason:'stop'}]}));
+  });
+  await new Promise(resolve=>mock.listen(0,'127.0.0.1',resolve));t.after(()=>{mock.closeAllConnections();mock.close();});
+  const config={key:'fixture',endpoint:`http://127.0.0.1:${mock.address().port}`,model:'fixture'};
+  const result=await executePolicy(snapshot,'joint-v1',config,{id:id(),items:[{id:'item-profile',source:'local',modality:'text',title:'摄影'}]});
+  assert.match(planPrompt,/behavior.*feedback/i);
+  assert.match(planPrompt,/tentative/i);
+  assert.equal(result.state_after.entries[0].evidence_ids[0],feedback.id);
+  assert.equal(result.state_after.entries[0].lifetime,'session');
+});
+
+test('model connection failures explain that profile updates could not run', async t => {
+  const {store,create}=setup(t);const snapshot=inputSnapshot(store,create('offline-profile'),'');
+  await assert.rejects(executePolicy(snapshot,'joint-v1',{key:'fixture',endpoint:'http://127.0.0.1:1',model:'fixture'}),error=>{
+    assert.match(error.message,/模型接口.*连接/);
+    assert.equal(error.partial_trace.at(-1).failed_phase,'plan');
+    return true;
+  });
+});

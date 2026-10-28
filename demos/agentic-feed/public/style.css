@@ -44,3 +44,5 @@
 @media(max-width:550px){.trace-legend{gap:6px 12px}.trace-toolbar-right{align-items:center}.trace-help p{right:auto;left:0}.trace-timeline{height:calc(100dvh - 405px)}.trace-item{flex-wrap:wrap;gap:5px}.trace-item .trace-details{margin-left:0}.trace-row .trace-card{padding:11px 12px}.trace-row time{font-size:10px}.trace-item time{padding:0}}
 
 .trace-filters{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 8px}.trace-filters button{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:8px;padding:7px 11px;font-size:12px;line-height:1.2}.trace-filters button[aria-pressed=true]{color:var(--accent);background:var(--accent-soft);border-color:var(--accent);font-weight:650}.trace-filters button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.learned small{display:block;color:var(--muted);margin-top:4px;font-size:11px}
