@@ -1,0 +1,1588 @@
+{
+  "metadata": {
+    "schema_version": "1.0.0",
+    "episode_id": "illustration-laptop-001",
+    "participant_id": "fictional-user-001",
+    "task_id": "fictional-laptop-task",
+    "task_mode": "goal_directed",
+    "track": "illustrative_trajectory",
+    "data_origin": "illustrative",
+    "interaction_mode": "illustrative",
+    "eligible_for_analysis": false,
+    "split": "illustrative",
+    "parent_episode_ids": [],
+    "protocol_version": "agentic-feed-design-2026-10-27",
+    "consent_record_ref": null,
+    "publication_permission": "author_written_example",
+    "simulator": null,
+    "notes": "All people, content, choices, actions, timestamps and outcomes are author-written illustrations. No model ran, no user participated. Three rounds of three slots explain the format; no U@40 claim. Shadow slates are only judged retrospectively after the live branch stops."
+  },
+  "environment": {
+    "snapshot_id": "env-example-v1",
+    "frozen_at": "2026-10-27T08:30:00+08:00",
+    "index_version": "authored-example-v1",
+    "tool_version": "authored-example-v1",
+    "items": [
+      {
+        "item_id": "i1",
+        "duplicate_group": "dup-i1",
+        "title": "电脑用途与配置核对表",
+        "summary": "先列出常用软件、便携要求和预算，再核对内存与接口。",
+        "body": "先列出常用软件、便携要求和预算，再核对内存与接口。",
+        "source_id": "购买指南",
+        "source_url": "urn:waterfall:illustration:i1",
+        "language": "zh-CN",
+        "published_at": "2026-10-27T08:00:00+08:00",
+        "available_at": "2026-10-27T08:00:00+08:00",
+        "content_sha256": "fed8b24f759c189aa1beb5172d06c80590e206a141f5187e76e3d530c26ec15d",
+        "license": "Author-written fictional example; no external content",
+        "content_origin": "author_written_example"
+      },
+      {
+        "item_id": "i2",
+        "duplicate_group": "dup-i2",
+        "title": "6000 元预算如何分配",
+        "summary": "比较主机、保修与必要配件的预算，先确认已有设备。",
+        "body": "比较主机、保修与必要配件的预算，先确认已有设备。",
+        "source_id": "购买指南",
+        "source_url": "urn:waterfall:illustration:i2",
+        "language": "zh-CN",
+        "published_at": "2026-10-27T08:00:00+08:00",
+        "available_at": "2026-10-27T08:00:00+08:00",
+        "content_sha256": "9e7015147b4e5500e7562607428c443b788aea20f95a9e7aecb1ddf9410faeb0",
+        "license": "Author-written fictional example; no external content",
+        "content_origin": "author_written_example"
+      },
+      {
+        "item_id": "i3",
+        "duplicate_group": "dup-i3",
+        "title": "轻薄电脑兼容性清单",
+        "summary": "购前检查所用开发工具与操作系统支持范围。",
+        "body": "购前检查所用开发工具与操作系统支持范围。",
+        "source_id": "购买指南",
+        "source_url": "urn:waterfall:illustration:i3",
+        "language": "zh-CN",
+        "published_at": "2026-10-27T08:00:00+08:00",
+        "available_at": "2026-10-27T08:00:00+08:00",
+        "content_sha256": "84b22258e82c8c9d592ceb6d152539b51bad360ba0a39e51cca02dd6fac88c07",
+        "license": "Author-written fictional example; no external content",
+        "content_origin": "author_written_example"
+      },
+      {
+        "item_id": "i4",
+        "duplicate_group": "dup-i4",
+        "title": "A14 初次开机配置",
+        "summary": "按顺序完成系统更新、账户设置、开发工具安装。",
+        "body": "按顺序完成系统更新、账户设置、开发工具安装。",
+        "source_id": "A14 使用资料",
+        "source_url": "urn:waterfall:illustration:i4",
+        "language": "zh-CN",
+        "published_at": "2026-10-27T08:00:00+08:00",
+        "available_at": "2026-10-27T08:00:00+08:00",
+        "content_sha256": "22dbc8b773f92e638786d0a27b94433282b8a91c2181d05457c2b785a1c70106",
+        "license": "Author-written fictional example; no external content",
+        "content_origin": "author_written_example"
+      },
+      {
+        "item_id": "i5",
+        "duplicate_group": "dup-i5",
+        "title": "A14 开发环境入门",
+        "summary": "逐步检查编辑器、终端和项目目录，遇到错误先保存提示。",
+        "body": "逐步检查编辑器、终端和项目目录，遇到错误先保存提示。",
+        "source_id": "A14 使用资料",
+        "source_url": "urn:waterfall:illustration:i5",
+        "language": "zh-CN",
+        "published_at": "2026-10-27T08:00:00+08:00",
+        "available_at": "2026-10-27T08:00:00+08:00",
+        "content_sha256": "2dd9c0ae0369dd0d52df2fd533242422d3889eb45df96a2f0a45e94816d41a25",
+        "license": "Author-written fictional example; no external content",
+        "content_origin": "author_written_example"
+      },
+      {
+        "item_id": "i6",
+        "duplicate_group": "dup-i6",
+        "title": "通用电脑基础教程",
+        "summary": "认识桌面、文件管理和应用程序。",
+        "body": "认识桌面、文件管理和应用程序。",
+        "source_id": "通用教程",
+        "source_url": "urn:waterfall:illustration:i6",
+        "language": "zh-CN",
+        "published_at": "2026-10-27T08:00:00+08:00",
+        "available_at": "2026-10-27T08:00:00+08:00",
+        "content_sha256": "8acb2112e354cb946b37659f7e02c6d782d5ed1673f707c092712ab4b866af9f",
+        "license": "Author-written fictional example; no external content",
+        "content_origin": "author_written_example"
+      },
+      {
+        "item_id": "i7",
+        "duplicate_group": "dup-i7",
+        "title": "编辑器常用快捷键",
+        "summary": "先练习搜索、命令面板、跳转和格式化，每次只练一项。",
+        "body": "先练习搜索、命令面板、跳转和格式化，每次只练一项。",
+        "source_id": "开发工具教程",
+        "source_url": "urn:waterfall:illustration:i7",
+        "language": "zh-CN",
+        "published_at": "2026-10-27T08:00:00+08:00",
+        "available_at": "2026-10-27T08:00:00+08:00",
+        "content_sha256": "df2b6d0e44d4033225f215e45b7eb129711dd23150635f9cc738a85f656b5e62",
+        "license": "Author-written fictional example; no external content",
+        "content_origin": "author_written_example"
+      },
+      {
+        "item_id": "i8",
+        "duplicate_group": "dup-i8",
+        "title": "第一次设置自动备份",
+        "summary": "选择需要备份的目录、保存位置和恢复检查方法。",
+        "body": "选择需要备份的目录、保存位置和恢复检查方法。",
+        "source_id": "开发工具教程",
+        "source_url": "urn:waterfall:illustration:i8",
+        "language": "zh-CN",
+        "published_at": "2026-10-27T08:00:00+08:00",
+        "available_at": "2026-10-27T08:00:00+08:00",
+        "content_sha256": "a2f7746853a6b08a409741b6a1d11884eefcf58222a4384c1da2f740722ed3dd",
+        "license": "Author-written fictional example; no external content",
+        "content_origin": "author_written_example"
+      },
+      {
+        "item_id": "i9",
+        "duplicate_group": "dup-i9",
+        "title": "项目文件整理步骤",
+        "summary": "把源代码、素材和导出文件分开，并记录备份位置。",
+        "body": "把源代码、素材和导出文件分开，并记录备份位置。",
+        "source_id": "开发工具教程",
+        "source_url": "urn:waterfall:illustration:i9",
+        "language": "zh-CN",
+        "published_at": "2026-10-27T08:00:00+08:00",
+        "available_at": "2026-10-27T08:00:00+08:00",
+        "content_sha256": "55884ca32c9424dfa19ac579f1ae6cd691e1d38675352f5645c5ba3da55fbc6f",
+        "license": "Author-written fictional example; no external content",
+        "content_origin": "author_written_example"
+      }
+    ]
+  },
+  "policies": [
+    {
+      "policy_id": "full",
+      "version": "illustration-v1",
+      "model_id": null,
+      "prompt_version": "not-run",
+      "code_revision": "not-run",
+      "configuration": {
+        "description": "同时使用三输入并随阶段更新",
+        "max_source_calls_per_round": 2
+      }
+    },
+    {
+      "policy_id": "static",
+      "version": "illustration-v1",
+      "model_id": null,
+      "prompt_version": "not-run",
+      "code_revision": "not-run",
+      "configuration": {
+        "description": "保持初始购买主题的示意对照",
+        "max_source_calls_per_round": 2
+      }
+    },
+    {
+      "policy_id": "reactive",
+      "version": "illustration-v1",
+      "model_id": null,
+      "prompt_version": "not-run",
+      "code_revision": "not-run",
+      "configuration": {
+        "description": "响应最新指令但缺少具体设备信息的示意对照",
+        "max_source_calls_per_round": 2
+      }
+    }
+  ],
+  "randomization": {
+    "assignment_id": "illustrative-layout-only",
+    "assignment_seed": null,
+    "assignment_probability": null,
+    "task_order": [
+      "fictional-laptop-task"
+    ],
+    "policy_order": [
+      "full"
+    ],
+    "budget": {
+      "max_rounds": 3,
+      "max_slots_per_round": 3,
+      "allow_early_stop": true
+    },
+    "status": "illustrative_not_randomized"
+  },
+  "rounds": [
+    {
+      "round_id": "r1",
+      "index": 1,
+      "decision_at": "2026-10-27T09:01:01+08:00",
+      "environment_snapshot_id": "env-example-v1",
+      "executed_policy_id": "full",
+      "policy_input": {
+        "command_events": [
+          {
+            "event_id": "profile-0",
+            "kind": "command",
+            "text": "我只读中文，电脑基础一般。",
+            "event_time": "2026-10-27T09:00:00+08:00",
+            "available_at": "2026-10-27T09:00:00+08:00",
+            "exposure_id": null,
+            "origin": "illustrative",
+            "prompt_id": null
+          },
+          {
+            "event_id": "cmd-1",
+            "kind": "command",
+            "text": "预算 6000，写代码，想买轻薄电脑。",
+            "event_time": "2026-10-27T09:01:00+08:00",
+            "available_at": "2026-10-27T09:01:00+08:00",
+            "exposure_id": null,
+            "origin": "illustrative",
+            "prompt_id": null
+          }
+        ],
+        "history_event_ids": [],
+        "profile_memory": {
+          "revision": "s0",
+          "entries": [
+            {
+              "key": "language",
+              "value": "只读中文",
+              "scope": "persistent",
+              "evidence_event_ids": [
+                "profile-0"
+              ],
+              "available_at": "2026-10-27T09:00:00+08:00",
+              "status": "active"
+            },
+            {
+              "key": "experience",
+              "value": "电脑基础一般",
+              "scope": "persistent",
+              "evidence_event_ids": [
+                "profile-0"
+              ],
+              "available_at": "2026-10-27T09:00:00+08:00",
+              "status": "active"
+            }
+          ]
+        },
+        "user_visible_state": {
+          "goal_text": "预算 6000，写代码，想买轻薄电脑。",
+          "ui_version": "cards-example-v1",
+          "prior_slate_ids": []
+        }
+      },
+      "actions": [
+        {
+          "action_id": "a1-update",
+          "policy_id": "full",
+          "branch": "executed",
+          "kind": "update_state",
+          "started_at": "2026-10-27T09:01:02+08:00",
+          "completed_at": "2026-10-27T09:01:02+08:00",
+          "input_event_ids": [
+            "cmd-1"
+          ],
+          "depends_on": [],
+          "arguments": {
+            "from_revision": "s0",
+            "scope": "current_goal",
+            "evidence_event_ids": [
+              "cmd-1"
+            ]
+          },
+          "status": "success",
+          "result": {
+            "to_revision": "s1"
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a1-fetch",
+          "policy_id": "full",
+          "branch": "executed",
+          "kind": "acquire",
+          "started_at": "2026-10-27T09:01:03+08:00",
+          "completed_at": "2026-10-27T09:01:03+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1"
+          ],
+          "depends_on": [
+            "a1-update"
+          ],
+          "arguments": {
+            "query": "买适合写代码的轻薄电脑，预算 6000",
+            "snapshot_id": "env-example-v1",
+            "limit": 3
+          },
+          "status": "success",
+          "result": {
+            "item_ids": [
+              "i1",
+              "i2",
+              "i3"
+            ],
+            "tool_version": "authored-example-v1"
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a1-rank",
+          "policy_id": "full",
+          "branch": "executed",
+          "kind": "recommend",
+          "started_at": "2026-10-27T09:01:04+08:00",
+          "completed_at": "2026-10-27T09:01:04+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1"
+          ],
+          "depends_on": [
+            "a1-fetch"
+          ],
+          "arguments": {
+            "candidate_item_ids": [
+              "i1",
+              "i2",
+              "i3"
+            ],
+            "state_revision": "s1"
+          },
+          "status": "success",
+          "result": {
+            "ordered_item_ids": [
+              "i1",
+              "i2",
+              "i3"
+            ]
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        }
+      ],
+      "state_after": {
+        "revision": "s1",
+        "entries": [
+          {
+            "key": "language",
+            "value": "只读中文",
+            "scope": "persistent",
+            "evidence_event_ids": [
+              "profile-0"
+            ],
+            "available_at": "2026-10-27T09:00:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "experience",
+            "value": "电脑基础一般",
+            "scope": "persistent",
+            "evidence_event_ids": [
+              "profile-0"
+            ],
+            "available_at": "2026-10-27T09:00:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "goal",
+            "value": "买适合写代码的轻薄电脑，预算 6000",
+            "scope": "current_goal",
+            "evidence_event_ids": [
+              "cmd-1"
+            ],
+            "available_at": "2026-10-27T09:01:00+08:00",
+            "status": "active"
+          }
+        ]
+      },
+      "slates": [
+        {
+          "slate_id": "slate-1-full",
+          "policy_id": "full",
+          "action_ids": [
+            "a1-update",
+            "a1-fetch",
+            "a1-rank"
+          ],
+          "ordered_item_ids": [
+            "i1",
+            "i2",
+            "i3"
+          ],
+          "created_at": "2026-10-27T09:01:04+08:00"
+        }
+      ],
+      "exposures": [
+        {
+          "exposure_id": "exp-1-1",
+          "slate_id": "slate-1-full",
+          "slot": 1,
+          "item_id": "i1",
+          "delivery_status": "displayed",
+          "displayed_at": "2026-10-27T09:01:06+08:00",
+          "visible_ms": 5000,
+          "measurement": "illustrative values, not measured telemetry",
+          "goal_version_at_exposure": "g1"
+        },
+        {
+          "exposure_id": "exp-1-2",
+          "slate_id": "slate-1-full",
+          "slot": 2,
+          "item_id": "i2",
+          "delivery_status": "displayed",
+          "displayed_at": "2026-10-27T09:01:07+08:00",
+          "visible_ms": 5000,
+          "measurement": "illustrative values, not measured telemetry",
+          "goal_version_at_exposure": "g1"
+        },
+        {
+          "exposure_id": "exp-1-3",
+          "slate_id": "slate-1-full",
+          "slot": 3,
+          "item_id": "i3",
+          "delivery_status": "displayed",
+          "displayed_at": "2026-10-27T09:01:08+08:00",
+          "visible_ms": 5000,
+          "measurement": "illustrative values, not measured telemetry",
+          "goal_version_at_exposure": "g1"
+        }
+      ],
+      "feedback_events": [
+        {
+          "event_id": "beh-1-open",
+          "kind": "open",
+          "text": null,
+          "event_time": "2026-10-27T09:01:20+08:00",
+          "available_at": "2026-10-27T09:01:20+08:00",
+          "exposure_id": "exp-1-1",
+          "origin": "illustrative",
+          "prompt_id": null
+        },
+        {
+          "event_id": "beh-1-skip",
+          "kind": "skip",
+          "text": null,
+          "event_time": "2026-10-27T09:01:30+08:00",
+          "available_at": "2026-10-27T09:01:30+08:00",
+          "exposure_id": "exp-1-3",
+          "origin": "illustrative",
+          "prompt_id": null
+        }
+      ],
+      "termination": {
+        "status": "continue",
+        "event_id": null,
+        "reason": null
+      }
+    },
+    {
+      "round_id": "r2",
+      "index": 2,
+      "decision_at": "2026-10-27T09:10:01+08:00",
+      "environment_snapshot_id": "env-example-v1",
+      "executed_policy_id": "full",
+      "policy_input": {
+        "command_events": [
+          {
+            "event_id": "cmd-2",
+            "kind": "command",
+            "text": "我买好 A14 了，别再推购买建议，想学开发环境配置。",
+            "event_time": "2026-10-27T09:10:00+08:00",
+            "available_at": "2026-10-27T09:10:00+08:00",
+            "exposure_id": null,
+            "origin": "illustrative",
+            "prompt_id": null
+          }
+        ],
+        "history_event_ids": [
+          "profile-0",
+          "cmd-1",
+          "beh-1-open",
+          "beh-1-skip"
+        ],
+        "profile_memory": {
+          "revision": "s1",
+          "entries": [
+            {
+              "key": "language",
+              "value": "只读中文",
+              "scope": "persistent",
+              "evidence_event_ids": [
+                "profile-0"
+              ],
+              "available_at": "2026-10-27T09:00:00+08:00",
+              "status": "active"
+            },
+            {
+              "key": "experience",
+              "value": "电脑基础一般",
+              "scope": "persistent",
+              "evidence_event_ids": [
+                "profile-0"
+              ],
+              "available_at": "2026-10-27T09:00:00+08:00",
+              "status": "active"
+            },
+            {
+              "key": "goal",
+              "value": "买适合写代码的轻薄电脑，预算 6000",
+              "scope": "current_goal",
+              "evidence_event_ids": [
+                "cmd-1"
+              ],
+              "available_at": "2026-10-27T09:01:00+08:00",
+              "status": "active"
+            }
+          ]
+        },
+        "user_visible_state": {
+          "goal_text": "我买好 A14 了，别再推购买建议，想学开发环境配置。",
+          "ui_version": "cards-example-v1",
+          "prior_slate_ids": [
+            "slate-1-full"
+          ]
+        }
+      },
+      "actions": [
+        {
+          "action_id": "a2-update",
+          "policy_id": "full",
+          "branch": "executed",
+          "kind": "update_state",
+          "started_at": "2026-10-27T09:10:02+08:00",
+          "completed_at": "2026-10-27T09:10:02+08:00",
+          "input_event_ids": [
+            "cmd-2"
+          ],
+          "depends_on": [],
+          "arguments": {
+            "from_revision": "s1",
+            "scope": "current_goal",
+            "evidence_event_ids": [
+              "cmd-2"
+            ]
+          },
+          "status": "success",
+          "result": {
+            "to_revision": "s2"
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a2-fetch",
+          "policy_id": "full",
+          "branch": "executed",
+          "kind": "acquire",
+          "started_at": "2026-10-27T09:10:03+08:00",
+          "completed_at": "2026-10-27T09:10:03+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1",
+            "beh-1-open",
+            "beh-1-skip",
+            "cmd-2"
+          ],
+          "depends_on": [
+            "a2-update"
+          ],
+          "arguments": {
+            "query": "学习 A14 开发环境配置，当前不看购买建议",
+            "snapshot_id": "env-example-v1",
+            "limit": 3
+          },
+          "status": "success",
+          "result": {
+            "item_ids": [
+              "i4",
+              "i5",
+              "i6"
+            ],
+            "tool_version": "authored-example-v1"
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a2-rank",
+          "policy_id": "full",
+          "branch": "executed",
+          "kind": "recommend",
+          "started_at": "2026-10-27T09:10:04+08:00",
+          "completed_at": "2026-10-27T09:10:04+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1",
+            "beh-1-open",
+            "beh-1-skip",
+            "cmd-2"
+          ],
+          "depends_on": [
+            "a2-fetch"
+          ],
+          "arguments": {
+            "candidate_item_ids": [
+              "i4",
+              "i5",
+              "i6"
+            ],
+            "state_revision": "s2"
+          },
+          "status": "success",
+          "result": {
+            "ordered_item_ids": [
+              "i4",
+              "i5",
+              "i6"
+            ]
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a2-static-fetch",
+          "policy_id": "static",
+          "branch": "shadow",
+          "kind": "acquire",
+          "started_at": "2026-10-27T09:10:03+08:00",
+          "completed_at": "2026-10-27T09:10:03+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1",
+            "beh-1-open",
+            "beh-1-skip",
+            "cmd-2"
+          ],
+          "depends_on": [],
+          "arguments": {
+            "query": "初始购买主题",
+            "snapshot_id": "env-example-v1",
+            "limit": 3
+          },
+          "status": "success",
+          "result": {
+            "item_ids": [
+              "i2",
+              "i3",
+              "i1"
+            ],
+            "tool_version": "authored-example-v1"
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a2-static-rank",
+          "policy_id": "static",
+          "branch": "shadow",
+          "kind": "recommend",
+          "started_at": "2026-10-27T09:10:04+08:00",
+          "completed_at": "2026-10-27T09:10:04+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1",
+            "beh-1-open",
+            "beh-1-skip",
+            "cmd-2"
+          ],
+          "depends_on": [
+            "a2-static-fetch"
+          ],
+          "arguments": {
+            "candidate_item_ids": [
+              "i2",
+              "i3",
+              "i1"
+            ]
+          },
+          "status": "success",
+          "result": {
+            "ordered_item_ids": [
+              "i2",
+              "i3",
+              "i1"
+            ]
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a2-reactive-fetch",
+          "policy_id": "reactive",
+          "branch": "shadow",
+          "kind": "acquire",
+          "started_at": "2026-10-27T09:10:03+08:00",
+          "completed_at": "2026-10-27T09:10:03+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1",
+            "beh-1-open",
+            "beh-1-skip",
+            "cmd-2"
+          ],
+          "depends_on": [],
+          "arguments": {
+            "query": "电脑使用入门",
+            "snapshot_id": "env-example-v1",
+            "limit": 3
+          },
+          "status": "success",
+          "result": {
+            "item_ids": [
+              "i6",
+              "i8",
+              "i9"
+            ],
+            "tool_version": "authored-example-v1"
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a2-reactive-rank",
+          "policy_id": "reactive",
+          "branch": "shadow",
+          "kind": "recommend",
+          "started_at": "2026-10-27T09:10:04+08:00",
+          "completed_at": "2026-10-27T09:10:04+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1",
+            "beh-1-open",
+            "beh-1-skip",
+            "cmd-2"
+          ],
+          "depends_on": [
+            "a2-reactive-fetch"
+          ],
+          "arguments": {
+            "candidate_item_ids": [
+              "i6",
+              "i8",
+              "i9"
+            ]
+          },
+          "status": "success",
+          "result": {
+            "ordered_item_ids": [
+              "i6",
+              "i8",
+              "i9"
+            ]
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        }
+      ],
+      "state_after": {
+        "revision": "s2",
+        "entries": [
+          {
+            "key": "language",
+            "value": "只读中文",
+            "scope": "persistent",
+            "evidence_event_ids": [
+              "profile-0"
+            ],
+            "available_at": "2026-10-27T09:00:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "experience",
+            "value": "电脑基础一般",
+            "scope": "persistent",
+            "evidence_event_ids": [
+              "profile-0"
+            ],
+            "available_at": "2026-10-27T09:00:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "purchase_goal",
+            "value": "本次购买已完成",
+            "scope": "current_goal",
+            "evidence_event_ids": [
+              "cmd-2"
+            ],
+            "available_at": "2026-10-27T09:10:00+08:00",
+            "status": "completed"
+          },
+          {
+            "key": "content_constraint",
+            "value": "本次使用阶段不看购买建议",
+            "scope": "session",
+            "evidence_event_ids": [
+              "cmd-2"
+            ],
+            "available_at": "2026-10-27T09:10:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "device",
+            "value": "已购 A14",
+            "scope": "session",
+            "evidence_event_ids": [
+              "cmd-2"
+            ],
+            "available_at": "2026-10-27T09:10:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "goal",
+            "value": "学习 A14 开发环境配置，当前不看购买建议",
+            "scope": "current_goal",
+            "evidence_event_ids": [
+              "cmd-2"
+            ],
+            "available_at": "2026-10-27T09:10:00+08:00",
+            "status": "active"
+          }
+        ]
+      },
+      "slates": [
+        {
+          "slate_id": "slate-2-full",
+          "policy_id": "full",
+          "action_ids": [
+            "a2-update",
+            "a2-fetch",
+            "a2-rank"
+          ],
+          "ordered_item_ids": [
+            "i4",
+            "i5",
+            "i6"
+          ],
+          "created_at": "2026-10-27T09:10:04+08:00"
+        },
+        {
+          "slate_id": "slate-2-static",
+          "policy_id": "static",
+          "action_ids": [
+            "a2-static-fetch",
+            "a2-static-rank"
+          ],
+          "ordered_item_ids": [
+            "i2",
+            "i3",
+            "i1"
+          ],
+          "created_at": "2026-10-27T09:10:04+08:00"
+        },
+        {
+          "slate_id": "slate-2-reactive",
+          "policy_id": "reactive",
+          "action_ids": [
+            "a2-reactive-fetch",
+            "a2-reactive-rank"
+          ],
+          "ordered_item_ids": [
+            "i6",
+            "i8",
+            "i9"
+          ],
+          "created_at": "2026-10-27T09:10:04+08:00"
+        }
+      ],
+      "exposures": [
+        {
+          "exposure_id": "exp-2-1",
+          "slate_id": "slate-2-full",
+          "slot": 1,
+          "item_id": "i4",
+          "delivery_status": "displayed",
+          "displayed_at": "2026-10-27T09:10:06+08:00",
+          "visible_ms": 5000,
+          "measurement": "illustrative values, not measured telemetry",
+          "goal_version_at_exposure": "g2"
+        },
+        {
+          "exposure_id": "exp-2-2",
+          "slate_id": "slate-2-full",
+          "slot": 2,
+          "item_id": "i5",
+          "delivery_status": "displayed",
+          "displayed_at": "2026-10-27T09:10:07+08:00",
+          "visible_ms": 5000,
+          "measurement": "illustrative values, not measured telemetry",
+          "goal_version_at_exposure": "g2"
+        },
+        {
+          "exposure_id": "exp-2-3",
+          "slate_id": "slate-2-full",
+          "slot": 3,
+          "item_id": "i6",
+          "delivery_status": "displayed",
+          "displayed_at": "2026-10-27T09:10:08+08:00",
+          "visible_ms": 5000,
+          "measurement": "illustrative values, not measured telemetry",
+          "goal_version_at_exposure": "g2"
+        }
+      ],
+      "feedback_events": [
+        {
+          "event_id": "beh-2-open",
+          "kind": "open",
+          "text": null,
+          "event_time": "2026-10-27T09:10:20+08:00",
+          "available_at": "2026-10-27T09:10:20+08:00",
+          "exposure_id": "exp-2-1",
+          "origin": "illustrative",
+          "prompt_id": null
+        }
+      ],
+      "termination": {
+        "status": "continue",
+        "event_id": null,
+        "reason": null
+      }
+    },
+    {
+      "round_id": "r3",
+      "index": 3,
+      "decision_at": "2026-10-27T09:20:01+08:00",
+      "environment_snapshot_id": "env-example-v1",
+      "executed_policy_id": "full",
+      "policy_input": {
+        "command_events": [
+          {
+            "event_id": "cmd-3",
+            "kind": "command",
+            "text": "刚才的步骤太快，我已经装好编辑器，想学快捷键和备份。",
+            "event_time": "2026-10-27T09:20:00+08:00",
+            "available_at": "2026-10-27T09:20:00+08:00",
+            "exposure_id": null,
+            "origin": "illustrative",
+            "prompt_id": null
+          }
+        ],
+        "history_event_ids": [
+          "profile-0",
+          "cmd-1",
+          "beh-1-open",
+          "beh-1-skip",
+          "cmd-2",
+          "beh-2-open"
+        ],
+        "profile_memory": {
+          "revision": "s2",
+          "entries": [
+            {
+              "key": "language",
+              "value": "只读中文",
+              "scope": "persistent",
+              "evidence_event_ids": [
+                "profile-0"
+              ],
+              "available_at": "2026-10-27T09:00:00+08:00",
+              "status": "active"
+            },
+            {
+              "key": "experience",
+              "value": "电脑基础一般",
+              "scope": "persistent",
+              "evidence_event_ids": [
+                "profile-0"
+              ],
+              "available_at": "2026-10-27T09:00:00+08:00",
+              "status": "active"
+            },
+            {
+              "key": "purchase_goal",
+              "value": "本次购买已完成",
+              "scope": "current_goal",
+              "evidence_event_ids": [
+                "cmd-2"
+              ],
+              "available_at": "2026-10-27T09:10:00+08:00",
+              "status": "completed"
+            },
+            {
+              "key": "content_constraint",
+              "value": "本次使用阶段不看购买建议",
+              "scope": "session",
+              "evidence_event_ids": [
+                "cmd-2"
+              ],
+              "available_at": "2026-10-27T09:10:00+08:00",
+              "status": "active"
+            },
+            {
+              "key": "device",
+              "value": "已购 A14",
+              "scope": "session",
+              "evidence_event_ids": [
+                "cmd-2"
+              ],
+              "available_at": "2026-10-27T09:10:00+08:00",
+              "status": "active"
+            },
+            {
+              "key": "goal",
+              "value": "学习 A14 开发环境配置，当前不看购买建议",
+              "scope": "current_goal",
+              "evidence_event_ids": [
+                "cmd-2"
+              ],
+              "available_at": "2026-10-27T09:10:00+08:00",
+              "status": "active"
+            }
+          ]
+        },
+        "user_visible_state": {
+          "goal_text": "刚才的步骤太快，我已经装好编辑器，想学快捷键和备份。",
+          "ui_version": "cards-example-v1",
+          "prior_slate_ids": [
+            "slate-2-full"
+          ]
+        }
+      },
+      "actions": [
+        {
+          "action_id": "a3-update",
+          "policy_id": "full",
+          "branch": "executed",
+          "kind": "update_state",
+          "started_at": "2026-10-27T09:20:02+08:00",
+          "completed_at": "2026-10-27T09:20:02+08:00",
+          "input_event_ids": [
+            "cmd-3"
+          ],
+          "depends_on": [],
+          "arguments": {
+            "from_revision": "s2",
+            "scope": "current_goal",
+            "evidence_event_ids": [
+              "cmd-3"
+            ]
+          },
+          "status": "success",
+          "result": {
+            "to_revision": "s3"
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a3-fetch",
+          "policy_id": "full",
+          "branch": "executed",
+          "kind": "acquire",
+          "started_at": "2026-10-27T09:20:03+08:00",
+          "completed_at": "2026-10-27T09:20:03+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1",
+            "beh-1-open",
+            "beh-1-skip",
+            "cmd-2",
+            "beh-2-open",
+            "cmd-3"
+          ],
+          "depends_on": [
+            "a3-update"
+          ],
+          "arguments": {
+            "query": "学习编辑器快捷键和备份，步骤需更细",
+            "snapshot_id": "env-example-v1",
+            "limit": 3
+          },
+          "status": "success",
+          "result": {
+            "item_ids": [
+              "i7",
+              "i8",
+              "i9"
+            ],
+            "tool_version": "authored-example-v1"
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        },
+        {
+          "action_id": "a3-rank",
+          "policy_id": "full",
+          "branch": "executed",
+          "kind": "recommend",
+          "started_at": "2026-10-27T09:20:04+08:00",
+          "completed_at": "2026-10-27T09:20:04+08:00",
+          "input_event_ids": [
+            "profile-0",
+            "cmd-1",
+            "beh-1-open",
+            "beh-1-skip",
+            "cmd-2",
+            "beh-2-open",
+            "cmd-3"
+          ],
+          "depends_on": [
+            "a3-fetch"
+          ],
+          "arguments": {
+            "candidate_item_ids": [
+              "i7",
+              "i8",
+              "i9"
+            ],
+            "state_revision": "s3"
+          },
+          "status": "success",
+          "result": {
+            "ordered_item_ids": [
+              "i7",
+              "i8",
+              "i9"
+            ]
+          },
+          "error": null,
+          "cost": {
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_tokens": null,
+            "source_calls": null,
+            "latency_ms": null,
+            "amount": null,
+            "currency": null
+          }
+        }
+      ],
+      "state_after": {
+        "revision": "s3",
+        "entries": [
+          {
+            "key": "language",
+            "value": "只读中文",
+            "scope": "persistent",
+            "evidence_event_ids": [
+              "profile-0"
+            ],
+            "available_at": "2026-10-27T09:00:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "experience",
+            "value": "电脑基础一般",
+            "scope": "persistent",
+            "evidence_event_ids": [
+              "profile-0"
+            ],
+            "available_at": "2026-10-27T09:00:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "purchase_goal",
+            "value": "本次购买已完成",
+            "scope": "current_goal",
+            "evidence_event_ids": [
+              "cmd-2"
+            ],
+            "available_at": "2026-10-27T09:10:00+08:00",
+            "status": "completed"
+          },
+          {
+            "key": "content_constraint",
+            "value": "本次使用阶段不看购买建议",
+            "scope": "session",
+            "evidence_event_ids": [
+              "cmd-2"
+            ],
+            "available_at": "2026-10-27T09:10:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "device",
+            "value": "已购 A14",
+            "scope": "session",
+            "evidence_event_ids": [
+              "cmd-2"
+            ],
+            "available_at": "2026-10-27T09:10:00+08:00",
+            "status": "active"
+          },
+          {
+            "key": "editor_setup",
+            "value": "编辑器安装完成",
+            "scope": "current_goal",
+            "evidence_event_ids": [
+              "cmd-3"
+            ],
+            "available_at": "2026-10-27T09:20:00+08:00",
+            "status": "completed"
+          },
+          {
+            "key": "goal",
+            "value": "学习编辑器快捷键和备份，步骤需更细",
+            "scope": "current_goal",
+            "evidence_event_ids": [
+              "cmd-3"
+            ],
+            "available_at": "2026-10-27T09:20:00+08:00",
+            "status": "active"
+          }
+        ]
+      },
+      "slates": [
+        {
+          "slate_id": "slate-3-full",
+          "policy_id": "full",
+          "action_ids": [
+            "a3-update",
+            "a3-fetch",
+            "a3-rank"
+          ],
+          "ordered_item_ids": [
+            "i7",
+            "i8",
+            "i9"
+          ],
+          "created_at": "2026-10-27T09:20:04+08:00"
+        }
+      ],
+      "exposures": [
+        {
+          "exposure_id": "exp-3-1",
+          "slate_id": "slate-3-full",
+          "slot": 1,
+          "item_id": "i7",
+          "delivery_status": "displayed",
+          "displayed_at": "2026-10-27T09:20:06+08:00",
+          "visible_ms": 5000,
+          "measurement": "illustrative values, not measured telemetry",
+          "goal_version_at_exposure": "g3"
+        },
+        {
+          "exposure_id": "exp-3-2",
+          "slate_id": "slate-3-full",
+          "slot": 2,
+          "item_id": "i8",
+          "delivery_status": "displayed",
+          "displayed_at": "2026-10-27T09:20:07+08:00",
+          "visible_ms": 5000,
+          "measurement": "illustrative values, not measured telemetry",
+          "goal_version_at_exposure": "g3"
+        },
+        {
+          "exposure_id": "exp-3-3",
+          "slate_id": "slate-3-full",
+          "slot": 3,
+          "item_id": "i9",
+          "delivery_status": "technical_failure",
+          "displayed_at": null,
+          "visible_ms": null,
+          "measurement": "illustrative values, not measured telemetry",
+          "goal_version_at_exposure": "g3"
+        }
+      ],
+      "feedback_events": [
+        {
+          "event_id": "beh-3-open",
+          "kind": "open",
+          "text": null,
+          "event_time": "2026-10-27T09:20:20+08:00",
+          "available_at": "2026-10-27T09:20:20+08:00",
+          "exposure_id": "exp-3-1",
+          "origin": "illustrative",
+          "prompt_id": null
+        },
+        {
+          "event_id": "stop-3",
+          "kind": "stop",
+          "text": "今天这些信息已经够了，配置和备份我还要自己试。",
+          "event_time": "2026-10-27T09:22:10+08:00",
+          "available_at": "2026-10-27T09:22:10+08:00",
+          "exposure_id": null,
+          "origin": "illustrative",
+          "prompt_id": null
+        }
+      ],
+      "termination": {
+        "status": "satisfied_stop",
+        "event_id": "stop-3",
+        "reason": "Illustrative voluntary stop; goal completion remains unconfirmed."
+      }
+    }
+  ],
+  "evaluator_private": {
+    "visibility": "evaluator_only",
+    "goal_versions": [
+      {
+        "goal_version": "g1",
+        "text": "预算 6000，写代码，想买轻薄电脑。",
+        "valid_from": "2026-10-27T09:01:00+08:00",
+        "evidence_event_ids": [
+          "cmd-1"
+        ]
+      },
+      {
+        "goal_version": "g2",
+        "text": "我买好 A14 了，别再推购买建议，想学开发环境配置。",
+        "valid_from": "2026-10-27T09:10:00+08:00",
+        "evidence_event_ids": [
+          "cmd-2"
+        ]
+      },
+      {
+        "goal_version": "g3",
+        "text": "刚才的步骤太快，我已经装好编辑器，想学快捷键和备份。",
+        "valid_from": "2026-10-27T09:20:00+08:00",
+        "evidence_event_ids": [
+          "cmd-3"
+        ]
+      }
+    ],
+    "exposure_labels": [
+      {
+        "exposure_id": "exp-1-1",
+        "assessed_at": "2026-10-27T09:03:00+08:00",
+        "assessor_origin": "illustrative",
+        "utility": 2,
+        "missing_reason": null,
+        "hard_violation": false,
+        "violation_evidence_event_ids": [],
+        "constraint_review_status": "confirmed",
+        "known_before_exposure": false
+      },
+      {
+        "exposure_id": "exp-1-2",
+        "assessed_at": "2026-10-27T09:03:00+08:00",
+        "assessor_origin": "illustrative",
+        "utility": 2,
+        "missing_reason": null,
+        "hard_violation": false,
+        "violation_evidence_event_ids": [],
+        "constraint_review_status": "confirmed",
+        "known_before_exposure": false
+      },
+      {
+        "exposure_id": "exp-1-3",
+        "assessed_at": "2026-10-27T09:03:00+08:00",
+        "assessor_origin": "illustrative",
+        "utility": 2,
+        "missing_reason": null,
+        "hard_violation": false,
+        "violation_evidence_event_ids": [],
+        "constraint_review_status": "confirmed",
+        "known_before_exposure": false
+      },
+      {
+        "exposure_id": "exp-2-1",
+        "assessed_at": "2026-10-27T09:12:00+08:00",
+        "assessor_origin": "illustrative",
+        "utility": 2,
+        "missing_reason": null,
+        "hard_violation": false,
+        "violation_evidence_event_ids": [],
+        "constraint_review_status": "confirmed",
+        "known_before_exposure": false
+      },
+      {
+        "exposure_id": "exp-2-2",
+        "assessed_at": "2026-10-27T09:12:00+08:00",
+        "assessor_origin": "illustrative",
+        "utility": 2,
+        "missing_reason": null,
+        "hard_violation": false,
+        "violation_evidence_event_ids": [],
+        "constraint_review_status": "confirmed",
+        "known_before_exposure": false
+      },
+      {
+        "exposure_id": "exp-2-3",
+        "assessed_at": "2026-10-27T09:12:00+08:00",
+        "assessor_origin": "illustrative",
+        "utility": 1,
+        "missing_reason": null,
+        "hard_violation": false,
+        "violation_evidence_event_ids": [],
+        "constraint_review_status": "confirmed",
+        "known_before_exposure": false
+      },
+      {
+        "exposure_id": "exp-3-1",
+        "assessed_at": "2026-10-27T09:22:00+08:00",
+        "assessor_origin": "illustrative",
+        "utility": 2,
+        "missing_reason": null,
+        "hard_violation": false,
+        "violation_evidence_event_ids": [],
+        "constraint_review_status": "confirmed",
+        "known_before_exposure": false
+      },
+      {
+        "exposure_id": "exp-3-2",
+        "assessed_at": "2026-10-27T09:22:00+08:00",
+        "assessor_origin": "illustrative",
+        "utility": 2,
+        "missing_reason": null,
+        "hard_violation": false,
+        "violation_evidence_event_ids": [],
+        "constraint_review_status": "confirmed",
+        "known_before_exposure": false
+      },
+      {
+        "exposure_id": "exp-3-3",
+        "assessed_at": "2026-10-27T09:22:00+08:00",
+        "assessor_origin": "illustrative",
+        "utility": null,
+        "missing_reason": "technical_failure",
+        "hard_violation": null,
+        "violation_evidence_event_ids": [],
+        "constraint_review_status": "not_applicable",
+        "known_before_exposure": null
+      }
+    ],
+    "choice_tasks": [
+      {
+        "choice_id": "choice-r2-retrospective",
+        "context_round_id": "r2",
+        "judgment_mode": "retrospective",
+        "format": "listwise",
+        "judged_at": "2026-10-27T09:25:00+08:00",
+        "judgment_known_event_ids": [
+          "profile-0",
+          "cmd-1",
+          "beh-1-open",
+          "beh-1-skip",
+          "cmd-2",
+          "beh-2-open",
+          "cmd-3",
+          "beh-3-open",
+          "stop-3"
+        ],
+        "display_order": [
+          {
+            "display_label": "X",
+            "slate_id": "slate-2-static"
+          },
+          {
+            "display_label": "Y",
+            "slate_id": "slate-2-full"
+          },
+          {
+            "display_label": "Z",
+            "slate_id": "slate-2-reactive"
+          }
+        ],
+        "order_seed": null,
+        "assessor_origin": "illustrative",
+        "response": {
+          "outcome": "preferred",
+          "preferred_display_labels": [
+            "Y"
+          ],
+          "reason": "虚构选择：按第 2 轮目标，想看已购设备的使用教程。此时已经经历后续内容，属于回顾式判断。"
+        },
+        "visible_to_policy": false
+      }
+    ],
+    "terminal_assessment": {
+      "assessor_origin": "illustrative",
+      "assessed_at": "2026-10-27T09:24:00+08:00",
+      "goal_completed": null,
+      "completion_evidence_event_ids": [],
+      "would_continue": null,
+      "notes": "Participant is fictional. Voluntary stopping is not evidence that the task is completed; subsequent practice is not observed."
+    }
+  }
+}

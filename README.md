@@ -1,10 +1,18 @@
 # Waterfall Anything
 
+`research` 是默认分支，保存 Agentic Waterfall 研究材料和本地网页 Demo。
+
+- [研究主方案](docs/research/agentic-waterfall/01-研究主方案.md)与[输入输出协议](docs/research/agentic-waterfall/02-输入输出与数据流.md)
+- [本地研究 Demo](demos/agentic-feed/README.md)：Node.js 22；个人数据和模型密钥不包含在仓库中
+- [ACL 论文材料](paper/acl-2027/README.md)
+
+以下为产品分支介绍：
+
 独立的 Waterfall 内容发现模块，目标是作为 HyperAgent Hive 中可在编译时接入或移除的能力。
 
 | 分支 | 内容 |
 | --- | --- |
-| **rust（默认）** | 项目约定与未来 Rust 替换范围，本次未实现 Rust 代码 |
+| **rust** | 项目约定与未来 Rust 替换范围，本次未实现 Rust 代码 |
 | [hos](https://github.com/XiaoLuoLYG/waterfall-anything/tree/hos) | 从 DigitalMate 抽取的 ETS / ArkTS 模块及回归测试 |
 | [release](https://github.com/XiaoLuoLYG/waterfall-anything/tree/release) | 只承载 Waterfall 的最小 HarmonyOS 应用 |
 

@@ -1,0 +1,35 @@
+# Waterfall 英文初稿：实现主张审计
+
+> 历史材料：保留当时内容，不作为现行方案。当前以 [研究主方案](../../01-研究主方案.md) 和 [输入输出与数据流](../../02-输入输出与数据流.md) 为准。
+
+日期：2026-10-20。静态核对 `waterfall-anything-release`，HEAD `36a28d50c926435fdf6380ecea5885d49b29c7b0`；核对开始时该代码仓工作区干净。本文只确认代码路径与约束，不代表设备实测、效果验证或新颖性证明；未修改代码/TeX，未运行实验。
+
+**可写的总体定位：实现了由 LLM 辅助的行为记忆与查询计划更新，以及程序执行的多源获取、排序和运行时协调。尚不能写成已经实现了根据候选不足、反馈原因和调用预算，自主选择“搜、排、改、保持”的统一策略。**
+
+下列链接均指向本次核对代码。`M` 指行为兴趣记忆；`S` 指下一阶段查询主题；`P` 指用户明确要求优先的主题，不能把三者混称一个统一画像。
+
+1. **已实现：结构化行为输入；危险主张：完整真实观看日志或满意度标签。** 输入含事件类型、卡片 ID、标题/摘要、来源、召回查询、时长、强度和状态版本。有效详情打开需超过 1 秒；Bilibili 前台可见 3 秒、15 秒分档。`heat` 是手写信号分值；可见时间不是实际视频播放时间，点赞也不直接等于满意。依据：[SAgent 事件结构与接纳](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallSAgent.ets#L11)（11–23、204–234），[提示语义](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallSAgentPrompt.ets#L9)（9–10）。
+
+2. **已实现：规则触发的批处理；危险主张：学得的最优触发策略或每 30 秒更新一次。** 五张不同的有效交互卡片，或连续 30 张未交互卡片，可立即触发；存在非跳过待处理事件时，从其首次时间起等待最多 30 秒。P 变化、取消点赞也可进入等待路径，但不计入五张有效交互。模型调用单飞，失败保留证据并有限重试。依据：[SInbox](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallSAgent.ets#L255)（255–277），[View 调度与失败处理](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/ui/WaterfallView.ets#L1658)（1658–1671、1687–1718、1770–1789）。
+
+3. **已实现：LLM 输出两类受限操作；危险主张：LLM 直接召回、排序、调整来源或比例。** 输出只允许 `memory.strengthen/weaken`、`similar` 和解释。S 可保持不变、清空，或整组替换最多五个中英查询主题。P、E、分页、来源开关与 9:9:2 比例不是该 Agent 的可写动作；上下文中的来源/比例只是输入。依据：[输出校验](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallSAgent.ets#L103)（103–114），[权限提示](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallSAgentPrompt.ets#L2)（2–14），[实际模型上下文](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/ui/WaterfallView.ets#L1693)（1693–1699）。
+
+4. **已实现：外部兴趣状态更新；危险主张：模型参数在线学习、强化学习或置信度校准。** M 最多保留 50 个关键词。发生有效记忆编辑时，程序将全部权重乘 0.99，再对被增强/削弱条目加/减 1；无有效编辑不衰减，低于 0.1 的条目被清理。模型不直接生成数值权重。审计到的路径调用 `complete()`，没有训练步骤，可写 *runtime state adaptation*，不要写 *online fine-tuning*。依据：[M 更新](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallSAgent.ets#L73)（73–81、118–143），[模型调用](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/ui/WaterfallView.ets#L1713)（1713–1718）。
+
+5. **已实现：区分普通记忆与行为证据；危险主张：完备的证据归因、因果去偏或误学保证。** S 读取最多 24 条普通兴趣摘要，提示禁止直接把普通记忆复制强化成行为 M。程序保护仅检查标签/别名与普通记忆的精确匹配，以及正行为卡片文本中是否出现该词；只过滤相应 `strengthen`，没有同等过滤 `weaken`，也没有语义级归因。跳过不等于稳定负偏好主要由提示约束。依据：[普通记忆摘要与有限防护](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallSAgent.ets#L48)（48–52、159–181），[提示约束](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallSAgentPrompt.ets#L5)（5–10、19–20）。
+
+6. **已实现：M/S 同快照提交与有限并发保护；危险主张：全系统原子切换或所有过时结果都无效。** M 与 S 通过预期旧状态比较后写入同一 PES 快照；底层临时文件写入、同步、重命名。普通记忆变化和生命周期变化有丢弃/回滚检查；证据按序号确认，不吞掉调用期间后到事件。但当前检查不是所有 P/来源/库存状态的完整版本校验，不能承诺端到端线性一致。依据：[提交实现](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/core/aiphone/runtime/WaterfallPesPlan.ets#L134)（134–157），[文件替换](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/workers/WaterfallInventoryFile.ets#L31)（31–50），[View 检查和确认](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/ui/WaterfallView.ets#L1720)（1720–1752）。
+
+7. **已实现：多个状态投影到排序；危险主张：Top10 是完整画像，或旧说法“普通兴趣被 Top10 覆盖”。** 当前代码把 M 的 Top10 **等权**条目与普通记忆的主题权重拼接；普通记忆主题强制匹配内容，M 主题默认匹配召回查询关键词；来源、形式、显式规则与会话权重继续参与。M 权重决定入选 Top10，不按热度比例直接打排序分。这是多来源投影，尚非单一语义统一用户状态。依据：[当前投影](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/ui/WaterfallView.ets#L1829)（1829–1850），[等权函数](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallLlmProfile.ets#L332)（332–344），[两种匹配路径](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/core/aiphone/runtime/WaterfallAnythingCore.ets#L776)（776–795、860–896）。**本条取代旧研究记录中的覆盖说法。**
+
+8. **已实现：手写打分与去重排序；危险主张：LLM reranker、学习排序器或实验得到的最优权重。** 兴趣模式按画像 0.50、会话 0.25、新鲜度 0.15、平衡项 0.10 组合归一化分值；搜索模式用排名融合、BM25、新鲜度和偏好。之后还有近重复抑制、MMR。当前固定系数是实现选择，效果需实验。依据：[统一排序入口](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/core/aiphone/runtime/WaterfallAnythingCore.ets#L704)（704–730），[固定评分](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/core/aiphone/runtime/WaterfallAnythingCore.ets#L980)（980–1002）。
+
+9. **已实现：程序安排获取和列表构成；危险主张：Agent 学习 P/S/E 流量分配或语义诊断“缺内容还是排错”。** P/S/E 固定 20 槽轮转，目标 9/9/2，供给不足时回退，实际列表不保证精确比例；选取后再交错来源。网络搜索由低库存且空闲的适配器触发，读取 PES 查询计划。目标查询库存中新取的候选在该选取环节可未经过前一轮打分，不宜写成“全部候选均经历同一评分再选取”。依据：[槽位](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/core/aiphone/runtime/WaterfallAnythingCore.ets#L78)（78–82），[选择和来源交错](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/core/aiphone/runtime/WaterfallBatchRanking.ets#L65)（65–118），[实际获取调度](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/workers/WaterfallPoolWorker.ets#L288)（288–345）。
+
+10. **已实现：变更触发重排、库存协调与来源熔断；危险主张：成本最优联合控制。** M/S 提交会请求相应重排；协调器串行执行评分→选取→合并，版本过时可只合并库存，保护已显示窗口；尾部低水位与预备库存按固定规则补充。来源持续没有新增供给可被程序自动关闭，来源变更触发重排。这些是工程策略，不是 Agent 依据收益、预算或不确定性学出的动作选择。依据：[M/S 到重排](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/ui/WaterfallView.ets#L1761)（1761–1766），[协调器](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/core/aiphone/runtime/WaterfallBatchCoordinator.ets#L121)（121–218），[来源熔断](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/core/aiphone/runtime/WaterfallPool.ets#L1370)（1370–1389），[来源应用](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/ui/WaterfallView.ets#L722)（722–746）。
+
+11. **已实现：显式主题 P 编辑及联动；危险主张：任意语言要求都已支持，或删除等于永久屏蔽。** 专用语言转换输出 P 的添加/移除，移除只取消优先；此入口不改来源、形式、画像或排序权重。P 变化会裁剪相关未显示候选、请求重排并记录 S 输入事件。已有 P/S 分离不等于实现了临时要求自动到期、技能水平、置信度或完整冲突消解。依据：[P 转换边界](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallPesConversation.ets#L7)（7–17、24–43），[P 变化调用链](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/ui/WaterfallView.ets#L586)（586–605），[未显示候选裁剪](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/core/aiphone/runtime/WaterfallPesPolicy.ets#L17)（17–46）。
+
+12. **只能写 proposed / evaluation protocol：共享决策状态、跨阶段行动选择和协同收益。** 计划中把用户要求、行为推断、候选不足、执行失败与预算联合用于选择“改画像、找内容、重排、保持”，仍需可执行机制；现有 S 输入没有候选覆盖评估、语义失败诊断或成本目标。多轮环境、强基线、消融、真人验证也都是计划。英文初稿可明确写：*The implemented prototype couples constrained memory and query-plan updates with deterministic retrieval and ranking. We propose to study cross-stage action selection as an extension and specify its evaluation protocol.* 不得把未做实验写成改善、胜出、显著性或已证明的创新。依据：[研究计划](2026-10-20-waterfall-unified-architecture-paper-plan.md#L25)（25–47、49–101），[S 实际输入](../../../../../waterfall-anything-release/entry/src/main/hive/waterfall/state/WaterfallSAgent.ets#L281)（281–296）。
+
+审计边界：只读检查上述当前调用路径；没有构建、测试、设备运行、检索质量或推荐效果实验。未读取全部主 App 记忆写入工具，因此专用 P/S 工具的权限边界不应扩写为整个主 App 的能力上限。所有“已实现”仅指存在相应实现及连接代码。

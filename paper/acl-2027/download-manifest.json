@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-20",
+  "official_template_commit": "d5adc823ff0f80f98c80405ca0ab66c68e684409",
+  "files": [
+    {
+      "file": "references/MARS-2605.14401v2.pdf",
+      "source": "https://arxiv.org/pdf/2605.14401v2",
+      "bytes": 1903831,
+      "sha256": "165bf17237a3820749da75cc0b154abd91a56848e012d8c04f8901ae10828a4d"
+    },
+    {
+      "file": "references/ClawRec-2607.23779v1.pdf",
+      "source": "https://arxiv.org/pdf/2607.23779v1",
+      "bytes": 2606583,
+      "sha256": "ce717dd65f40b29aef10bcc4b574e26429057f2ba27a7bc766e3295f10ed12fa"
+    },
+    {
+      "file": "references/RecBot-2509.21317v2.pdf",
+      "source": "https://arxiv.org/pdf/2509.21317v2",
+      "bytes": 4302838,
+      "sha256": "6e8928534dca6e3ddf3dfca9a371c9a69467cac27e9319527e8f509633594301"
+    },
+    {
+      "file": "acl-official-template.zip",
+      "source": "https://codeload.github.com/acl-org/acl-style-files/zip/d5adc823ff0f80f98c80405ca0ab66c68e684409",
+      "bytes": 37969,
+      "sha256": "35b158b724d04435a657ab214fe4da5f2b57808fc15ca0f24b751bc07b1d1c73"
+    },
+    {
+      "file": "references/iAgent-Findings-ACL-2025.pdf",
+      "source": "https://aclanthology.org/2025.findings-acl.928.pdf",
+      "bytes": 798544,
+      "sha256": "5ec0efdf84fd83255e3ea6ffab63a053d8957660ea40ad86e548e9a334336df6"
+    }
+  ]
+}

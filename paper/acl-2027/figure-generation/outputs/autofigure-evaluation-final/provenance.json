@@ -1,0 +1,8 @@
+{
+  "tool": "AutoFigure",
+  "entry_point": "autofigure.generator.improve_code",
+  "text_model": "gpt-6.1-sol",
+  "source_svg": "/Users/luoyige/Documents/ChatGPT/waterfall/paper/acl-2027/figure-generation/outputs/autofigure-evaluation/figure_final.svg",
+  "guidance_author": "assistant editorial review",
+  "reviewed_for_paper": false
+}

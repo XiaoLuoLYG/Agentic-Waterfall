@@ -1,0 +1,138 @@
+diff --git a/agents/critic_agent.py b/agents/critic_agent.py
+index 057bdbf..93941cd 100644
+--- a/agents/critic_agent.py
++++ b/agents/critic_agent.py
+@@ -113,7 +113,7 @@ class CriticAgent(BaseAgent):
+             "text": f"Detailed Description: {detailed_description}\n{cfg['context_labels'][0]}: {content}\n{cfg['context_labels'][1]}: {visual_intent}\nYour Output:",
+         })
+ 
+-        response_list = await generation_utils.call_gemini_with_retry_async(
++        response_list = await generation_utils.call_text_with_retry_async(
+             model_name=self.model_name,
+             contents=content_list,
+             config=types.GenerateContentConfig(
+diff --git a/agents/planner_agent.py b/agents/planner_agent.py
+index 0c3f06e..63afc80 100644
+--- a/agents/planner_agent.py
++++ b/agents/planner_agent.py
+@@ -88,7 +88,11 @@ class PlannerAgent(BaseAgent):
+             image_path = self.exp_config.work_dir / f"data/PaperBananaBench/{cfg['task_name']}" / item["path_to_gt_image"]
+             with open(image_path, "rb") as f:
+                 ref_image_base64 = base64.b64encode(f.read()).decode("utf-8")
+-            content_list.append({"type": "image", "image_base64": ref_image_base64})
++            with Image.open(image_path) as ref_image:
++                media_type = Image.MIME[ref_image.format]
++            content_list.append({"type": "image", "source": {
++                "type": "base64", "data": ref_image_base64, "media_type": media_type,
++            }})
+             user_prompt = ""
+ 
+         user_prompt += f"Now, based on the following {cfg['content_label'].lower()} and {cfg['visual_intent_label'].lower()}, provide a detailed description for the figure to be generated.\n"
+@@ -100,7 +104,7 @@ class PlannerAgent(BaseAgent):
+ 
+         content_list.append({"type": "text", "text": user_prompt})
+ 
+-        response_list = await generation_utils.call_gemini_with_retry_async(
++        response_list = await generation_utils.call_text_with_retry_async(
+             model_name=self.model_name,
+             contents=content_list,
+             config=types.GenerateContentConfig(
+diff --git a/agents/retriever_agent.py b/agents/retriever_agent.py
+index d83e3ca..dce8cf5 100644
+--- a/agents/retriever_agent.py
++++ b/agents/retriever_agent.py
+@@ -159,7 +159,7 @@ class RetrieverAgent(BaseAgent):
+         user_prompt += f"Now, based on the Target Input and the Candidate Pool, {cfg['instruction_suffix']}"
+         content_list = [{"type": "text", "text": user_prompt}]
+         
+-        response_list = await generation_utils.call_gemini_with_retry_async(
++        response_list = await generation_utils.call_text_with_retry_async(
+             model_name=self.model_name,
+             contents=content_list,
+             config=types.GenerateContentConfig(
+diff --git a/agents/stylist_agent.py b/agents/stylist_agent.py
+index aca9910..a5d801f 100644
+--- a/agents/stylist_agent.py
++++ b/agents/stylist_agent.py
+@@ -75,7 +75,7 @@ class StylistAgent(BaseAgent):
+         content_list = [{"type": "text", "text": user_prompt}]
+ 
+         # Generate response
+-        response_list = await generation_utils.call_gemini_with_retry_async(
++        response_list = await generation_utils.call_text_with_retry_async(
+             model_name=self.model_name,
+             contents=content_list,
+             config=types.GenerateContentConfig(
+diff --git a/agents/visualizer_agent.py b/agents/visualizer_agent.py
+index c1e3394..2ddb855 100644
+--- a/agents/visualizer_agent.py
++++ b/agents/visualizer_agent.py
+@@ -158,7 +158,7 @@ class VisualizerAgent(BaseAgent):
+                 gen_config_args["response_modalities"] = ["IMAGE"]
+                 gen_config_args["image_config"] = types.ImageConfig(
+                     aspect_ratio=aspect_ratio,
+-                    image_size="1k",
++                    image_size=data.get("additional_info", {}).get("image_size", "1K"),
+                 )
+             
+             if "gemini" in self.model_name:
+@@ -171,7 +171,7 @@ class VisualizerAgent(BaseAgent):
+                 )
+             elif "gpt-image" in self.model_name:
+                 image_config = {
+-                    "size": "1536x1024",
++                    "size": data.get("additional_info", {}).get("openai_size", "1536x1024"),
+                     "quality": "high",
+                     "background": "opaque",
+                     "output_format": "png",
+diff --git a/utils/generation_utils.py b/utils/generation_utils.py
+index 8d67da4..d5b7d9f 100755
+--- a/utils/generation_utils.py
++++ b/utils/generation_utils.py
+@@ -49,7 +49,8 @@ def get_config_val(section, key, env_var, default=""):
+         val = model_config[section].get(key)
+     return val or default
+ 
+-# Initialize clients lazily or with robust defaults
++# Keep the API-key fallback usable on local machines without ADC.
++project_id = get_config_val("google_cloud", "project_id", "GOOGLE_CLOUD_PROJECT", "")
+ try:
+     import google.auth
+     creds, _ = google.auth.default()
+@@ -61,7 +62,7 @@ try:
+     
+     # Try Vertex AI first (preferred for Cloud Run)
+     gemini_client = genai.Client(vertexai=True, project=project_id, location=location)
+-except ValueError:
++except (ValueError, google.auth.exceptions.DefaultCredentialsError):
+     # Fallback to API Key if Vertex fails (e.g. local dev without ADC)
+     api_key = get_config_val("api_keys", "google_api_key", "GOOGLE_API_KEY", "")
+     if api_key:
+@@ -111,6 +112,27 @@ def _convert_to_gemini_parts(contents: List[Dict[str, Any]]) -> List[types.Part]
+     return gemini_parts
+ 
+ 
++async def call_text_with_retry_async(
++    model_name, contents, config, max_attempts=5, retry_delay=5, error_context=""
++):
++    """Use the selected provider without changing the diagram agent pipeline."""
++    if model_name.startswith("gpt-") and not model_name.startswith("gpt-image"):
++        return await call_openai_with_retry_async(
++            model_name, contents, {
++                "system_prompt": config.system_instruction or "",
++                "temperature": config.temperature,
++                "candidate_num": config.candidate_count or 1,
++                "max_completion_tokens": config.max_output_tokens,
++            }, max_attempts=max_attempts, retry_delay=retry_delay, error_context=error_context,
++        )
++    if not model_name.startswith("gemini"):
++        raise ValueError(f"Unsupported text model: {model_name}")
++    return await call_gemini_with_retry_async(
++        model_name, contents, config, max_attempts=max_attempts,
++        retry_delay=retry_delay, error_context=error_context,
++    )
++
++
+ async def call_gemini_with_retry_async(
+     model_name, contents, config, max_attempts=5, retry_delay=5, error_context=""
+ ):

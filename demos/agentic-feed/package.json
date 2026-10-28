@@ -1,0 +1,16 @@
+{
+  "name": "waterfall-agentic-feed-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@phosphor-icons/core": "^2.1.1",
+    "simple-icons": "^16.36.0"
+  }
+}

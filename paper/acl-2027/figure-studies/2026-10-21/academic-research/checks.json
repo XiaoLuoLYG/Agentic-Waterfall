@@ -1,0 +1,24 @@
+{
+  "architecture": {
+    "width_mm": 160,
+    "height_mm": 84,
+    "dpi": 300,
+    "minimum_font_pt": 8.0,
+    "text_outside_canvas": [],
+    "text_bbox_overlap_candidates": [],
+    "statistical_values": "none; all item letters are illustrative identifiers"
+  },
+  "evaluation": {
+    "width_mm": 160,
+    "height_mm": 84,
+    "dpi": 300,
+    "minimum_font_pt": 8.0,
+    "text_outside_canvas": [],
+    "text_bbox_overlap_candidates": [],
+    "statistical_values": "none; all item letters are illustrative identifiers"
+  },
+  "renderer": {
+    "matplotlib": "3.10.8",
+    "script_sha256": "eae376fcd33e7fab8781b2bdb7e019f871370050af0cfb86699d4155cdc973d2"
+  }
+}
