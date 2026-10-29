@@ -51,7 +51,7 @@ def main():
   for path,(size,mtime) in expected.items():
    s=Path(path).stat()
    if (s.st_size,s.st_mtime_ns)!=(size,mtime):raise ValueError('frozen source changed: '+path)
- stats={'submitted':0,'no_delivery':0,'method_failure':0,'operational_failure':0,'skipped_existing':0,'blocked_by_prior_failure':0,'jobs_completed':0};events=B/'additional-events.jsonl'
+ stats={'submitted':0,'no_delivery':0,'method_failure':0,'retrying_output':0,'operational_failure':0,'skipped_existing':0,'blocked_by_prior_failure':0,'jobs_completed':0};events=B/'additional-events.jsonl'
  def emit(row):
   with events.open('a') as f:f.write(json.dumps(row,ensure_ascii=False)+'\n')
   stats[row['outcome']]+=1;save(B/'additional-progress.json',{**stats,'running':not STOP,'training':False,'recommendation_reads_labels':False,'last':row})
@@ -59,17 +59,23 @@ def main():
   global STOP
   folder.mkdir(parents=True,exist_ok=True);existing=outcome(folder)
   if existing is not None:emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'skipped_existing'});return existing
-  for retry in range(3):
+  infra_failures=0;output_failures=0
+  while True:
    n=next_attempt(folder);attempt=folder/f'attempt-{n:03d}';command,actual=make_command(attempt,n);proc=subprocess.run(command,cwd=ROOT,capture_output=True,text=True)
    (folder/f'attempt-{n:03d}.process.log').write_text(proc.stdout+proc.stderr)
    result_file=actual/'result.json';result=json.loads(result_file.read_text()) if result_file.exists() else {'status':'failed','error':'runner_before_result'};status=classify(result)
-   if status!='operational_failure':
+   if status in ('submitted','no_delivery'):
     os.symlink(os.path.relpath(actual,folder),folder/'run');save(folder/'result.json',result)
     if kind=='agentrecbench-reca':
      for receipt in actual.glob('*response.json'):
       os.link(receipt,folder/f'attempt-{n:03d}.response.json')
     emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':status,'attempt':n});return result
-   if retry<2 and not STOP:time.sleep(5*(retry+1));continue
+   if status=='method_failure':
+    output_failures+=1
+    if output_failures<2 and not STOP:emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'retrying_output','attempt':n,'error':str(result.get('error',''))[:300]});continue
+    STOP=True;emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'method_failure','attempt':n,'error':str(result.get('error',''))[:300]});return result
+   infra_failures+=1
+   if infra_failures<3 and not STOP:time.sleep(5*infra_failures);continue
    STOP=True;emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'operational_failure','attempt':n,'error':str(result.get('error',''))[:300]});return result
  def agentrecbench(j):
   method=j['method'];domain=j['domain'];tid=j['task_id'];base=B/'agentrecbench'/domain/method;entry=j['entry'];folder=base/f'task-{tid:06d}';index=M/f'agentrecbench-data/index/{domain}-short.sqlite';public=ROOT/f'datasets/agentic-waterfall/agentrecbench/task-full/short_term/{domain}/tasks/task_{tid}.json'

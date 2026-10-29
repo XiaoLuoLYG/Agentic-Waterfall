@@ -33,7 +33,7 @@ def main():
             if json.loads(target.read_text())!=data:raise ValueError('task inputs changed')
         else:save(target,data)
         j['folder']=str(folder);j['expected']=expected;jobs.append(j)
-    (ROOT/'formal').mkdir(exist_ok=True);summary=ROOT/'formal/fixed-progress.json';events=ROOT/'formal/fixed-events.jsonl';counts={'submitted':0,'method_failure':0,'operational_failure':0,'skipped_existing':0,'total_planned':sum(j['tasks'] for j in jobs)}
+    (ROOT/'formal').mkdir(exist_ok=True);summary=ROOT/'formal/fixed-progress.json';events=ROOT/'formal/fixed-events.jsonl';counts={'submitted':0,'method_failure':0,'retrying_output':0,'operational_failure':0,'skipped_existing':0,'total_planned':sum(j['tasks'] for j in jobs)}
     def emit(event):
         with WRITE:
             with events.open('a') as f:f.write(json.dumps(event,ensure_ascii=False)+'\n')
@@ -47,7 +47,8 @@ def main():
         method_path=METHODS/j['method']/('fixed_candidates.mjs' if j['method'] in ('clawrec','generic-agent') else 'adapter.py' if j['method']=='i2agent' else j['method']+'.mjs')
         runner=METHODS/('i2agent/batch_run.py' if j['method']=='i2agent' else 'paper-reproductions-run.mjs');manifest=json.loads((Path(j['folder'])/'manifest.json').read_text())
         if sha(method_path.read_bytes())!=manifest['method_source_sha256'] or sha(runner.read_bytes())!=manifest['runner_sha256']:raise ValueError('method source changed')
-        for retry in range(a.max_infrastructure_attempts):
+        infra_failures=0;output_failures=0
+        while True:
             number=next_attempt(folder);dest=folder/f'attempt-{number:03d}'
             command=[sys.executable,str(METHODS/'i2agent/batch_run.py'),'--input',str(source),'--line','0','--dataset',j['dataset'],'--output',str(dest)] if j['method']=='i2agent' else ['node',str(METHODS/'paper-reproductions-run.mjs'),j['method'],str(source),'0',str(dest),j['dataset']]
             if j['method']=='i2agent' and j['dataset']=='kuairand':command.extend(['--rank-max-tokens','8192'])
@@ -56,9 +57,14 @@ def main():
                 run=subprocess.run(command,cwd=ROOT,capture_output=True,text=True)
             (folder/f'attempt-{number:03d}.process.log').write_text(run.stdout+run.stderr)
             result=json.loads((dest/'result.json').read_text()) if (dest/'result.json').exists() else {'status':'failed','error':'runner_before_result'};outcome=classify(result)
-            if outcome!='operational_failure':
+            if outcome=='submitted':
                 os.symlink(dest.name,final);emit({'dataset':j['dataset'],'method':j['method'],'task_id':expected['task_id'],'outcome':outcome,'attempt':number});return
-            if retry+1<a.max_infrastructure_attempts and not STOP.is_set():time.sleep(5*(retry+1));continue
+            if outcome=='method_failure':
+                output_failures+=1
+                if output_failures<2 and not STOP.is_set():emit({'dataset':j['dataset'],'method':j['method'],'task_id':expected['task_id'],'outcome':'retrying_output','attempt':number,'error':str(result.get('error',''))[:300]});continue
+                STOP.set();emit({'dataset':j['dataset'],'method':j['method'],'task_id':expected['task_id'],'outcome':'method_failure','attempt':number,'error':str(result.get('error',''))[:300]});return
+            infra_failures+=1
+            if infra_failures<a.max_infrastructure_attempts and not STOP.is_set():time.sleep(5*infra_failures);continue
             STOP.set();emit({'dataset':j['dataset'],'method':j['method'],'task_id':expected['task_id'],'outcome':'operational_failure','attempt':number,'error':str(result.get('error',''))[:300]});return
     def sig(*_):STOP.set()
     signal.signal(signal.SIGINT,sig);signal.signal(signal.SIGTERM,sig)
