@@ -50,6 +50,7 @@ def main():
         for retry in range(a.max_infrastructure_attempts):
             number=next_attempt(folder);dest=folder/f'attempt-{number:03d}'
             command=[sys.executable,str(METHODS/'i2agent/batch_run.py'),'--input',str(source),'--line','0','--dataset',j['dataset'],'--output',str(dest)] if j['method']=='i2agent' else ['node',str(METHODS/'paper-reproductions-run.mjs'),j['method'],str(source),'0',str(dest),j['dataset']]
+            if j['method']=='i2agent' and j['dataset']=='kuairand':command.extend(['--rank-max-tokens','8192'])
             lock=locked() if j['method']=='recbot' else nullcontext()
             with lock:
                 run=subprocess.run(command,cwd=ROOT,capture_output=True,text=True)

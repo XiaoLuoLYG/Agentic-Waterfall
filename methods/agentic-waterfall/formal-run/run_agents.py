@@ -17,7 +17,7 @@ def classify(result):
     if operational_failure(result):return 'operational_failure'
     return 'method_failure'
 def next_attempt(folder):
-    return 1+max([int(p.name.split('-')[1]) for p in folder.glob('attempt-[0-9][0-9][0-9]') if p.name.split('-')[1].isdigit()] or [0])
+    return 1+max([int(p.name[8:11]) for p in folder.glob('attempt-[0-9][0-9][0-9]*') if p.name[8:11].isdigit()] or [0])
 def outcome(folder):
     link=folder/'run'
     if link.is_symlink() and (link/'result.json').exists():return json.loads((link/'result.json').read_text())
