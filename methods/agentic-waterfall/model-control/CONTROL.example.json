@@ -1,0 +1,7 @@
+{
+  "model_calls_enabled": false,
+  "model_request_limit": 0,
+  "local_training_allowed": false,
+  "large_download_allowed": false,
+  "phase": "not-started"
+}

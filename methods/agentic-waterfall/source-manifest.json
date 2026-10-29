@@ -1,0 +1,205 @@
+{
+  "description": "Locally copied source snapshots; see README for completeness and license caveats",
+  "files": [
+    {
+      "path": "clawrec/source-snapshot/clawrec-collecting-display-feedback/SKILL.md",
+      "sha256": "d67c706e8bf8f9bcda96c837f7d84d1db65a32d36775a158fbbd5f8ac6f906ff",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-collecting-display-feedback/scripts/collect_feedback.py",
+      "sha256": "aa38e5408b38001ffb6402a5543b40189a9fa372369dff9314cc3741573a9227",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-curating-display-data/SKILL.md",
+      "sha256": "44f1d88927724d6a80f6784a2680c2db1ec3aefa62f69600ab9574cb4d8f3544",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/SKILL.md",
+      "sha256": "591db78a43f4c057619056f95059c8a03d89d275d475176d2e968c7a6c7d1c5e",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/arxiv.md",
+      "sha256": "c4059ac37d227fe858aefce11e1aa7b37143758281553293b0ff6a14eef70704",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/bilibili.md",
+      "sha256": "98d5f80e333e8f235d106ff579f0022fafa287bb8aca153bb8b12436f89b55ef",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/common-browser-rules.md",
+      "sha256": "a82913f81abadbcbf1a74a4ef3cac1a1504b0dbc6a14f2c66ba347556894a5fe",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/jd.md",
+      "sha256": "b5e63cedcbf37c0aa8f01ecd5a8ee89da1d978674d6ea33fad6494996cb032b3",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/people.md",
+      "sha256": "51b93a518f4347fabe852e0a372e0dc005ab963994a3a1dc6517ebd268fb4421",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/platform-index.md",
+      "sha256": "4e73413b9d45f22464fb38afaf34042f213da6abd8dc40b7a93fc3cde3e23ac3",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/taobao.md",
+      "sha256": "5d39fb594ca5056409e8aa0da76c86183829e3131fdda9adf44e0b92dfb740f7",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/xiaohongshu.md",
+      "sha256": "ce06aeacf7bd6a18a9f3b7e0b52e190b89c11f8c6e90453f76fb5fcc0ff4e885",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/xinhua.md",
+      "sha256": "915378fda539fdf4e2db3c07a6c0ab9926d6f2100dfa5ab68a7349dfec3c2f91",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/youtube.md",
+      "sha256": "2d103da7674508013b5aa72173ced134ccc8d0482955e044b254b7acb69f495d",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-executing-search-instruction/references/zhihu.md",
+      "sha256": "b3346f0261e7e9f42a649a5893bb2cb6a0858d56b37bc23f8adaaef131f5e9a5",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-making-content-plan/SKILL.md",
+      "sha256": "ffe3fa0bc438aca44d7fb42f151069bd301cef17e9cef5a2d4ae5c31d40dd2c8",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-making-content-plan/references/examples.md",
+      "sha256": "0ea1846c2f2906d73c1e4b20b5a01356966218bc59f3fcefa420781b40a7bcca",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-making-content-plan/references/input-contract.md",
+      "sha256": "48ca28b5469560b8fc77318cb167184769ad8745a9bb99db9f4157efb623bfe1",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-making-content-plan/references/planning-rubric.md",
+      "sha256": "3aa4be6c712d141aa495e287e511b8a96d2a1f4a88c37d4530aebdc636cc7e7b",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-making-content-plan/references/search-instruction-fields-by-platform.md",
+      "sha256": "46f3f45ccf5a749faaebf3ad5b0a3ed5fdd99cfc5695057d5a08ede08a09295d",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-observing-browser-behavior/SKILL.md",
+      "sha256": "1f906301da517b37ad28d58982086f0211365e479f1f6c505782bd893746e11d",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-observing-browser-behavior/scripts/extract_evidence.py",
+      "sha256": "172cce8194c7fe704db173e6f05b773ade547e4c09e52c489151346f081a31df",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-observing-browser-behavior/scripts/extractors.json",
+      "sha256": "3438e659af417a0f8b0ba62bbd0b6e78ee2334d8ef2d15482ab822d94c0d4975",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-orchestrating-search-execution/SKILL.md",
+      "sha256": "a5d6e38188d2d8698cdabe6761633970ed60cf32e6769d296dd7e88ad8149966",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-orchestrating-search-execution/scripts/write_observation_exclusions.py",
+      "sha256": "b7b01e72c568b09eba152e765a819385a7ac05fbb1919aed8a64f61b419314f0",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-rendering-generative-interface/SKILL.md",
+      "sha256": "19b95eb74b140ae52625a3f1d46923e368565d08c17422be34ac027991c0ed92",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-rendering-generative-interface/scripts/frame-template.html",
+      "sha256": "503f3d3de1630fbae1a0a057c964bfd1668c2a24a70dc129724593fc972fe51f",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-rendering-generative-interface/scripts/helper.js",
+      "sha256": "9827b99e6777999b9f347e9c4851b05060c45e6903eea5bdded4b6d5391f5911",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-rendering-generative-interface/scripts/server.cjs",
+      "sha256": "4b17372bc36ae2b186d4dad0bbd4ddd32da145f2bbd37ea44ae1c95e71820ab6",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-rendering-generative-interface/scripts/start-server.sh",
+      "sha256": "ed9c477f375edd9207308c0801881447842f13719c9495e93e9ac543a0de2c90",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-rendering-generative-interface/scripts/stop-server.sh",
+      "sha256": "56a9e4414c4d8c21c51766fd60708550e5712b7d4bc96ebb89bb3c12bf867b7f",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-synthesizing-user-state/SKILL.md",
+      "sha256": "a72b04b00686e88e94b206f11ee2a2da4423b72addf411677e84e8e49016b7e9",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-synthesizing-user-state/references/source-extension.md",
+      "sha256": "fd2b27290ef54b6eff3990557b604bb89fe4f938820c003f6515a184df348b8a",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-synthesizing-user-state/scripts/build_update_packets.py",
+      "sha256": "fefa08503d5badd4e3da1153049c76f2a35ed246eff9ef92bb38e6dae2e6c620",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "clawrec/source-snapshot/clawrec-using-clawrec/SKILL.md",
+      "sha256": "5a2fa416ab746467a9347e10fe0414eda1c0d09fd3a925e5bfe4b00a7b6f2206",
+      "upstream_commit": "6eeb309c47430f91280e9845a98fb56a68dc0d90"
+    },
+    {
+      "path": "i2agent/source-snapshot/README.md",
+      "sha256": "cd5bbaad7cee6f5c969eaa3288aef803c8c76335eca0e1f395a1516ee6717ba0",
+      "upstream_commit": "e546d17848fadbcaf00e4022aa949289d7e7900b"
+    },
+    {
+      "path": "i2agent/source-snapshot/main_iagent_mp.py",
+      "sha256": "87992b099bdcc67fb502fb762e1bf123fcab0d3bf3bc955444848da29677a868",
+      "upstream_commit": "e546d17848fadbcaf00e4022aa949289d7e7900b"
+    },
+    {
+      "path": "i2agent/source-snapshot/model.py",
+      "sha256": "a2b44548dffedcb2f32b382902626df67e23cc60dff42adb3d08a51e1a6210cb",
+      "upstream_commit": "e546d17848fadbcaf00e4022aa949289d7e7900b"
+    },
+    {
+      "path": "i2agent/source-snapshot/requirements.txt",
+      "sha256": "77b7425317bf6b26e06e27376de392e7c0eb72b8786a79c7934369b406825890",
+      "upstream_commit": "e546d17848fadbcaf00e4022aa949289d7e7900b"
+    },
+    {
+      "path": "recagent/source-snapshot",
+      "sha256": "6c8834d6c1548f2f834ba5c51aabd4af5cffa793c1cad94e808b0c50cc2dfcd1",
+      "upstream_commit": "3f575247a5778d34c3ae6b0297139c7d4a3597fd"
+    }
+  ]
+}

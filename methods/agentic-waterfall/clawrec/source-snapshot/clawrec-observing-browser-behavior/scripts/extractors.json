@@ -1,0 +1,379 @@
+{
+  "version": 1,
+  "search_extractors": [
+    {
+      "platform": "google",
+      "domains": ["google.com", "www.google.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/search"],
+        "required_query_params": ["q"]
+      },
+      "extract": {
+        "engine": "google",
+        "query_param": "q"
+      }
+    },
+    {
+      "platform": "bing",
+      "domains": ["bing.com", "www.bing.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/search"],
+        "required_query_params": ["q"]
+      },
+      "extract": {
+        "engine": "bing",
+        "query_param": "q"
+      }
+    },
+    {
+      "platform": "baidu",
+      "domains": ["baidu.com", "www.baidu.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/s"],
+        "required_query_params_any": ["wd", "word"]
+      },
+      "extract": {
+        "engine": "baidu",
+        "query_param_first_of": ["wd", "word"]
+      }
+    },
+    {
+      "platform": "bilibili",
+      "domains": ["search.bilibili.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/all"],
+        "required_query_params": ["keyword"]
+      },
+      "extract": {
+        "engine": "bilibili",
+        "query_param": "keyword"
+      }
+    },
+    {
+      "platform": "zhihu",
+      "domains": ["zhihu.com", "www.zhihu.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/search"],
+        "required_query_params": ["q"]
+      },
+      "extract": {
+        "engine": "zhihu",
+        "query_param": "q"
+      }
+    },
+    {
+      "platform": "xiaohongshu",
+      "domains": ["xiaohongshu.com", "www.xiaohongshu.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/search_result"],
+        "required_query_params": ["keyword"]
+      },
+      "extract": {
+        "engine": "xiaohongshu",
+        "query_param": "keyword",
+        "decode_percent_escapes": true
+      }
+    },
+    {
+      "platform": "taobao",
+      "domains": ["s.taobao.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/search"],
+        "required_query_params": ["q"]
+      },
+      "extract": {
+        "engine": "taobao",
+        "query_param": "q"
+      }
+    },
+    {
+      "platform": "jd",
+      "domains": ["search.jd.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/Search"],
+        "required_query_params": ["keyword"]
+      },
+      "extract": {
+        "engine": "jd",
+        "query_param": "keyword"
+      }
+    },
+    {
+      "platform": "arxiv",
+      "domains": ["arxiv.org"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/search", "/search/"],
+        "required_query_params": ["query"]
+      },
+      "extract": {
+        "engine": "arxiv",
+        "query_param": "query"
+      }
+    },
+    {
+      "platform": "youtube",
+      "domains": ["youtube.com", "www.youtube.com", "m.youtube.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/results"],
+        "required_query_params": ["search_query"]
+      },
+      "extract": {
+        "engine": "youtube",
+        "query_param": "search_query"
+      }
+    },
+    {
+      "platform": "github",
+      "domains": ["github.com", "www.github.com"],
+      "kind": "search_intent",
+      "match": {
+        "path_exact": ["/search"],
+        "required_query_params": ["q"]
+      },
+      "extract": {
+        "engine": "github",
+        "query_param": "q"
+      }
+    }
+  ],
+  "content_extractors": [
+    {
+      "platform": "youtube",
+      "domains": ["youtube.com", "www.youtube.com", "m.youtube.com"],
+      "kind": "content_interest",
+      "page_type": "video",
+      "match": {
+        "path_exact": ["/watch"],
+        "required_query_params": ["v"]
+      },
+      "extract": {
+        "content_key": "youtube:video:{query.v}",
+        "canonical_query_params": ["v"]
+      },
+      "ignore": {
+        "path_prefix": ["/results", "/feed", "/playlist", "/channel/", "/@"]
+      }
+    },
+    {
+      "platform": "bilibili",
+      "domains": ["bilibili.com", "www.bilibili.com", "m.bilibili.com"],
+      "kind": "content_interest",
+      "page_type": "video",
+      "match": {
+        "path_regex": "^/video/(?P<bvid>BV[0-9A-Za-z]+)"
+      },
+      "extract": {
+        "content_key": "bilibili:video:{path.bvid}"
+      },
+      "ignore": {
+        "path_prefix": ["/search", "/anime/", "/bangumi/", "/read/", "/opus/"]
+      }
+    },
+    {
+      "platform": "zhihu",
+      "domains": ["zhihu.com", "www.zhihu.com"],
+      "kind": "content_interest",
+      "page_type": "qa",
+      "match": {
+        "path_regex": "^/question/(?P<id>[0-9]+)"
+      },
+      "extract": {
+        "content_key": "zhihu:question:{path.id}"
+      },
+      "ignore": {
+        "path_prefix": ["/search", "/hot", "/explore", "/topic", "/people", "/creator"]
+      }
+    },
+    {
+      "platform": "zhihu_zhuanlan",
+      "domains": ["zhuanlan.zhihu.com"],
+      "kind": "content_interest",
+      "page_type": "article",
+      "match": {
+        "path_regex": "^/p/(?P<id>[0-9]+)"
+      },
+      "extract": {
+        "content_key": "zhihu:article:{path.id}"
+      }
+    },
+    {
+      "platform": "xiaohongshu",
+      "domains": ["xiaohongshu.com", "www.xiaohongshu.com"],
+      "kind": "content_interest",
+      "page_type": "article",
+      "match": {
+        "path_regex": "^/explore/(?P<id>[0-9A-Za-z]+)"
+      },
+      "extract": {
+        "content_key": "xiaohongshu:note:{path.id}"
+      },
+      "ignore": {
+        "path_prefix": ["/search_result", "/user/", "/discovery/", "/notifications", "/message/"]
+      }
+    },
+    {
+      "platform": "taobao",
+      "domains": ["item.taobao.com"],
+      "kind": "content_interest",
+      "page_type": "product",
+      "match": {
+        "path_exact": ["/item.htm"],
+        "required_query_params": ["id"]
+      },
+      "extract": {
+        "content_key": "taobao:item:{query.id}",
+        "canonical_query_params": ["id"]
+      }
+    },
+    {
+      "platform": "tmall",
+      "domains": ["detail.tmall.com"],
+      "kind": "content_interest",
+      "page_type": "product",
+      "match": {
+        "path_exact": ["/item.htm"],
+        "required_query_params": ["id"]
+      },
+      "extract": {
+        "content_key": "tmall:item:{query.id}",
+        "canonical_query_params": ["id"]
+      }
+    },
+    {
+      "platform": "jd",
+      "domains": ["item.jd.com"],
+      "kind": "content_interest",
+      "page_type": "product",
+      "match": {
+        "path_regex": "^/(?P<id>[0-9]+)\\.html$"
+      },
+      "extract": {
+        "content_key": "jd:item:{path.id}"
+      }
+    },
+    {
+      "platform": "arxiv",
+      "domains": ["arxiv.org"],
+      "kind": "content_interest",
+      "page_type": "paper",
+      "match": {
+        "path_regex": "^/(?:abs|pdf|html)/(?P<id>[0-9]{4}\\.[0-9]{4,5}|[A-Za-z][A-Za-z.-]+/[0-9]{7})(?:v[0-9]+)?(?:\\.pdf)?/?$"
+      },
+      "extract": {
+        "content_key": "arxiv:paper:{path.id}",
+        "canonical_path_template": "/abs/{path.id}",
+        "canonical_scheme": "https"
+      }
+    },
+    {
+      "platform": "github",
+      "domains": ["github.com", "www.github.com"],
+      "kind": "content_interest",
+      "page_type": "repo",
+      "match": {
+        "path_regex": "^/(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)(?:/.*)?$"
+      },
+      "extract": {
+        "content_key": "github:repo:{path.owner}/{path.repo}",
+        "canonical_path_segments": 2
+      },
+      "ignore": {
+        "path_exact": ["/", "/notifications", "/issues", "/pulls", "/search", "/topics", "/explore", "/marketplace"],
+        "path_prefix": ["/orgs/", "/users/", "/settings/", "/login", "/signup", "/sessions/"]
+      }
+    }
+  ],
+  "generic_web": {
+    "enabled": true,
+    "platform": "generic_web",
+    "page_type": "webpage",
+    "allowed_schemes": ["http", "https"],
+    "require_title": true,
+    "ignore": {
+      "host_exact": [],
+      "host_suffix": [],
+      "sensitive_host_exact": [
+        "mail.google.com",
+        "outlook.live.com",
+        "outlook.office.com",
+        "mail.qq.com",
+        "mail.163.com",
+        "exmail.qq.com",
+        "drive.google.com",
+        "docs.google.com",
+        "onedrive.live.com",
+        "dropbox.com",
+        "icloud.com",
+        "pan.baidu.com",
+        "netdisk.baidu.com",
+        "alipay.com",
+        "www.alipay.com",
+        "pay.weixin.qq.com",
+        "paypal.com",
+        "www.paypal.com"
+      ],
+      "sensitive_host_suffix": [
+        ".mail.google.com",
+        ".outlook.live.com",
+        ".outlook.office.com",
+        ".mail.qq.com",
+        ".mail.163.com",
+        ".exmail.qq.com",
+        ".drive.google.com",
+        ".docs.google.com",
+        ".onedrive.live.com",
+        ".dropbox.com",
+        ".icloud.com",
+        ".pan.baidu.com",
+        ".netdisk.baidu.com",
+        ".alipay.com",
+        ".pay.weixin.qq.com",
+        ".paypal.com"
+      ],
+      "sensitive_path_prefix": [
+        "/login",
+        "/logout",
+        "/signin",
+        "/signup",
+        "/settings",
+        "/account",
+        "/accounts",
+        "/profile/edit",
+        "/notifications",
+        "/messages",
+        "/inbox",
+        "/billing",
+        "/payment",
+        "/pay",
+        "/checkout",
+        "/cart",
+        "/order",
+        "/orders",
+        "/admin",
+        "/console",
+        "/dashboard"
+      ]
+    }
+  },
+  "global_normalization": {
+    "strip_fragment": true,
+    "lowercase_domain": true,
+    "drop_query_params_prefix": ["utm_"],
+    "drop_query_params_exact": ["spm", "spm_id_from", "from", "from_source", "feature", "si", "vd_source", "xsec_token", "xsec_source"]
+  },
+  "global_ignore": {
+    "scheme": ["chrome", "about", "file", "devtools"],
+    "host_exact": [],
+    "path_contains": ["/login", "/settings", "/account", "/notifications", "/messages"]
+  }
+}
