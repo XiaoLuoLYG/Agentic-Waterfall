@@ -14,7 +14,6 @@ export function demoModelCall(config,signal){
    if(!response.ok)throw Error(`model_http_${response.status}`);
    const result=await response.json(),content=result.choices?.[0]?.message?.content,finish_reason=result.choices?.[0]?.finish_reason||null;
    if(typeof content!=='string')throw Error('model_missing_content');
-   if(finish_reason==='length')throw Error('model_output_truncated');
    return {attempt_id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason,request_settings:{...config.requestParameters,temperature:body.temperature,max_tokens:body.max_tokens},started_at,completed_at:new Date().toISOString()};
   }catch(error){
    error.receipt={attempt_id,status:'failed',error:error.message,requested_model:config.model,started_at,completed_at:new Date().toISOString()};throw error;

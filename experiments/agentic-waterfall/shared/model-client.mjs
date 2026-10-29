@@ -9,6 +9,11 @@ const LEDGER = resolve(ROOT, 'shared/model-ledger.json');
 const LOCK = `${LEDGER}.lock`;
 const CONFIG = resolve(ROOT, '../../HyperAgent/.worktrees/xuanji-device-latest-20261021/entry/src/main/resources/rawfile/hyperagent_config.local.json');
 export const digest = data => createHash('sha256').update(typeof data === 'string' ? data : JSON.stringify(data)).digest('hex');
+export function modelTimeoutMs() {
+  const value=Number(process.env.WATERFALL_MODEL_TIMEOUT_MS || 60000);
+  if(!Number.isSafeInteger(value)||value<1000||value>180000)throw new Error('invalid_model_timeout');
+  return value;
+}
 
 export function loadModelConfig() {
   const file = JSON.parse(readFileSync(process.env.MODEL_CONFIG_FILE || process.env.XUANJI_CONFIG_FILE || CONFIG, 'utf8'));
@@ -63,13 +68,13 @@ async function reserve(experiment, request, model) {
 
 export async function callModel(request, {experiment}={}) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
-  const config=loadModelConfig();
+  const config=loadModelConfig(),timeoutMs=modelTimeoutMs();
   const body={model:config.model,messages:request.messages,temperature:request.temperature??0.3,max_tokens:request.max_tokens??4096,...config.parameters,...(request.response_format?{response_format:request.response_format}:{})};
   if (!Number.isInteger(body.max_tokens)||body.max_tokens<1||body.max_tokens>8192) throw new Error('invalid_max_tokens');
   const attempt=await reserve(experiment,body,config.model);
   const started=Date.now(); let receipt;
   try {
-    const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});
+    const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
     if (!response.ok) throw new Error(`model_http_${response.status}`);
     const result=await response.json();
     const content=result.choices?.[0]?.message?.content;
