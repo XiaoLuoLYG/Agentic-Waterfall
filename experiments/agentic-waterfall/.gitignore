@@ -1,0 +1,9 @@
+**/CONTROL.json
+**/.venv/
+**/__pycache__/
+**/data/
+**/upstream/
+**/results/
+**/logs/
+shared/model-ledger.json
+shared/model-ledger.json.*

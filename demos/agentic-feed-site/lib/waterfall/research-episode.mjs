@@ -13,6 +13,12 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
     const toolStep = (trace || []).find(step => step.phase === 'tool_result');
     for (const step of trace || []) {
       if (step.phase === 'tool_result') { for (const result of step.results || []) addItems(result.items); continue; }
+      if (step.phase === 'unified') {
+        const canonicalInput=step.input||null;let modelInput=null;try{if(step.messages?.[1]?.content)modelInput=JSON.parse(step.messages[1].content);}catch{modelInput=step.messages?.[1]?.content||null;}
+        const output=step.parsed_output||null;
+        decisions.push({decision_id:`${owner.id}:unified:${decisions.length+1}`,phase:'unified',input:snapshot,canonical_input:canonicalInput,input_sha256:canonicalInput?hash(canonicalInput):null,model_input:modelInput,model_call:{messages:step.messages||null,requested_model:step.requested_model||null,provider_response_model:step.provider_response_model||null,request_settings:step.request_settings||null,usage:step.usage||null,finish_reason:step.finish_reason||null,started_at:step.started_at||null,completed_at:step.completed_at||null},raw_output:step.content??null,parsed_output:output,validation:{valid:!step.error&&!(step.execution_results||[]).some(result=>result.status==='failed'),errors:(step.execution_results||[]).filter(result=>result.status==='failed').map(result=>result.error)},normalized_output:step.normalized_output||output,dispatch_groups:step.dispatch_groups||[],execution_results:step.execution_results||[],state_after:step.state_after||null,recorded_at:step.at||owner.available_at,run_id:failed?null:owner.id,failure_id:failed?owner.id:null});
+        continue;
+      }
       if (!['plan', 'rank', 'rank_retry', 'failure'].includes(step.phase)) continue;
       const modelCall = step.phase === 'failure' ? step.model_metadata || {} : step;
       const actualInput = modelCall.messages?.[1]?.content;

@@ -128,7 +128,8 @@ function list(value, ...keys) { for (const key of keys) if (Array.isArray(value?
 function epoch(value) { const n = Number(value); return n > 0 && Number.isFinite(n) ? new Date(n * 1000).toISOString() : ''; }
 
 async function getSource(a, c) {
-  const q = a.query, n = 6, explore = a.mode === 'explore', p = c.providers || {};
+  const limits = {youtube:50, x:100, hackernews:1000, reddit:100, applepodcasts:200, twitch:100, github:100, steam:1000, globalnews:100, wikipedia:50};
+  const q = a.query, explore = a.mode === 'explore', n = Math.min(a.limit || 6, a.source==='zhihu'?(explore?30:10):(limits[a.source] || 6)), p = c.providers || {};
   if (a.source === 'youtube') {
     const d = await composio(c, 'youtube', explore ? 'YOUTUBE_LIST_MOST_POPULAR_VIDEOS' : 'YOUTUBE_SEARCH_YOU_TUBE', explore ? { chart: 'mostPopular', part: 'snippet,statistics', maxResults: n } : { q, part: 'snippet', type: 'video', order: 'relevance', maxResults: n });
     return list(d, 'items').map(v => ({ id: typeof v.id === 'string' ? v.id : v.id?.videoId, title: v.snippet?.title, summary: v.snippet?.description, url: `https://www.youtube.com/watch?v=${typeof v.id === 'string' ? v.id : v.id?.videoId}`, image: v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url, author: v.snippet?.channelTitle, published: v.snippet?.publishedAt, modality: 'video' })).filter(v => /^[\w-]{11}$/.test(v.id || ''));
@@ -147,7 +148,7 @@ async function getSource(a, c) {
     return list(d.data || d, 'children', 'posts', 'results').map(x => x.data || x).map(x => ({ id: x.id || x.name, title: x.title, summary: x.selftext || `${x.subreddit || ''} · ${Number(x.score) || 0} points`, url: x.permalink ? (x.permalink.startsWith('/') ? 'https://www.reddit.com' + x.permalink : x.permalink) : x.url, image: publicUrl(x.thumbnail), author: x.author, published: epoch(x.created_utc) }));
   }
   if (a.source === 'x') {
-    const d = await composio(c, 'twitter', 'TWITTER_RECENT_SEARCH', { query: q + ' -is:retweet', max_results: 10, tweet_fields: 'id,text,author_id,created_at', expansions: 'author_id' });
+    const d = await composio(c, 'twitter', 'TWITTER_RECENT_SEARCH', { query: q + ' -is:retweet', max_results: Math.max(10,n), tweet_fields: 'id,text,author_id,created_at', expansions: 'author_id' });
     const users = list(d.includes, 'users');
     return list(d, 'data', 'tweets').map(x => ({ id: x.id, title: text(x.text).slice(0, 110), summary: x.text, url: `https://x.com/i/status/${x.id}`, author: users.find(u => u.id === x.author_id)?.username, published: x.created_at }));
   }
@@ -165,8 +166,8 @@ async function getSource(a, c) {
     if (!token || token.expires <= Date.now()) { const d = await request('https://id.twitch.tv/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: p.TWITCH_CLIENT_ID, client_secret: p.TWITCH_CLIENT_SECRET, grant_type: 'client_credentials' }).toString() }); if (!d.access_token) throw failure('twitch_token_unavailable'); token = { value: d.access_token, expires: Date.now() + (Number(d.expires_in) - 60) * 1000 }; twitchTokens.set(c, token); }
     const headers = { 'Client-Id': p.TWITCH_CLIENT_ID, Authorization: `Bearer ${token.value}` };
     const streamItems = explore ? await partial([
-      (async () => { const games = await request(url('https://api.twitch.tv/helix/games', [['name', 'Science & Technology'], ['name', 'Software and Game Development'], ['name', 'Makers & Crafting']]), { headers }); const ids = list(games, 'data').map(x => x.id); if (!ids.length) return []; const d = await request(url('https://api.twitch.tv/helix/streams', [['first', '3'], ...ids.map(id => ['game_id', id])]), { headers }); return list(d, 'data'); })(),
-      (async () => { const games = list(await request(url('https://api.twitch.tv/helix/games/top', { first: '10' }), { headers }), 'data'); const game = games.find(x => x.igdb_id) || games[0]; if (!game) return []; const d = await request(url('https://api.twitch.tv/helix/streams', { game_id: game.id, first: '1' }), { headers }); return list(d, 'data'); })()
+      (async () => { const games = await request(url('https://api.twitch.tv/helix/games', [['name', 'Science & Technology'], ['name', 'Software and Game Development'], ['name', 'Makers & Crafting']]), { headers }); const ids = list(games, 'data').map(x => x.id); if (!ids.length) return []; const d = await request(url('https://api.twitch.tv/helix/streams', [['first', String(n<=6?3:n)], ...ids.map(id => ['game_id', id])]), { headers }); return list(d, 'data'); })(),
+      (async () => { const games = list(await request(url('https://api.twitch.tv/helix/games/top', { first: '10' }), { headers }), 'data'); const game = games.find(x => x.igdb_id) || games[0]; if (!game) return []; const d = await request(url('https://api.twitch.tv/helix/streams', { game_id: game.id, first: String(n<=6?1:n) }), { headers }); return list(d, 'data'); })()
     ]) : list(await request(url('https://api.twitch.tv/helix/search/channels', { query: q, first: String(n) }), { headers }), 'data');
     const mapped = streamItems.filter(x => x.broadcaster_login || x.user_login).map(x => ({ id: x.id, title: x.title || x.display_name || x.user_name, summary: `${x.game_name || ''} · ${x.is_live === false ? '频道' : '直播'}`, url: `https://www.twitch.tv/${encodeURIComponent(x.broadcaster_login || x.user_login)}`, image: x.thumbnail_url?.replace('{width}', '640').replace('{height}', '360'), author: x.display_name || x.user_name, published: x.started_at, modality: 'video' }));
     mapped.warnings = streamItems.warnings; return mapped;
@@ -174,12 +175,12 @@ async function getSource(a, c) {
   if (a.source === 'github') {
     const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
     const headers = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
-    const repositories = (async () => { const d = await request(url('https://api.github.com/search/repositories', { q: explore ? `created:>=${since}` : `${q} in:name,description`, sort: 'stars', order: 'desc', per_page: String(explore ? 2 : n) }), { headers }); return list(d, 'items').map(x => ({ id: 'repo-' + x.id, title: x.full_name, summary: x.description, url: x.html_url, author: x.owner?.login, published: x.updated_at })); })();
+    const repositories = (async () => { const d = await request(url('https://api.github.com/search/repositories', { q: explore ? `created:>=${since}` : `${q} in:name,description`, sort: 'stars', order: 'desc', per_page: String(explore && n<=6 ? 2 : n) }), { headers }); return list(d, 'items').map(x => ({ id: 'repo-' + x.id, title: x.full_name, summary: x.description, url: x.html_url, author: x.owner?.login, published: x.updated_at })); })();
     if (!explore) return repositories;
     return partial([repositories, ...['openai/codex', 'microsoft/vscode'].map(async repo => { const d = await request(`https://api.github.com/repos/${repo}/releases/latest`, { headers }); return [{ id: 'release-' + d.id, title: `${repo} · ${d.name || d.tag_name}`, summary: d.body, url: d.html_url, author: d.author?.login, published: d.published_at }]; })]);
   }
   if (a.source === 'steam') {
-    const groups = await partial([730, 570, 440].map(async appid => { const d = await request(url('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/', { appid: String(appid), count: String(n), format: 'json' })); return list(d.appnews, 'newsitems').map(x => ({ id: x.gid, title: x.title, summary: x.contents, url: x.url, author: x.author, published: epoch(x.date) })); }));
+    const groups = await partial([730, 570, 440].map(async appid => { const d = await request(url('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/', { appid: String(appid), count: String(n), ...(n>6?{maxlength:'1600'}:{}), format: 'json' })); return list(d.appnews, 'newsitems').map(x => ({ id: x.gid, title: x.title, summary: x.contents, url: x.url, author: x.author, published: epoch(x.date) })); }));
     return groups.sort((a, b) => String(b.published).localeCompare(String(a.published)));
   }
   if (a.source === 'cnnews') return partial(FEEDS.map(async ([name, address]) => parseFeed(await request(address, { headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' } }, false), name)));
@@ -216,7 +217,7 @@ function parseFeed(xml, author) {
   });
 }
 
-export async function acquireSource(action, config, { page = 1, excludedIds = [] } = {}) {
+export async function acquireSource(action, config, { page = 1, excludedIds = [], limit = 6 } = {}) {
   const result = { source: action?.source, query: typeof action?.query === 'string' ? action.query : '', mode: action?.mode, modality: action?.modality, status: 'failed', items: [] };
   let attempted = false, retryable = false;
   try {
@@ -226,11 +227,12 @@ export async function acquireSource(action, config, { page = 1, excludedIds = []
     if (!entry.configured) throw failure('source_unconfigured');
     if (!entry.modes.includes(action.mode) || !entry.modalities.includes(action.modality)) throw failure('unsupported_source_mode_or_modality');
     if (typeof action.query !== 'string' || action.query.length > 120 || action.mode === 'search' && !action.query.trim()) throw failure('invalid_source_query');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw failure('invalid_source_limit');
     attempted = true;
-    const rows = await getSource({ ...action, query: action.query.trim(), page }, config);
+    const rows = await getSource({ ...action, query: action.query.trim(), page, limit }, config);
     if (action.source === 'bilibili') result.page = page;
     const items = rows.map(x => item(action.source, action.query.trim(), x)).filter(Boolean);
-    result.items = [...new Map(items.map(x => [x.url, x])).values()].filter(x => !excludedIds.includes(x.id)).slice(0, 6);
+    result.items = [...new Map(items.map(x => [x.url, x])).values()].filter(x => !excludedIds.includes(x.id)).slice(0, limit);
     result.excluded_count = items.filter(x => excludedIds.includes(x.id)).length;
     if (result.excluded_count) result.raw_items = items;
     result.status = result.items.length ? 'ok' : 'empty';

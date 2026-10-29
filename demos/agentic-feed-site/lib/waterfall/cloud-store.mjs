@@ -15,6 +15,11 @@ export class CloudStore {
   session(sessionId) { const row=this.rows.find(row=>row.kind==='session'&&row.session_id===sessionId);check(row,'会话不存在，请重新开始',404);return row; }
   state(sessionId) { this.session(sessionId);return this.rows.findLast(row=>row.session_id===sessionId&&row.kind==='state').state; }
   async record(kind,sessionId,data={}) { const s=this.session(sessionId);return this.add(kind,{...data,session_id:sessionId,participant_id:s.participant_id,record_kind:s.record_kind}); }
+  async recordIfCurrent(kind,sessionId,data,sequence,owner=null) {
+    const s=this.session(sessionId),row={...data,session_id:sessionId,participant_id:s.participant_id,record_kind:s.record_kind,id:randomUUID(),kind,available_at:new Date().toISOString(),schema_version:VERSION};
+    const inserted=await this.db.prepare("INSERT INTO events (id,user_id,session_id,kind,comparison_id,payload) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM events WHERE user_id=? AND session_id=? AND sequence>? AND kind IN ('command','feedback')) AND (? IS NULL OR EXISTS (SELECT 1 FROM active_operations WHERE user_id=? AND owner=?)) RETURNING sequence").bind(row.id,this.userId,sessionId,kind,row.comparison_id||null,JSON.stringify(row),this.userId,sessionId,sequence,owner,this.userId,owner).first();
+    if(!inserted)return null;row.sequence=inserted.sequence;this.rows.push(row);return row;
+  }
 }
 export class CloudAccounts {
   constructor(db){this.db=db;}

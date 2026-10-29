@@ -37,7 +37,7 @@ export async function pendingRelaySources(db){
 }
 
 export async function completeRelaySource(db,id,rows,failed=false){
-  check(typeof id==='string' && typeof failed==='boolean' && Array.isArray(rows) && rows.length<=6,'来源结果格式无效');
+  check(typeof id==='string' && typeof failed==='boolean' && Array.isArray(rows) && rows.length<=50,'来源结果格式无效');
   const job=await db.prepare("SELECT id FROM source_jobs WHERE id=? AND source='bilibili' AND expires_at>? AND result IS NULL").bind(id,Date.now()).first();check(job,'来源任务不存在',404);
   const results=rows.map(row=>{
     check(row && typeof row.id==='string' && /^BV[A-Za-z0-9]{10}$/.test(row.id) && typeof row.title==='string' && row.title.length>0 && row.title.length<=300,'来源内容格式无效');
@@ -48,7 +48,7 @@ export async function completeRelaySource(db,id,rows,failed=false){
 }
 
 export async function completeBrowserSource(db,userId,sessionId,id,rows,failed=false){
-  check(typeof id==='string' && typeof failed==='boolean' && Array.isArray(rows) && rows.length<=6,'来源结果格式无效');
+  check(typeof id==='string' && typeof failed==='boolean' && Array.isArray(rows) && rows.length<=200,'来源结果格式无效');
   const job=await db.prepare('SELECT source FROM source_jobs WHERE id=? AND user_id=? AND session_id=? AND expires_at>? AND result IS NULL').bind(id,userId,sessionId,Date.now()).first();
   check(job && job.source==='applepodcasts','来源任务不存在',404);
   const results=rows.map(row=>{

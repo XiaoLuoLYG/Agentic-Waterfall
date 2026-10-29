@@ -10,6 +10,8 @@ import { buildEpisode } from './research-episode.mjs';
 import { fixedRetrieval } from './blind.mjs';
 import { DEFAULT_SOURCE_CONFIG_PATH, loadSourceConfig, sourceCatalog } from './sources.mjs';
 import { requestBrowserSource, pendingBrowserSources, completeBrowserSource, pendingRelaySources, completeRelaySource } from './browser-source.mjs';
+import { executeUnifiedPolicy } from './unified-demo.mjs';
+import { lookupDemoHistory } from './unified-input.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export function loadConfig(env = process.env) {
@@ -63,7 +65,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
   function userBusy(user) { return store.rows.some(row => row.kind === 'session' && row.user_id === user.id && busy.has(row.session_id)); }
   function authInfo(user) { const session = user && latestSession(user); return { user, sessionInfo: session ? stateInfo(session.session_id) : null }; }
   function cookie(res, token) { res.setHeader('Set-Cookie', `waterfall_session=${token || ''}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${token ? 2592000 : 0}`); }
-  async function recordProgress(sessionId, step) { const item={ ...progress.get(sessionId), ...step, updated_at:new Date().toISOString() };progress.set(sessionId,item);const session=store.session(sessionId);await db.prepare('INSERT INTO progress (session_id,user_id,payload) VALUES (?,?,?) ON CONFLICT(session_id) DO UPDATE SET payload=excluded.payload').bind(sessionId,session.user_id,JSON.stringify(item)).run(); }
+  async function recordProgress(sessionId, step, owner=null) { const item={ ...progress.get(sessionId), ...step, updated_at:new Date().toISOString() };progress.set(sessionId,item);const session=store.session(sessionId);if(owner)await db.prepare('INSERT INTO progress (session_id,user_id,payload) SELECT ?,?,? WHERE EXISTS (SELECT 1 FROM active_operations WHERE user_id=? AND owner=?) ON CONFLICT(session_id) DO UPDATE SET payload=excluded.payload').bind(sessionId,session.user_id,JSON.stringify(item),session.user_id,owner).run();else await db.prepare('INSERT INTO progress (session_id,user_id,payload) VALUES (?,?,?) ON CONFLICT(session_id) DO UPDATE SET payload=excluded.payload').bind(sessionId,session.user_id,JSON.stringify(item)).run(); }
   function stateInfo(sessionId) {
     const session = store.session(sessionId);
     const lastRun = store.rows.findLast(r => r.session_id === sessionId && r.kind === 'run');
@@ -143,9 +145,11 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
       }
       if (req.method === 'POST' && path === '/api/logout') { await accounts.logout(token); cookie(res, null); return send(res, 200, { user: null, sessionInfo: null }); }
       if (path.startsWith('/api/')) check(user, '请先登录', 401);
+      const runInput=req.method==='POST'&&path==='/api/run'?await body(req):null;
       const guarded=['/api/run','/api/compare','/api/blind/round','/api/blind/simulate','/api/agent-step','/api/state','/api/settings','/api/session'];
       if(req.method==='POST' && guarded.includes(path)) {
-        const lock=await db.prepare('INSERT INTO active_operations (user_id,owner,kind,expires_at) VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET owner=excluded.owner,kind=excluded.kind,expires_at=excluded.expires_at WHERE active_operations.expires_at<? RETURNING owner').bind(user.id,id(),path,Date.now()+300000,Date.now()).first();
+        const priority=path==='/api/run'&&['command','feedback'].includes(runInput?.trigger);if(priority)ownSession(runInput.sessionId,user);
+        const lock=await db.prepare("INSERT INTO active_operations (user_id,owner,kind,expires_at) VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET owner=excluded.owner,kind=excluded.kind,expires_at=excluded.expires_at WHERE active_operations.expires_at<? OR (active_operations.kind='/api/run' AND excluded.kind='/api/run' AND ?=1) RETURNING owner").bind(user.id,id(),path,Date.now()+300000,Date.now(),priority?1:0).first();
         check(lock,'已有操作正在进行，请稍后再试',409);lockUser=user.id;lockOwner=lock.owner;
       }
       if(req.method==='GET' && path==='/api/export') { const active=await db.prepare('SELECT kind FROM active_operations WHERE user_id=? AND expires_at>?').bind(user.id,Date.now()).first();check(!active || !active.kind.startsWith('/api/blind/'),'盲选准备中，请稍后导出',409); }
@@ -169,8 +173,8 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
         };
         const addTrace = (trace, row, snapshotId) => {
           for (const step of [...trace].reverse()) {
-            if (['plan','rank'].includes(step.phase)) add(step.phase, step, row, 'completed', snapshotId);
-            if (step.phase === 'failure' && ['plan','rank'].includes(step.failed_phase)) add(step.failed_phase, step.model_metadata, row, 'failed', snapshotId);
+            if (['plan','rank','unified'].includes(step.phase)) add(step.phase, step, row, 'completed', snapshotId);
+            if (step.phase === 'failure' && ['plan','rank','unified'].includes(step.failed_phase)) add(step.failed_phase, step.model_metadata, row, 'failed', snapshotId);
           }
         };
         for (let index = store.rows.length - 1; index >= 0; index--) {
@@ -269,7 +273,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
         if (user.type === 'agent') check(input.recordKind === 'synthetic' && short(input.profile || '', 'Agent 画像').length > 0, 'Agent 需要画像才能开始');
         const previous = latestSession(user);
         const currentUser = previous ? user : await accounts.updateSettings(user.id, { interests: input.interests });
-        const session = await startSession(store, { ...input, interests: currentUser.settings.interests }, currentUser, previous ? store.state(previous.session_id) : null);
+        const session = await startSession(store, { ...input, interests: currentUser.settings.interests }, currentUser, previous ? store.state(previous.session_id) : null, previous?.session_id || null);
         return send(res, 201, stateInfo(session.session_id));
       }
       if (req.method === 'POST' && path === '/api/state') {
@@ -297,7 +301,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
           const entries = draft.entries.map((entry, draftIndex) => {
             const previousIndex = exactMatches.get(draftIndex) ?? old.entries.findIndex((prior, index) => !used.has(index) && JSON.stringify(metadata(prior)) === JSON.stringify(metadata(entry)));
             check(['memory','context','goal'].includes(entry.target) && ['topic','session','profile'].includes(entry.scope) && ['session','persistent'].includes(entry.lifetime), '记忆范围或时效无效');
-            const value = short(entry.value, '记忆内容', 1000), topic = short(entry.topic, '记忆主题', 60);
+            const value = short(entry.value, '记忆内容', entry.origin==='session_archive'?2000:1000), topic = short(entry.topic, '记忆主题', 60);
             if (previousIndex < 0) {
               check(Object.keys(entry).every(key => editable.has(key) || key === 'type') && (entry.type === undefined || entry.type === 'update_state'), '记忆的版本和依据字段不能修改');
               return { type:'update_state', target:entry.target, value, scope:entry.scope, topic, lifetime:entry.lifetime, version:nextVersion, based_on_version:old.version, evidence_ids:[], input_snapshot_id:null, updated_at:new Date().toISOString(), origin:'user_edit' };
@@ -389,7 +393,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
         finally { busy.delete(input.sessionId); }
       }
       if (req.method === 'POST' && ['/api/run', '/api/compare'].includes(path)) {
-        const input = await body(req); exact(input, ['sessionId', 'command', 'commandId', 'trigger', 'frozenSnapshotId', 'pending', 'renderedIds']);
+        const input = runInput || await body(req); exact(input, ['sessionId', 'command', 'commandId', 'trigger', 'frozenSnapshotId', 'pending', 'renderedIds']);
         ownSession(input.sessionId, user); check(!busy.has(input.sessionId), '已有一轮正在运行', 409);
         const requestSources=sourceConfig?{...sourceConfig,browserAcquire:action=>requestBrowserSource(db,user.id,input.sessionId,action,config?.signal)}:null;
         let pending = null;
@@ -410,15 +414,28 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
         if (input.commandId) snapshot.command_event_id = input.commandId;
         if (input.trigger) snapshot.trigger = input.trigger;
         const frozen = frozenSnapshot(input.sessionId, input.frozenSnapshotId);
-        busy.add(input.sessionId); await recordProgress(input.sessionId, { phase: 'planning', label: '正在理解你的需求', sources: [] }); const completedPolicies = {};
+        const runProgress=step=>recordProgress(input.sessionId,step,path==='/api/run'?lockOwner:null);
+        busy.add(input.sessionId); await runProgress({ phase: 'planning', label: '正在理解你的需求', sources: [], early_run:null }); const completedPolicies = {};
         try {
-          await store.record('input', input.sessionId, { track: path === '/api/run' ? 'feed' : 'blind', input_snapshot: snapshot });
+          const inputRow=await store.record('input', input.sessionId, { track: path === '/api/run' ? 'feed' : 'blind', input_snapshot: snapshot });
           if (path === '/api/run') {
-            const result = await executePolicy(snapshot, 'joint-v1', config, frozen, requestSources, step => recordProgress(input.sessionId, step), async trace => await store.record('decision_trace', input.sessionId, { track: 'feed', input_snapshot_id: snapshot.id, trace }), action => {
+            const nextPage=action=>{
               // shortcut: cycle through 50 Bilibili pages per query; use provider cursors if the source supports them.
-              const key = `${input.sessionId}:${action.source}:${action.query}`; const page = retrievalPages.get(key) || 1+store.rows.filter(row=>row.kind==='run'&&row.session_id===input.sessionId).length%50; retrievalPages.set(key, page % 50 + 1); return page; });
-            const run = await store.record('run', input.sessionId, { track: 'feed', result, event_time: new Date().toISOString() });
-            if (result.state_after.version !== snapshot.state.version) await store.record('state', input.sessionId, { state: result.state_after, reason: 'controller', run_id: run.id });
+              const key = `${input.sessionId}:${action.source}:${action.query}`; const page = retrievalPages.get(key) || 1+store.rows.filter(row=>row.kind==='run'&&row.session_id===input.sessionId).length%50; retrievalPages.set(key, page % 50 + 1); return page; };
+            const onTrace=async trace=>await store.record('decision_trace',input.sessionId,{track:'feed',input_snapshot_id:snapshot.id,trace});
+            const early=[];
+            const onAction=(receipt,content)=>{
+              if(receipt.kind!=='recommend'||receipt.status!=='success'||!content.pending_acquisitions||!content.slate.length)return;
+              early.push((async()=>{const partial={policy_id:'joint-v1',mode:'llm',input_snapshot:snapshot,state_after:null,content_snapshot:{id:id(),hash:hash(content.items),items:content.items},slate:content.slate,reason:'',response:'',trace:[],partial:true,delivery:receipt.result.delivery};const row=await store.recordIfCurrent('run',input.sessionId,{track:'feed',result:partial,event_time:new Date().toISOString()},inputRow.sequence,lockOwner);if(row)await runProgress({phase:'retrieving',label:'正在继续寻找内容',early_run:publicRun(row)});})().catch(error=>({error})));
+            };
+            const lookupHistory=args=>lookupDemoHistory(store,input.sessionId,snapshot.captured_at,args);
+            const result=config?await executeUnifiedPolicy(snapshot,config,requestSources,{userId:user.id,sessionId:input.sessionId,frozen,nextPage,onTrace,onAction,lookupHistory}):await executePolicy(snapshot,'joint-v1',config,frozen,requestSources,runProgress,onTrace,nextPage);
+            const earlyResults=await Promise.all(early);if(earlyResults.some(result=>result?.error))throw earlyResults.find(result=>result?.error).error;
+            check(!config?.signal?.aborted,'请求已取消',499);
+            const run = config?await store.recordIfCurrent('run',input.sessionId,{track:'feed',result,event_time:new Date().toISOString()},inputRow.sequence,lockOwner):await store.record('run',input.sessionId,{track:'feed',result,event_time:new Date().toISOString()});
+            check(run,'已收到新的反馈，正在更新推荐',409);
+            if (result.state_after.version !== snapshot.state.version) await store.recordIfCurrent('state',input.sessionId,{state:result.state_after,reason:'controller',run_id:run.id},inputRow.sequence,lockOwner);
+            await runProgress({phase:'complete',label:'推荐已更新',early_run:null});
             return send(res, 200, { run: publicRun(run), state: store.state(input.sessionId) });
           }
           const results = {};
@@ -430,7 +447,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
           const comparison = await store.record('comparison', input.sessionId, { track: 'blind', input_snapshot: snapshot, ...comparisonAssignment(), frozen: Boolean(frozen), results });
           await recordProgress(input.sessionId, { phase: 'complete', label: '两组内容已准备好' });
           return send(res, 200, { comparison: publicComparison(comparison) });
-        } catch (e) { const reason=config?.signal?.aborted?Object.assign(new Error('请求已取消'),{status:499,partial_trace:e.partial_trace}):e;await recordProgress(input.sessionId, { phase: 'failed', label: '本轮未完成，请查看错误后重试' }); await store.record('failure', input.sessionId, { track: path === '/api/run' ? 'feed' : 'blind', input_snapshot_id: snapshot.id, error: reason.message, partial_trace: reason.partial_trace || [], completed_policy_results: completedPolicies, mode }); throw reason; }
+        } catch (e) { const reason=config?.signal?.aborted?Object.assign(new Error('请求已取消'),{status:499,partial_trace:e.partial_trace}):e;await runProgress({ phase: 'failed', label: '本轮未完成，请查看错误后重试' }); await store.record('failure', input.sessionId, { track: path === '/api/run' ? 'feed' : 'blind', input_snapshot_id: snapshot.id, error: reason.message, partial_trace: reason.partial_trace || [], completed_policy_results: completedPolicies, mode }); throw reason; }
         finally { busy.delete(input.sessionId); }
       }
       if (req.method === 'POST' && path === '/api/event') {

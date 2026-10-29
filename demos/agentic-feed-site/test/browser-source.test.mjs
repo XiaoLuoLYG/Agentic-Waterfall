@@ -48,3 +48,7 @@ test('Bilibili relay jobs preserve page and return bounded genuine video fields'
 test('Bilibili relay does not delay the feed when the Mac relay is offline',async()=>{
  const db=database();await assert.rejects(()=>requestBrowserSource(db,'user-a','session-a',{source:'bilibili',query:'自然',page:1},undefined,{pollMs:5,timeoutMs:1000}),/中转不可用/);
 });
+test('Bilibili relay can return more than six genuine videos',async()=>{
+ const db=database();await pendingRelaySources(db);const pending=requestBrowserSource(db,'user-a','session-a',{source:'bilibili',query:'自然',page:1},undefined,{pollMs:5,timeoutMs:1000});await new Promise(resolve=>setTimeout(resolve,10));const [job]=await pendingRelaySources(db);
+ const rows=Array.from({length:12},(_,i)=>({id:`BV${String(i).padStart(10,'0')}`,title:`video ${i}`}));await completeRelaySource(db,job.id,rows);assert.equal((await pending).results.length,12);
+});

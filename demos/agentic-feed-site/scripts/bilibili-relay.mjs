@@ -8,8 +8,8 @@ const endpoint='https://agentic-waterfall-research.scofieldlyg.chatgpt.site/api/
 
 export async function processJob(job,acquire=acquireSource){
   if(!job||typeof job.id!=='string'||job.id.length>100||typeof job.query!=='string'||!job.query.trim()||job.query.length>120||!Number.isInteger(job.page)||job.page<1||job.page>50)throw new Error('来源任务无效');
-  const result=await acquire({source:'bilibili',query:job.query,mode:'search',modality:'video'},{providers:{},allowed:{},signal:AbortSignal.timeout(15000)},{page:job.page});
-  return {id:job.id,failed:result.status==='failed',rows:result.items.slice(0,6).map(item=>({id:item.source_item_id,title:item.title,summary:item.summary,image:item.image_url,author:item.author,published:item.published_at,duration:item.duration}))};
+  const result=await acquire({source:'bilibili',query:job.query,mode:'search',modality:'video'},{providers:{},allowed:{},signal:AbortSignal.timeout(15000)},{page:job.page,limit:50});
+  return {id:job.id,failed:result.status==='failed',rows:result.items.slice(0,50).map(item=>({id:item.source_item_id,title:item.title,summary:item.summary,image:item.image_url,author:item.author,published:item.published_at,duration:item.duration}))};
 }
 
 async function main(){
