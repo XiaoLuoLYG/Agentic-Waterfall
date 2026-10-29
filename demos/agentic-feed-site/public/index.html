@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark"><meta name="description" content="根据兴趣浏览内容，记录反馈与研究轨迹。"><title>Waterfall · 个人信息流</title>
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+  <noscript><p>请启用 JavaScript 后使用 Waterfall。</p></noscript>
+  <a class="skip-link" href="#main">跳到内容</a>
+  <section id="auth" class="entry" hidden>
+    <div class="entry-brand"><span class="brand-symbol">W</span><span>Waterfall</span></div>
+    <div class="entry-card"><div class="entry-intro"><h1>打开，发现，<br>继续向前。</h1><p>你喜欢的内容，会随着你一起变化。</p></div>
+      <form id="identityForm"><h2>开始使用</h2><label for="username">用户名</label><input id="username" maxlength="32" placeholder="输入用户名" required autocomplete="username">
+        <label for="identityType">账号类型</label><select id="identityType"><option value="human">用户</option><option value="agent">Agent</option></select>
+        <p class="hint">用户名用来区分账号，不设密码。知道用户名的人可以访问该账号。</p><p id="identityError" class="error" role="alert" hidden></p><button class="primary" type="submit">继续 <span data-icon="arrow"></span></button>
+      </form></div>
+  </section>
+  <section id="setup" class="setup" hidden>
+    <header class="setup-header"><span class="brand-symbol">W</span><strong>Waterfall</strong><button id="setupLogout" class="quiet">切换账号</button></header>
+    <main class="setup-content"><h1 id="setupTitle">从喜欢的开始</h1><p id="setupIntro">选一些兴趣，或者写下你的想法。也可以先跳过。</p>
+      <form id="setupForm"><div id="humanSetup"><div class="setup-section"><h2>选几个你感兴趣的</h2><div id="setupInterests" class="interests"></div><div class="add-interest"><input id="customInterest" maxlength="40" placeholder="添加其他兴趣" aria-label="添加其他兴趣"><button id="addInterest" type="button">添加</button></div></div>
+      <label for="initialProfile">介绍一下自己 <span>可选</span></label><textarea id="initialProfile" rows="4" maxlength="2000" placeholder="例如：我喜欢摄影和科普，最近想学视频剪辑，希望内容简单易懂。"></textarea></div>
+      <div id="agentSetup" hidden><label for="profileRequest">描述你想生成的人物 <span>可留空</span></label><textarea id="profileRequest" rows="3" maxlength="1000" placeholder="例如：喜欢音乐和游戏的高中生，最近想学习绘画。"></textarea><button id="generateProfile" type="button">生成画像</button><label for="generatedProfile">Agent 画像 <span>生成后可以修改</span></label><textarea id="generatedProfile" rows="10" maxlength="2000" placeholder="生成或填写 Agent 画像后开始。"></textarea></div>
+      <p class="privacy">使用时，输入、可见时间和反馈会保存在云端；推荐时会将相关内容发送给已配置的模型和来源。</p><label class="consent"><input id="consent" type="checkbox" required> 我了解并同意记录方式</label><p id="setupError" class="error" role="alert" hidden></p><div class="setup-actions"><button class="primary" type="submit">进入信息流 <span data-icon="arrow"></span></button><button id="skipSetup" class="quiet" type="button">跳过画像</button></div>
+      </form></main>
+  </section>
+  <div id="app" class="shell" hidden>
+    <aside class="sidebar"><div class="brand"><span class="brand-symbol">W</span><strong>Waterfall</strong></div><nav aria-label="主导航"><button class="nav-button active" data-view="feed"><span data-icon="feed"></span><span>发现</span></button><button class="nav-button" data-view="profile"><span data-icon="profile"></span><span>我的画像</span></button><button class="nav-button" data-view="blind"><span data-icon="blind"></span><span>盲选</span></button><button class="nav-button" data-view="trace"><span data-icon="trace"></span><span>浏览轨迹</span></button><button class="nav-button" data-view="sources"><span data-icon="sources"></span><span>内容来源</span></button></nav>
+      <div class="sidebar-bottom"><a id="exportData" class="export-link" href="#">导出数据</a><button id="switchAccount" class="account"><span id="avatar" class="avatar"></span><span><strong id="accountName"></strong><small>切换账号</small></span><span class="account-arrow" data-icon="northeast"></span></button></div></aside>
+    <main id="main" tabindex="-1">
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden><span id="noticeText"></span><button id="closeNotice" aria-label="关闭"><span data-icon="close"></span></button></div>
+      <section id="feedView" class="view"><header class="view-header"><div><h1>发现</h1><p>让好奇心带你向前。</p></div><button class="source-shortcut" data-view="sources">内容来源 <span data-icon="northeast"></span></button></header>
+        <section id="agentControls" class="agent-panel" hidden><div><h2>Agent 自动浏览</h2><p>根据画像模拟浏览和反馈，记录标记为模拟数据。</p></div><button id="agentToggle" class="primary">开始浏览</button><div id="agentLog" class="agent-log" aria-live="polite"></div></section>
+        <div id="humanFeed"><div id="feed" class="feed" aria-live="off"></div><div id="loadStatus" class="load-status" role="status" aria-live="polite" hidden></div><div id="feedEnd" class="feed-end"><button id="retryFeed" class="quiet" hidden>手动重试（将自动重试）</button></div></div>
+        <form id="commandForm" class="composer"><span class="composer-icon" data-icon="spark"></span><label for="command" class="sr-only">告诉 Waterfall 你想看什么</label><input id="command" maxlength="1000" placeholder="说说你想看什么，或者告诉我你改变了主意" autocomplete="off"><button class="send" type="submit" aria-label="发送"><span data-icon="send"></span></button></form>
+      </section>
+      <section id="blindView" class="view blind-view" hidden>
+        <header class="section-header"><h1>匿名盲选</h1><p>看看两条内容，此刻你更想看哪一条？</p></header>
+        <div id="blindIntro" class="blind-intro"><h2>开始一次盲选</h2><p id="blindIntroText">每组 5 题，根据此前的浏览经历准备推荐，隐藏推荐方法。选择会单独记录。</p><button id="blindStart" class="primary" type="button">开始盲选 <span data-icon="arrow"></span></button></div>
+        <div class="blind-progress"><span id="blindProgress" aria-live="polite"></span><button id="blindAutoToggle" class="quiet" type="button" hidden>暂停自动作答</button></div><div id="blindLoading" class="blind-loading" role="status" hidden><span class="blind-spinner" aria-hidden="true"></span><div><strong>正在准备两条推荐</strong><p>正在获取内容并排序，可能需要一些时间。</p></div></div>
+        <div id="blindRound" hidden><div id="blindRoundNote" class="blind-note" role="status"></div><div id="blindCards" class="blind-cards"></div>
+          <div id="blindChoices" class="blind-choices"><h2>你现在更想看什么？</h2><div class="blind-choice-grid"><button type="button" class="secondary" data-blind-choice="A">更想看 A</button><button type="button" class="secondary" data-blind-choice="B">更想看 B</button><button type="button" class="secondary" data-blind-choice="tie">两条都想看</button><button type="button" class="secondary" data-blind-choice="neither">两条都不想看</button><button type="button" class="quiet" data-blind-choice="insufficient">无法判断</button></div></div>
+          <div id="blindAgentChoice" class="blind-agent" hidden><p>Agent 会根据画像和此前行为，选择此刻想看的内容。</p><div class="blind-done-actions"><button id="blindSimulate" type="button" class="primary">让 Agent 选择</button><button id="blindAgentSkip" type="button" class="quiet">标记无法判断</button></div></div>
+        </div>
+        <div id="blindDone" class="blind-done" role="status" hidden><h2>已记录选择</h2><p id="blindDoneText"></p><div class="blind-done-actions"><button id="blindAgain" class="primary" type="button">再做一组</button><button class="secondary" type="button" data-view="feed">返回发现</button></div></div>
+      </section>
+      <section id="traceView" class="view trace-view" hidden>
+        <header class="trace-header"><div><h1>浏览轨迹</h1><p>按时间回看你的操作、Agent 的决策和工具结果。</p></div><div class="trace-actions"><div class="trace-live"><span></span> 自动更新</div><button id="traceAgentToggle" class="secondary" type="button" hidden>开始浏览</button></div></header>
+        <div class="trace-toolbar"><div><label for="traceSession">选择会话</label><select id="traceSession" aria-label="选择会话"></select></div><div class="trace-toolbar-right"><details class="trace-help"><summary>什么是“进入视野”？</summary><p>页面在前台且窗口有焦点时，卡片至少一半出现在信息流中并持续 1 秒，会记作进入视野；如果先点击，则立即记录。可见时长只表示卡片在信息流中显示的时间，不是外站的实际播放或阅读时长。</p></details><button id="traceLatest" type="button">回到最新 <span data-icon="down"></span></button></div></div><div class="trace-legend" aria-label="轨迹分类"><span class="user">用户操作</span><span class="agent">Agent 决策</span><span class="tool">来源工具</span><span class="exposure">浏览记录</span><span class="simulation">模拟用户</span><span class="state">画像与记忆</span><span class="system">信息流</span></div>
+        <div class="trace-filters" role="group" aria-label="筛选轨迹"><button type="button" data-trace-filter="all" aria-pressed="true">全部</button><button type="button" data-trace-filter="actions" aria-pressed="false">用户操作</button><button type="button" data-trace-filter="viewing" aria-pressed="false">浏览与停留</button><button type="button" data-trace-filter="agent" aria-pressed="false">Agent 与工具</button></div>
+        <div id="traceStatus" class="trace-status" role="status">正在读取轨迹…</div><div id="traceTimeline" class="trace-timeline" tabindex="0" aria-label="轨迹时间线"></div>
+      </section>
+      <section id="profileView" class="view narrow" hidden><header class="section-header"><h1>我的画像</h1><p>这些信息会帮助 Waterfall 理解你，也可以随时修改。</p></header><form id="profileForm"><label for="profileEditor">Agent 画像输入 <span class="profile-format">JSON</span></label><p class="profile-help">这里是推荐 Agent 下一次会收到的完整画像。可以直接修改描述、兴趣和记忆；版本和依据由系统维护。</p><textarea id="profileEditor" rows="16" spellcheck="false" aria-describedby="profileEditorHelp"></textarea><div class="form-actions"><span id="profileEditorHelp">保存后用于下一次推荐；Agent 模拟浏览使用其中的 profile 字段。</span><button class="primary" type="submit">保存画像</button></div></form><section class="profile-block model-calls"><h2>Agent 提示词与输入</h2><p>最近一次实际调用的原文。规划和排序分别记录，时间可能不同。</p><p id="modelCallsStatus" class="model-calls-status" role="status">正在读取…</p><div id="modelCalls"></div></section><section class="profile-block"><div class="block-heading"><div><h2>我的兴趣</h2><p>选择或添加感兴趣的话题。</p></div></div><div id="profileInterests" class="interests"></div><div class="add-interest"><input id="newInterest" maxlength="40" placeholder="添加其他兴趣" aria-label="添加其他兴趣"><button id="addProfileInterest" type="button">添加</button></div><button id="saveInterests" class="secondary" type="button">保存兴趣</button></section></section>
+      <section id="sourcesView" class="view narrow" hidden><header class="section-header"><h1>内容来源</h1><p>默认使用所有可用来源，也可以选择你想看的来源。</p></header><form id="sourcesForm"><div id="sourceOptions" class="sources"></div><div class="form-actions"><span>新内容会从选中的来源获取。</span><button class="primary" type="submit">保存来源</button></div></form></section>
+    </main>
+  </div>
+  <div id="tracePopover" class="trace-popover" role="dialog" aria-label="轨迹详情" hidden><div class="trace-popover-head"><strong id="tracePopoverTitle"></strong><button id="tracePopoverClose" type="button" aria-label="关闭详情"><span data-icon="close"></span></button></div><pre id="tracePopoverContent" tabindex="0"></pre></div>
+  <div id="boot" class="boot"><span class="brand-symbol">W</span><p>正在打开 Waterfall…</p><button id="retryBoot" class="secondary" hidden>重新连接</button></div>
+</body>
+</html>

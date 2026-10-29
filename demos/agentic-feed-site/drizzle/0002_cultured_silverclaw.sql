@@ -1,0 +1,2 @@
+ALTER TABLE `events` ADD `comparison_id` text;--> statement-breakpoint
+CREATE UNIQUE INDEX `events_comparison_once` ON `events` (`kind`,`comparison_id`) WHERE "events"."kind" IN ('evaluation', 'blind_presentation');

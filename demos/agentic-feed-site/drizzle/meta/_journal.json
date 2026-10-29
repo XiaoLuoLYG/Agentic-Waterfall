@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793180872552,
+      "tag": "0000_bored_pet_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793235502497,
+      "tag": "0001_clumsy_mathemanic",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793235959632,
+      "tag": "0002_cultured_silverclaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793255292074,
+      "tag": "0003_tiresome_grey_gargoyle",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793257618592,
+      "tag": "0004_open_jubilee",
+      "breakpoints": true
+    }
+  ]
+}
