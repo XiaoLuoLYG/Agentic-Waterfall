@@ -2,7 +2,10 @@
 export async function runRound({method,evidence,priorState,allowedSources,model,search}){
  if(!['clawrec','generic-agent'].includes(method)||!Array.isArray(evidence)||!Array.isArray(allowedSources)||allowedSources.some(x=>typeof x!=='string')||typeof model!=='function'||typeof search!=='function')throw Error('invalid round input');
  const state=await model('state',{evidence,prior_state:priorState});if(typeof state?.state!=='string'||!state.state.trim())throw Error('invalid state');
- const plan=await model('plan',{state:state.state,allowed_sources:allowedSources});const acquired=new Map(),logs=[];
+ const planInput={state:state.state,allowed_sources:allowedSources};let plan=await model('plan',planInput);
+ const validQueries=queries=>Array.isArray(queries)&&queries.length<=10&&queries.every(q=>q&&allowedSources.includes(q.source)&&typeof q.query==='string'&&q.query.trim());
+ if(!validQueries(plan?.queries))plan=await model('plan',{...planInput,previous_plan:plan,format_feedback:'The previous plan used invalid or unsupported sources or queries. Use only the exact names in allowed_sources, provide nonempty queries, and return at most 10 queries.'});
+ const acquired=new Map(),logs=[];
  async function execute(queries){
   if(!Array.isArray(queries)||logs.length+queries.length>10)throw Error('search budget exceeded');
   for(const q of queries){

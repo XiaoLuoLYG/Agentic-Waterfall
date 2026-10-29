@@ -9,3 +9,7 @@ test('rejects fabricated or incomplete candidate output',async()=>{
  const model=async(stage)=>stage==='state'?{user_state_md:'state'}:{ordered_indices:[2,3]};
  await assert.rejects(()=>runFixed([],[{id:'a',text:'a'},{id:'b',text:'b'}],model),/invalid candidate/);
 });
+test('requests one correction for incomplete rankings without filling missing items',async()=>{
+ let calls=0;const model=async(stage,payload)=>{if(stage==='state')return {user_state_md:'state'};calls++;return calls===1?{ordered_indices:[1]}:{ordered_indices:[2,1]};};
+ const result=await runFixed([],[{id:'a',text:'a'},{id:'b',text:'b'}],model);assert.equal(calls,2);assert.deepEqual(result.ordered_item_ids,['b','a']);
+});

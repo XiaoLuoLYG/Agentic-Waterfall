@@ -13,3 +13,8 @@ test('enforces the shared ten-search bound',async()=>{
  const model=async stage=>stage==='state'?{state:'state'}:{queries:Array.from({length:11},()=>({source:'zhihu',query:'q'}))};
  await assert.rejects(()=>runRound({method:'clawrec',evidence:[],priorState:null,allowedSources:['zhihu'],model,search:async()=>[]}),/budget/);
 });
+test('corrects unsupported search plans before invoking any tool',async()=>{
+ let plans=0;const searches=[];const model=async(stage,payload)=>{if(stage==='state')return {state:'state'};if(stage==='plan'){plans++;return {queries:[{source:plans===1?'unsupported':'zhihu',query:'q'}]};}return {ordered_indices:[1]};};
+ const search=async(source)=>{searches.push(source);return [{id:'ok',source:'zhihu',title:'x',text:'x',url:'https://zhihu.com/a'}]};const r=await runRound({method:'clawrec',evidence:[],priorState:null,allowedSources:['zhihu'],model,search});
+ assert.equal(plans,2);assert.deepEqual(searches,['zhihu']);assert.deepEqual(r.ordered_item_ids,['ok']);
+});
