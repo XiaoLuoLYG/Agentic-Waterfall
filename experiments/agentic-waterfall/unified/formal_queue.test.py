@@ -20,7 +20,7 @@ class QueueChecks(unittest.TestCase):
         self.assertIsNotNone(queue.failure_reason({'status':'submitted','trace':trace}))
 
     def test_model_format_failure_requires_a_later_successful_recommendation(self):
-        for error in ('model_invalid_json','model_output_truncated'):
+        for error in ('model_invalid_json','model_output_truncated','invalid_batch_ranking'):
             for index in (None,0,1,2):
                 result={'status':'submitted','model_calls':[{'context':{'call_index':1},'error':error}],
                         'trace':[{'call_index':index,'execution_results':[{'kind':'recommend','status':'success'}]}]}
@@ -113,7 +113,7 @@ class QueueChecks(unittest.TestCase):
             self.assertEqual(json.loads((run/'started/a.json').read_text())['attempt'],2)
 
     def test_missing_result_and_nontransient_failures_never_retry(self):
-        for outcome in ('no_result','model_http_401','model_http_403','model_http_429','model_invalid_json','model_output_truncated','bad_dataset','action_execution_failed'):
+        for outcome in ('no_result','model_http_401','model_http_403','model_http_429','model_invalid_json','model_output_truncated','invalid_batch_ranking','bad_dataset','action_execution_failed'):
             with self.subTest(outcome=outcome),tempfile.TemporaryDirectory() as directory:
                 run,_=self.fixture(directory)
                 calls,sleeps,_,progress=self.execute(run,[outcome])
@@ -130,6 +130,28 @@ class QueueChecks(unittest.TestCase):
             self.assertEqual(calls,['a']);self.assertEqual(progress['status'],'needs_attention')
         result=self.result({'id':'a','dataset':'mind'},'model_http_502',trace=[{'execution_results':[{'kind':'acquire','status':'failed','error':'source_failed'}]}])['result']
         self.assertIsNone(queue.retryable_failure(result))
+
+    def test_batch_failure_after_earlier_submission_requires_a_real_later_merge(self):
+        for corrected in (False,True):
+            with self.subTest(corrected=corrected),tempfile.TemporaryDirectory() as directory:
+                run,tasks=self.fixture(directory);row=self.result(tasks[0]);result=row['result']
+                result['model_calls']=[{'context':{'call_index':0}},
+                    {'context':{'call_index':2,'batch_stage':'rank','batch_index':0},'error':'invalid_batch_ranking',
+                     'error_details':{'error':'invalid_candidate_indices'},'content':'retained invalid batch output'},
+                    {'context':{'call_index':3,'batch_stage':'rank','batch_index':0},'content':'valid local batch output'}]
+                result['trace']=[{'call_index':0,'execution_results':[{'kind':'recommend','status':'success'}]},
+                    {'call_index':1,'execution_results':[{'kind':'acquire','status':'success'}]}]
+                if corrected:
+                    result['model_calls'].append({'context':{'call_index':4,'batch_stage':'merge'}})
+                    result['trace'].append({'call_index':4,'execution_results':[{'kind':'recommend','status':'success'}]})
+                calls,sleeps,_,progress=self.execute(run,[row])
+                self.assertEqual(calls,['a']);self.assertEqual(sleeps,[])
+                self.assertEqual(progress['status'],'preflight_complete' if corrected else 'needs_attention')
+                self.assertFalse((run/'attempts').exists())
+                if not corrected:
+                    self.assertEqual(progress['reason'],'invalid_batch_ranking')
+                    calls,_,_,progress=self.execute(run,[])
+                    self.assertEqual(calls,[]);self.assertEqual(progress['status'],'needs_attention')
 
     def test_stop_during_backoff_and_resource_gate_before_retry(self):
         with tempfile.TemporaryDirectory() as directory:

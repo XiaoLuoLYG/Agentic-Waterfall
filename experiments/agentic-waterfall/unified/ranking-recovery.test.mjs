@@ -28,7 +28,7 @@ test('invalid raw video numbers are reported and the agent independently supplie
   assert.deepEqual(result.model_calls[0].parsed_output.actions[0].arguments.ordered_candidate_indices,[1,1059,1]);
   assert.equal(result.trace[0].execution_results[0].status,'failed');
   assert.deepEqual(result.trace[0].decision.actions[0].arguments.ordered_candidate_indices,[1,1059,1]);
-  assert.match(SYSTEM_PROMPT,/new action_id/);assert.match(SYSTEM_PROMPT,/raw.*IDs/);
+  assert.match(SYSTEM_PROMPT,/new action_id/);assert.match(SYSTEM_PROMPT,/numbers extracted from item IDs/);
 });
 
 test('incomplete and duplicate rankings expose missing and repeated indices without filling them',async()=>{
@@ -80,7 +80,7 @@ test('truncated or invalid JSON gets a short diagnostic and a fresh agent respon
       calls++;const {observation,context}=JSON.parse(request.messages[1].content);
       assert.deepEqual(observation.environment.recommendation_constraints.allowed_candidate_indices,Array.from({length:101},(_,i)=>i+1));
       assert.equal(context.output_requirements.candidate_count,101);
-      assert.match(context.output_requirements.recommendation,/raw numeric video IDs/);
+      assert.match(context.output_requirements.recommendation,/numbers extracted from item IDs/);
       if(calls===1)return {attempt_id:'broken',finish_reason,content:broken};
       assert.equal(context.previous_output_error.error,expectedError);
       assert(request.messages.every(message=>!message.content.includes('UNTRUSTED_REPEAT')));
@@ -100,4 +100,156 @@ test('persistent truncation remains bounded and network errors are never retried
   calls=0;
   const network=await runEpisode(input(3),{modelCall:async()=>{calls++;throw new Error('model_timeout');}});
   assert.equal(calls,1);assert.equal(network.status,'failed');assert.equal(network.error,'model_timeout');
+});
+
+const batchedInput=(budget=20)=>{
+  const fixture=input(budget);
+  fixture.observation.environment.candidate_pool=fixture.observation.environment.candidate_pool.map((item,i)=>({...item,id:`N${14000+i}`,abstract:'x'.repeat(1200)}));
+  return fixture;
+};
+const batchReply=(observation,context,extra=[])=>({attempt_id:`batch-${context.call_index}`,finish_reason:'stop',content:JSON.stringify(decision([
+  action(`rank-${context.call_index}`,{ordered_candidate_indices:observation.environment.candidate_pool.map(item=>item.candidate_index).reverse()}),...extra]))});
+
+test('second batch receives exact index diagnostics, retains the first batch, and commits only the model merge',async()=>{
+  const seen=[];let badIndices;
+  const result=await runEpisode(batchedInput(),{modelCall:async request=>{
+    assert(Buffer.byteLength(JSON.stringify(request.messages))<=100000);
+    const {observation,context}=JSON.parse(request.messages[1].content);seen.push([context.batch_stage,context.batch_index]);
+    const items=observation.environment.candidate_pool,indices=items.map(item=>item.candidate_index);
+    if(context.batch_stage==='rank'&&context.batch_index===1){
+      if(!context.previous_batch_error){
+        badIndices=[indices[0],indices[0],14273,1];
+        return {attempt_id:'bad-batch',content:JSON.stringify(decision([action('bad-batch',{ordered_candidate_indices:badIndices})]))};
+      }
+      const details=context.previous_batch_error.error_details;
+      assert.deepEqual(details.candidate_index_range,[indices[0],indices.at(-1)]);
+      assert.deepEqual(details.invalid_indices,[14273,1]);assert.deepEqual(details.duplicate_indices,[indices[0]]);
+      assert.equal(details.missing_indices_count,items.length-1);assert.equal(details.received_count,4);
+      assert.equal(context.call_index,2);assert.equal(context.previous_batch_error.call_index,1);
+    }
+    if(context.batch_stage==='merge'){
+      assert.equal(context.batch_rankings.length,2);
+      assert.deepEqual(context.batch_rankings.flat().sort(),items.map(item=>item.id).sort());
+    }
+    return batchReply(observation,context);
+  }});
+  assert.deepEqual(seen,[['rank',0],['rank',1],['rank',1],['merge',undefined]]);
+  assert.equal(result.status,'submitted');assert.equal(result.model_request_count,4);assert.equal(result.trace.length,1);
+  assert.equal(result.normalizations.filter(repair=>repair.call_index===3&&repair.operation==='candidate_indices_to_ids').length,1);
+  assert.deepEqual(result.ordered_item_ids,batchedInput().observation.environment.candidate_pool.map(item=>item.id).reverse());
+  assert.equal(result.model_calls[1].error,'invalid_batch_ranking');
+  assert.deepEqual(result.model_calls[1].parsed_output.actions[0].arguments.ordered_candidate_indices,badIndices);
+  assert.equal(result.model_calls[1].error_details.missing_indices.length,result.model_calls[1].input.environment.candidate_pool.length-1);
+});
+
+test('persistent batch ranking errors stop within 20 calls while reserving later stages, without invented output',async()=>{
+  const seen=[];
+  const result=await runEpisode(batchedInput(),{modelCall:async request=>{
+    assert(Buffer.byteLength(JSON.stringify(request.messages))<=100000);
+    const {observation,context}=JSON.parse(request.messages[1].content);seen.push([context.batch_stage,context.batch_index]);
+    if(context.batch_index===0)return batchReply(observation,context);
+    return {attempt_id:`bad-${context.call_index}`,content:JSON.stringify(decision([action(`bad-${context.call_index}`,{ordered_candidate_indices:Array(500).fill('unknown-'.repeat(80))})]))};
+  }});
+  assert.equal(result.status,'failed');assert.equal(result.error,'batch_model_budget_exhausted');
+  assert.equal(seen.length,19);assert.equal(result.model_request_count,19);
+  assert.equal(seen.filter(([stage,index])=>stage==='rank'&&index===0).length,1);assert(seen.every(([stage])=>stage==='rank'));
+  assert.deepEqual(result.ordered_item_ids,[]);assert.deepEqual(result.pending_queue,[]);assert.equal(result.trace.length,0);
+  assert(result.model_calls.slice(1).every(call=>call.error==='invalid_batch_ranking'));
+});
+
+test('batch error summaries fit the reserved bytes even for large malformed index strings',async()=>{
+  let calls=0,firstSize;
+  const result=await runEpisode(batchedInput(4),{modelCall:async request=>{
+    assert(Buffer.byteLength(JSON.stringify(request.messages))<=100000);
+    const {observation,context}=JSON.parse(request.messages[1].content);
+    if(++calls===1){
+      firstSize=observation.environment.candidate_pool.length;
+      const bad=Array.from({length:4},(_,i)=>String(i)+'\ud800'.repeat(80));
+      return {attempt_id:'large-errors',content:JSON.stringify(decision([action('large-errors',{ordered_candidate_indices:[...bad,...bad]})]))};
+    }
+    if(context.previous_batch_error){
+      assert.equal(context.batch_index,0);assert.equal(observation.environment.candidate_pool.length,firstSize);
+      assert(Buffer.byteLength(JSON.stringify(context.previous_batch_error))<=1500);
+      assert.equal(context.previous_batch_error.error_details.invalid_indices_count,8);
+      assert.equal(context.previous_batch_error.error_details.duplicate_indices_count,4);
+    }
+    return batchReply(observation,context);
+  }});
+  assert.equal(result.status,'submitted');assert.equal(calls,4);assert.equal(result.model_calls[0].error_details.invalid_indices.length,8);
+});
+
+test('JSON truncation and parse errors recover within their batch or merge without rerunning successful batches',async()=>{
+  for(const stage of ['rank','merge'])for(const finish_reason of ['length','stop']){
+    const seen=[];let failed=false;
+    const result=await runEpisode(batchedInput(),{modelCall:async request=>{
+      assert(Buffer.byteLength(JSON.stringify(request.messages))<=100000);
+      const {observation,context}=JSON.parse(request.messages[1].content);seen.push([context.batch_stage,context.batch_index]);
+      if(context.batch_stage===stage&&(stage==='merge'||context.batch_index===1)&&!failed){failed=true;return {attempt_id:'broken',finish_reason,content:'{"actions":['+'DO_NOT_RESEND'.repeat(2000)};}
+      if(context.previous_output_error){
+        assert.equal(context.previous_output_error.error,finish_reason==='length'?'model_output_truncated':'model_invalid_json');
+        assert(request.messages.every(message=>!message.content.includes('DO_NOT_RESEND')));
+      }
+      return batchReply(observation,context);
+    }});
+    assert.equal(result.status,'submitted');assert.equal(result.model_request_count,4);assert.equal(result.trace.length,1);
+    assert.equal(seen.filter(([s,i])=>s==='rank'&&i===0).length,1);
+    assert.equal(seen.filter(([s,i])=>s==='rank'&&i===1).length,stage==='rank'?2:1);
+    assert.equal(seen.filter(([s])=>s==='merge').length,stage==='merge'?2:1);
+    assert(result.model_calls.some(call=>call.content.includes('DO_NOT_RESEND')&&call.error));
+  }
+});
+
+test('merge ranking correction retains batches and executes other valid actions only after a valid merge',async()=>{
+  let merges=0,updates=0;
+  const state={action_id:'state',kind:'update_state',arguments:{base_version:0,edits:[]},depends_on:[],evidence_refs:[]};
+  const result=await runEpisode(batchedInput(),{onAction:receipt=>{if(receipt.kind==='update_state')updates++;},modelCall:async request=>{
+    const {observation,context}=JSON.parse(request.messages[1].content);
+    if(context.batch_stage==='merge'&&++merges===1)return {attempt_id:'bad-merge',content:JSON.stringify(decision([action('bad-merge',{ordered_candidate_indices:[1,1]}),state]))};
+    if(context.batch_stage==='merge'){
+      assert.equal(updates,0);assert.equal(context.previous_batch_error.error_details.missing_indices_count,100);
+      return batchReply(observation,context,[state]);
+    }
+    return batchReply(observation,context);
+  }});
+  assert.equal(result.status,'submitted');assert.equal(result.model_request_count,4);assert.equal(updates,1);
+  assert.equal(result.state_after.version,1);assert.equal(result.trace.length,1);
+});
+
+test('persistent batch and merge format errors cannot restart batches or exceed the original budget',async()=>{
+  for(const stage of ['rank','merge']){
+    const seen=[];
+    const result=await runEpisode(batchedInput(),{modelCall:async request=>{
+      const {observation,context}=JSON.parse(request.messages[1].content);seen.push([context.batch_stage,context.batch_index]);
+      if(context.batch_stage===stage&&(stage==='merge'||context.batch_index===1))return {attempt_id:`broken-${context.call_index}`,finish_reason:'length',content:'{"actions":['};
+      return batchReply(observation,context);
+    }});
+    assert.equal(result.status,'failed');assert.equal(result.error,'batch_model_budget_exhausted');
+    assert.equal(result.model_request_count,stage==='rank'?19:20);assert.equal(seen.filter(([s,i])=>s==='rank'&&i===0).length,1);
+    assert.deepEqual(result.ordered_item_ids,[]);assert.equal(result.trace.length,0);
+  }
+});
+
+test('batch recovery preserves network, state and dependency failures and checks minimum budget before calling',async()=>{
+  let calls=0;
+  const short=await runEpisode(batchedInput(2),{modelCall:async()=>{calls++;throw new Error('unexpected');}});
+  assert.equal(calls,0);assert.equal(short.error,'batch_model_budget_insufficient');
+  for(const stage of ['rank','merge']){
+    const result=await runEpisode(batchedInput(),{modelCall:async request=>{
+      const {observation,context}=JSON.parse(request.messages[1].content);
+      if(context.batch_stage===stage&&(stage==='merge'||context.batch_index===1))throw new Error('model_timeout');
+      return batchReply(observation,context);
+    }});
+    assert.equal(result.error,'model_timeout');assert.equal(result.model_calls.length,stage==='rank'?2:3);
+  }
+  for(const extra of [
+    {action_id:'bad-state',kind:'update_state',arguments:{base_version:99,edits:[]},depends_on:[],evidence_refs:[]},
+    {action_id:'bad-tool',kind:'acquire',arguments:{source_ids:['offline'],mode:'search',query:'x',limit:1},depends_on:[],evidence_refs:[]},
+  ]){
+    const result=await runEpisode(batchedInput(),{modelCall:async request=>{
+      const {observation,context}=JSON.parse(request.messages[1].content);
+      return batchReply(observation,context,context.batch_stage==='merge'?[extra]:[]);
+    }});
+    assert.equal(result.model_request_count,3);assert(result.trace[0].execution_results.some(receipt=>receipt.status==='failed'));
+    assert.equal(result.state_after.version,0);
+  }
 });
