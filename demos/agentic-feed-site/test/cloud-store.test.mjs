@@ -13,6 +13,29 @@ function agentResponse(options,source,query,modality='text'){
  const action=items.length?{action_id:'rank',kind:'recommend',arguments:{ordered_item_ids:[items[0].id],delivery:'replace_pending'}}:{action_id:'get',kind:'acquire',arguments:{source_ids:[source],query,mode:'search',content_types:[modality],limit:10}};
  return Response.json({choices:[{message:{content:JSON.stringify({decision_id:obs.decision_id,actions:[{...action,evidence_refs:[],depends_on:[]}]})}}]});
 }
+test('saving a reading event does not load unrelated large model traces',async()=>{
+ const {handleApi}=await import('../lib/waterfall/cloud-entry.mjs'),db=database(),env={DB:db};
+ const identity=await handleApi(new Request('https://example.test/api/identity',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'reading-memory-test',type:'human'})}),env),cookie=identity.headers.get('set-cookie').split(';')[0];
+ const req=(path,data)=>new Request('https://example.test'+path,{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify(data)});
+ const session=await (await handleApi(req('/api/session',{consent:true,recordKind:'human',interests:[]}),env)).json(),sid=session.session.session_id,store=new CloudStore(db);await store.load(session.session.user_id);
+ const card={id:'item',title:'reading',source:'bilibili',topic:'photo'};
+ await store.record('run',sid,{track:'feed',result:{slate:[card],content_snapshot:{id:'old-snapshot',items:[{...card,summary:'z'.repeat(1000000)}]}}});
+ const run=await store.record('run',sid,{track:'feed',result:{slate:[card],content_snapshot:{id:'snapshot',items:[card]},trace:[{messages:'x'.repeat(1000000)}]}});
+ await store.record('decision_trace',sid,{track:'feed',trace:{messages:'y'.repeat(1000000)}});
+ const prepare=db.prepare.bind(db);let readBytes=0;db.prepare=sql=>({bind(...args){const q=prepare(sql).bind(...args);return {...q,async all(){const result=await q.all();if(/from events/i.test(sql))readBytes+=result.results.reduce((sum,row)=>sum+Buffer.byteLength(row.payload||''),0);return result;}};}});
+ const event=await handleApi(req('/api/event',{sessionId:sid,type:'exposure',track:'feed',referenceId:run.id,contentId:card.id,position:1,exposureId:'00000000-0000-4000-8000-000000000000',phase:'start',visibleMs:0,eventTime:new Date().toISOString()}),env);
+ assert.equal(event.status,201,JSON.stringify(await event.json()));assert(readBytes<100000,`event loaded ${readBytes} bytes of historical records`);
+ readBytes=0;const command=await handleApi(req('/api/interaction',{sessionId:sid,type:'command',text:'more',eventTime:new Date().toISOString()}),env);assert.equal(command.status,201);assert(readBytes<100000,`command loaded ${readBytes} bytes of historical records`);
+ const exported=await handleApi(new Request(`https://example.test/api/export?sessionId=${sid}&format=jsonl`,{headers:{cookie}}),env);assert.equal(exported.status,200);assert((await exported.text()).includes('y'.repeat(1000)));
+});
+test('compact loading keeps the newest candidate snapshot and preserves complete history on disk',async()=>{
+ const db=database(),user=(await new CloudAccounts(db).selectIdentity({username:'compact-snapshots',type:'human'})).user,store=new CloudStore(db);await store.load(user.id);
+ await store.add('session',{session_id:'s',user_id:user.id,participant_id:user.id,record_kind:'human'});
+ const old=await store.record('run','s',{track:'feed',result:{slate:[],content_snapshot:{id:'old',items:[{id:'old-item'}]},trace:[{message:'old trace'}]}});
+ const latest=await store.record('run','s',{track:'feed',result:{slate:[],content_snapshot:{id:'new',items:[{id:'new-item'}]}}});
+ const compact=new CloudStore(db);await compact.load(user.id,{compact:true});assert.equal(compact.rows.find(r=>r.id===old.id).result.content_snapshot.items,undefined);assert.deepEqual(compact.rows.find(r=>r.id===latest.id).result.content_snapshot.items,[{id:'new-item'}]);
+ const full=new CloudStore(db);await full.load(user.id);assert.equal(full.rows.find(r=>r.id===old.id).result.content_snapshot.items[0].id,'old-item');assert.equal(full.rows.find(r=>r.id===old.id).result.trace[0].message,'old trace');
+});
 test('feedback starts a new agent decision while the previous decision is still running',async t=>{
  const {handleApi}=await import('../lib/waterfall/cloud-entry.mjs');const db=database(),env={DB:db,WATERFALL_CONFIG:JSON.stringify({apiKey:'fixture',apiBase:'https://model.example',modelName:'fixture'})};
  const identity=await handleApi(new Request('https://example.test/api/identity',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'feedback-overlap',type:'human'})}),env),cookie=identity.headers.get('set-cookie').split(';')[0];

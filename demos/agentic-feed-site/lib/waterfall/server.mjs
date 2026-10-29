@@ -137,15 +137,16 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
         if(req.method==='GET'){const sessionId=url.searchParams.get('sessionId');check(typeof sessionId==='string'&&sessionId.length<=100,'会话无效');return send(res,200,{jobs:await pendingBrowserSources(db,user.id,sessionId)});}
         if(req.method==='POST'){const input=await body(req);exact(input,['sessionId','id','rows','failed']);check(typeof input.sessionId==='string'&&input.sessionId.length<=100,'会话无效');await completeBrowserSource(db,user.id,input.sessionId,input.id,input.rows,input.failed??false);return send(res,200,{saved:true});}
       }
-      if(user)await store.load(user.id);
+      const eventInput=user&&req.method==='POST'&&path==='/api/event'?await body(req):null;
+      const runInput=user&&req.method==='POST'&&path==='/api/run'?await body(req):null;
+      if(user){if(eventInput)await store.loadEvent(user.id,eventInput);else await store.load(user.id,{compact:!['/api/export','/api/trace','/api/analysis','/api/model-calls','/api/compare'].includes(path)&&!runInput?.frozenSnapshotId});}
       if (req.method === 'GET' && path === '/api/me') return send(res, 200, authInfo(user));
       if (req.method === 'POST' && path === '/api/identity') {
         const result = await accounts.selectIdentity(await body(req));
-        await store.load(result.user.id);cookie(res, result.token); return send(res, 200, authInfo(result.user));
+        await store.load(result.user.id,{compact:true});cookie(res, result.token); return send(res, 200, authInfo(result.user));
       }
       if (req.method === 'POST' && path === '/api/logout') { await accounts.logout(token); cookie(res, null); return send(res, 200, { user: null, sessionInfo: null }); }
       if (path.startsWith('/api/')) check(user, '请先登录', 401);
-      const runInput=req.method==='POST'&&path==='/api/run'?await body(req):null;
       const guarded=['/api/run','/api/compare','/api/blind/round','/api/blind/simulate','/api/agent-step','/api/state','/api/settings','/api/session'];
       if(req.method==='POST' && guarded.includes(path)) {
         const priority=path==='/api/run'&&['command','feedback'].includes(runInput?.trigger);if(priority)ownSession(runInput.sessionId,user);
@@ -451,7 +452,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
         finally { busy.delete(input.sessionId); }
       }
       if (req.method === 'POST' && path === '/api/event') {
-        const input = await body(req); exact(input, ['sessionId', 'type', 'track', 'referenceId', 'contentId', 'position', 'side', 'eventTime', 'exposureId', 'phase', 'visibleMs', 'visibilityRule', 'value', 'text']);
+        const input = eventInput||await body(req); exact(input, ['sessionId', 'type', 'track', 'referenceId', 'contentId', 'position', 'side', 'eventTime', 'exposureId', 'phase', 'visibleMs', 'visibilityRule', 'value', 'text']);
         ownSession(input.sessionId, user); check(['feedback', 'exposure', 'open', 'return'].includes(input.type), '事件类型无效');
         const content = identifyReference(input);
         check(typeof input.eventTime === 'string' && Number.isFinite(Date.parse(input.eventTime)) && Math.abs(Date.now() - Date.parse(input.eventTime)) < 86400000, '事件时间无效');

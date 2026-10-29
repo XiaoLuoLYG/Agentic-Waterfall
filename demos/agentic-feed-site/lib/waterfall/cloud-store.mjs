@@ -6,7 +6,16 @@ const tokenHash = token => typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/.te
 const publicUser = row => ({id:row.id,username:row.username,displayName:row.display_name || row.username,type:row.type,settings:JSON.parse(row.settings),created_at:row.created_at});
 export class CloudStore {
   constructor(db) { this.db=db;this.rows=[];this.userId=null; }
-  async load(userId) { this.userId=userId;this.rows=(await this.db.prepare('SELECT sequence,payload FROM events WHERE user_id = ? ORDER BY sequence').bind(userId).all()).results.map(row=>({...JSON.parse(row.payload),sequence:row.sequence})); }
+  async load(userId,{compact=false}={}) {
+    this.userId=userId;
+    const query=compact?`SELECT e.sequence,CASE WHEN e.kind='run' THEN json_remove(e.payload,'$.result.trace','$.result.input_snapshot.behavior','$.result.input_snapshot.candidate_pool','$.result.input_snapshot.state','$.result.input_snapshot.available_sources','$.result.input_snapshot.recent_commands',CASE WHEN e.sequence=(SELECT MAX(last.sequence) FROM events last WHERE last.user_id=e.user_id AND last.session_id=e.session_id AND last.kind='run') THEN '$.result.__retained' ELSE '$.result.content_snapshot.items' END) WHEN e.kind='input' THEN json_remove(e.payload,'$.input_snapshot.behavior','$.input_snapshot.candidate_pool','$.input_snapshot.state','$.input_snapshot.available_sources','$.input_snapshot.recent_commands') WHEN e.kind='failure' THEN json_remove(e.payload,'$.partial_trace','$.completed_policy_results') ELSE e.payload END AS payload FROM events e WHERE e.user_id=? AND e.kind<>'decision_trace' ORDER BY e.sequence`:'SELECT sequence,payload FROM events WHERE user_id = ? ORDER BY sequence';
+    this.rows=(await this.db.prepare(query).bind(userId).all()).results.map(row=>({...JSON.parse(row.payload),sequence:row.sequence}));
+  }
+  async loadEvent(userId,{sessionId,referenceId,exposureId}) {
+    this.userId=userId;
+    const query="SELECT sequence,CASE WHEN kind='run' THEN json_remove(payload,'$.result.trace','$.result.content_snapshot','$.result.input_snapshot') ELSE payload END AS payload FROM events WHERE user_id=? AND session_id=? AND (kind='session' OR (id=? AND kind IN ('run','comparison')) OR (kind='exposure' AND json_extract(payload,'$.exposure_id')=?)) ORDER BY sequence";
+    this.rows=(await this.db.prepare(query).bind(userId,typeof sessionId==='string'?sessionId:'',typeof referenceId==='string'?referenceId:'',typeof exposureId==='string'?exposureId:'').all()).results.map(row=>({...JSON.parse(row.payload),sequence:row.sequence}));
+  }
   async add(kind,data={}) {
     const row={...data,id:randomUUID(),kind,available_at:new Date().toISOString(),schema_version:VERSION};
     const inserted=await this.db.prepare('INSERT INTO events (id,user_id,session_id,kind,comparison_id,payload) VALUES (?,?,?,?,?,?) RETURNING sequence').bind(row.id,this.userId,row.session_id,kind,row.comparison_id || null,JSON.stringify(row)).first();
