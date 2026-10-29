@@ -10,15 +10,15 @@ def history_query(events):
     return ' '.join(t for t in texts[-20:] if isinstance(t,str) and t.strip())
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--input',required=True);p.add_argument('--index',required=True);p.add_argument('--output',required=True);p.add_argument('--limit',type=int);p.add_argument('--execute',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--input',required=True);p.add_argument('--index',required=True);p.add_argument('--output',required=True);p.add_argument('--limit',type=int);p.add_argument('--start',type=int,default=0);p.add_argument('--execute',action='store_true');a=p.parse_args()
     raw=Path(a.input).read_bytes();rows=[json.loads(x) for x in raw.splitlines() if x.strip()];total=len(rows)
-    if a.limit is not None:
-        if not 1<=a.limit<=total:raise ValueError('invalid limit')
-        rows=rows[:a.limit]
+    if a.start<0 or a.start>=total:raise ValueError('invalid start')
+    if a.limit is not None and (a.limit<1 or a.start+a.limit>total):raise ValueError('invalid limit')
+    rows=rows[a.start:a.start+a.limit] if a.limit is not None else rows[a.start:]
     if not rows or len({r['observation']['user_id'] for r in rows})!=len(rows):raise ValueError('invalid users')
     data=ROOT/'experiments/agentic-waterfall/kuairec/data/processed';masks=np.load(data/'eligibility.npz',allow_pickle=False);user_index={str(v):i for i,v in enumerate(masks['users'])};index=Path(a.index).resolve();out=Path(a.output);hot=HERE/'data/kuairec-train-hot-order.json'
     def sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-    manifest={'method':'fixed-bm25-bge-reranker','input_sha256':hashlib.sha256(raw).hexdigest(),'index_sha256':{n:sha(index/n) for n in ('index.json','vectors.npy')},'eligibility_sha256':sha(data/'eligibility.npz'),'hot_order_sha256':sha(hot),'user_ids':[r['observation']['user_id'] for r in rows],'full_split_size':total,'diagnostic_limit':a.limit,'query_rule':'last 20 public long-view texts; empty uses train-only popularity','labels_read':False,'training':False}
+    manifest={'method':'fixed-bm25-bge-reranker','input_sha256':hashlib.sha256(raw).hexdigest(),'index_sha256':{n:sha(index/n) for n in ('index.json','vectors.npy')},'eligibility_sha256':sha(data/'eligibility.npz'),'hot_order_sha256':sha(hot),'user_ids':[r['observation']['user_id'] for r in rows],'full_split_size':total,'diagnostic_start':a.start,'diagnostic_limit':a.limit,'query_rule':'last 20 public long-view texts; empty uses train-only popularity','labels_read':False,'training':False}
     if any(str(r['observation']['user_id']) not in user_index for r in rows):raise ValueError('unknown user')
     out.mkdir(parents=True,exist_ok=False);(out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     if not a.execute:print(json.dumps({'status':'prepared_no_model_calls','users':len(rows)}));return

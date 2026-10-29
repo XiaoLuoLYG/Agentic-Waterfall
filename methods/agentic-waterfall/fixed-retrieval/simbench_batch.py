@@ -17,7 +17,7 @@ def query_from_evidence(evidence):
     return ' '.join(parts)
 def digest(raw):return hashlib.sha256(raw).hexdigest()
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--cases',required=True);p.add_argument('--snapshot',required=True);p.add_argument('--catalog',required=True);p.add_argument('--index',required=True);p.add_argument('--output',required=True);p.add_argument('--limit',type=int);p.add_argument('--execute',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--cases',required=True);p.add_argument('--snapshot',required=True);p.add_argument('--catalog',required=True);p.add_argument('--index',required=True);p.add_argument('--output',required=True);p.add_argument('--limit',type=int);p.add_argument('--start',type=int,default=0);p.add_argument('--execute',action='store_true');a=p.parse_args()
     snap=Path(a.snapshot);raw=(snap/'catalog.jsonl').read_bytes();meta=json.loads((snap/'manifest.json').read_text());snapsha=digest(raw)
     if snapsha!=meta['catalog_sha256']:raise ValueError('snapshot changed')
     docs=[json.loads(x) for x in raw.splitlines() if x.strip()];catalog_raw=Path(a.catalog).read_bytes();index=Path(a.index);idx=json.loads((index/'index.json').read_text())
@@ -25,9 +25,9 @@ def main():
     expected=sorted([{'id':x['id'],'text':x['title']+'\n'+x['text']} for x in docs],key=lambda x:x['id'])
     if json.loads(catalog_raw)!=expected:raise ValueError('catalog does not match snapshot')
     folders=sorted(Path(a.cases).glob('group_*__user_*/event_*/input'));total=len(folders)
-    if a.limit is not None:
-        if not 1<=a.limit<=total:raise ValueError('invalid limit')
-        folders=folders[:a.limit]
+    if a.start<0 or a.start>=total:raise ValueError('invalid start')
+    if a.limit is not None and (a.limit<1 or a.start+a.limit>total):raise ValueError('invalid limit')
+    folders=folders[a.start:a.start+a.limit] if a.limit is not None else folders[a.start:]
     if not folders:raise ValueError('no cases')
     records=[]
     for folder in folders:
@@ -35,7 +35,7 @@ def main():
         if not active:raise ValueError('no shared source')
         records.append({'case_id':case['case_id'],'user_id':case['user_id'],'event':case['event'],'input':str(folder.resolve()),'active_sources':active,'input_hashes':{n:digest((folder/n).read_bytes()) for n in ('manifest.json','allowed_sources.json','evidence.visible.jsonl')}})
     sources=[Path(__file__),HERE/'retrieval.py',HERE.parent/'simbench/catalog.py',HERE.parent/'simbench/case_input.py',HERE.parent/'simbench/runtime_input.py']
-    out=Path(a.output);out.mkdir(parents=True,exist_ok=False);manifest={'source_sha256':{str(x):digest(x.read_bytes()) for x in sources},'method':'fixed-bm25-bge-reranker','snapshot_sha256':snapsha,'catalog_sha256':digest(catalog_raw),'index_sha256':{n:digest((index/n).read_bytes()) for n in ('index.json','vectors.npy')},'cases':records,'full_case_count':total,'diagnostic_limit':a.limit,'query_rule':'deduplicated titles and queries from visible evidence','labels_read':False,'training':False};(out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    out=Path(a.output);out.mkdir(parents=True,exist_ok=False);manifest={'source_sha256':{str(x):digest(x.read_bytes()) for x in sources},'method':'fixed-bm25-bge-reranker','snapshot_sha256':snapsha,'catalog_sha256':digest(catalog_raw),'index_sha256':{n:digest((index/n).read_bytes()) for n in ('index.json','vectors.npy')},'cases':records,'full_case_count':total,'diagnostic_start':a.start,'diagnostic_limit':a.limit,'query_rule':'deduplicated titles and queries from visible evidence','labels_read':False,'training':False};(out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     if not a.execute:print(json.dumps({'status':'prepared_no_model_calls','cases':len(records)}));return
     for entry in records:
         folder=Path(entry['input'])
