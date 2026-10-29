@@ -7,11 +7,12 @@ import {runEpisode} from '../../../../demos/agentic-feed/waterfall-core.mjs';
 import {callModel} from '../../shared/model-client.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const {values}=parseArgs({options:{tag:{type:'string',default:'dev4'},users:{type:'string'}}});
+const {values}=parseArgs({options:{tag:{type:'string',default:'dev4'},users:{type:'string'},input:{type:'string'},output:{type:'string'},predictions:{type:'string'}}});
 const selected=values.users?.split(',');
-const inputs=readFileSync(resolve(root,'data/processed/waterfall-dev4.jsonl'),'utf8').trim().split('\n').map(JSON.parse).filter(x=>!selected||selected.includes(x.observation.user_id));
-const output=resolve(root,`results/waterfall-${values.tag}.jsonl`);
-const predictions=resolve(root,`results/waterfall-${values.tag}-predictions.jsonl`);
+const inputs=readFileSync(values.input||resolve(root,'data/processed/waterfall-dev4.jsonl'),'utf8').trim().split('\n').filter(Boolean).map(JSON.parse).filter(x=>!selected||selected.includes(x.observation.user_id));
+if(!inputs.length)throw new Error('no_selected_inputs');
+const output=values.output||resolve(root,`results/waterfall-${values.tag}.jsonl`);
+const predictions=values.predictions||resolve(root,`results/waterfall-${values.tag}-predictions.jsonl`);
 writeFileSync(output,'',{flag:'wx'});writeFileSync(predictions,'',{flag:'wx'});
 function acquireRequest(request){
   return new Promise((resolvePromise,reject)=>{

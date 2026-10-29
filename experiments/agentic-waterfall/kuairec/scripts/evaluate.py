@@ -22,13 +22,19 @@ def score_user(ranked, acquired, eligible, positives, acquisition_required=True)
     idcg=sum(1/math.log2(i+2) for i in range(min(10,len(positives))))
     return {'recall_at_10':hits/len(positives) if positives else None,'ndcg_at_10':dcg/idcg if idcg else None,'precision_at_10':hits/10,'acquired_recall_at_100':len(positives.intersection(acquired))/len(positives) if positives and acquisition_required else None,'hits_at_10':hits,'positive_count_full_eligible_catalog':len(positives),'eligible_items':len(eligible),'acquired_items':len(acquired),'recommended_items':len(ranked)}
 
-def evaluate_file(predictions_path,output_path):
+def evaluate_file(predictions_path,output_path,input_path=None):
     masks=np.load(ROOT/'data/processed/eligibility.npz')
     labels=np.load(ROOT/'data/processed/evaluator_only/labels.npz')
     assert np.array_equal(masks['users'],labels['users']) and np.array_equal(masks['items'],labels['items'])
     index={int(u):i for i,u in enumerate(masks['users'])}
     rows=[json.loads(s) for s in pathlib.Path(predictions_path).read_text().splitlines() if s.strip()]
     assert len({r['user_id'] for r in rows})==len(rows),'duplicate user output'
+    if input_path:
+        assigned=[int(json.loads(s)['observation']['user_id']) for s in pathlib.Path(input_path).read_text().splitlines() if s.strip()]
+        assert len(set(assigned))==len(assigned),'duplicate assigned user'
+        by_user={int(r['user_id']):r for r in rows};assert set(by_user)<=set(assigned),'prediction outside assigned users'
+        method=rows[0]['method'] if rows else 'waterfall'
+        rows=[by_user.get(u,{'user_id':u,'method':method,'status':'failed','error':'missing_prediction','acquisition_required':True,'ordered_item_ids':[],'acquired_item_ids':[]}) for u in assigned]
     scored=[]
     for row in rows:
         i=index[int(row['user_id'])]
@@ -41,5 +47,5 @@ def evaluate_file(predictions_path,output_path):
     return summary
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--predictions',required=True);p.add_argument('--output',required=True)
-    args=p.parse_args();evaluate_file(args.predictions,args.output)
+    p=argparse.ArgumentParser();p.add_argument('--input');p.add_argument('--predictions',required=True);p.add_argument('--output',required=True)
+    args=p.parse_args();evaluate_file(args.predictions,args.output,args.input)

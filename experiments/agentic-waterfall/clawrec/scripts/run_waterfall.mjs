@@ -1,5 +1,5 @@
 import {spawnSync} from 'node:child_process';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {parseArgs} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {resolve,dirname} from 'node:path';
@@ -22,12 +22,22 @@ export function makeAcquire(input,sourceCall){
  };
 }
 
+export function priorStateForEvent(previous,workspace,event){
+ if(event===1&&!previous)return null;
+ if(!previous)throw Error('prior_state_required');
+ const expected=`${workspace}__event_${String(event-1).padStart(2,'0')}`,state=previous.result?.state_after;
+ if(previous.input?.observation?.user_id!==workspace||previous.input?.observation?.decision_id!==expected||!Number.isInteger(state?.version)||!Array.isArray(state.records))throw Error('prior_state_mismatch');
+ return structuredClone(state);
+}
+
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const {values}=parseArgs({options:{workspace:{type:'string'},event:{type:'string'},output:{type:'string'}}});
+ const {values}=parseArgs({options:{workspace:{type:'string'},event:{type:'string'},output:{type:'string'},'state-in':{type:'string'}}});
  if(!values.workspace||!values.event||!values.output)throw Error('--workspace --event --output required');
+ const event=Number(values.event);if(!Number.isInteger(event)||event<1||event>5)throw Error('invalid_event');
+ const previous=values['state-in']?JSON.parse(readFileSync(values['state-in'],'utf8')):null,state=priorStateForEvent(previous,values.workspace,event);
  const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
- const script="import json,pathlib,sys;sys.path.insert(0,sys.argv[1]);from simbench import read_public_event,observation;root=next(pathlib.Path(sys.argv[2]).glob('ClawRec-*/clawrec-simbench/cases'));print(json.dumps(observation(read_public_event(root,sys.argv[3],int(sys.argv[4])))))";
- const proc=spawnSync('python3',['-c',script,resolve(root,'adapters'),resolve(root,'upstream'),values.workspace,values.event],{encoding:'utf8'});
+ const script="import json,pathlib,sys;sys.path.insert(0,sys.argv[1]);from simbench import read_public_event,observation;root=next(pathlib.Path(sys.argv[2]).glob('ClawRec-*/clawrec-simbench/cases'));state=json.load(sys.stdin);print(json.dumps(observation(read_public_event(root,sys.argv[3],int(sys.argv[4])),state)))";
+ const proc=spawnSync('python3',['-c',script,resolve(root,'adapters'),resolve(root,'upstream'),values.workspace,values.event],{input:JSON.stringify(state),encoding:'utf8'});
  if(proc.status!==0)throw Error(`public_input_failed: ${proc.stderr}`);
  const config=loadConfig();if(!config)throw Error('model_config_missing');const sourceConfig=loadSourceConfig(config.sourceConfigPath);
  const sources=sourceCatalog(sourceConfig).filter(source=>['bilibili','zhihu'].includes(source.id)&&source.allowed!==false&&source.configured).map(({id,modes,modalities})=>({id,modes,modalities}));
