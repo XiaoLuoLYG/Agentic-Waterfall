@@ -11,6 +11,9 @@ class CompareTests(unittest.TestCase):
   inputs=[{'observation':{'decision_id':'x:1','user_id':'u','environment':{'candidate_pool':[{'id':'a'},{'id':'b'}]}}}]
   fixed=validate_predictions(inputs,{'baseline':[{'decision_id':'x:1','ordered_item_ids':['a','b']}]})
   self.assertEqual(rank_lines(inputs,fixed['baseline'],{'1':{'ids':['a','b'],'labels':[1,0]}})[2],[])
+ def test_refuses_operational_interruption_before_label_access(self):
+  inputs=[{'observation':{'decision_id':'d','user_id':'u','environment':{'candidate_pool':[{'id':'a'}]}}}]
+  with self.assertRaises(ValueError):validate_predictions(inputs,{'x':[{'decision_id':'d','status':'failed','error':'model_http_429'}]})
  def test_refuses_missing_or_duplicate_output(self):
   inputs=[{'observation':{'decision_id':'d','user_id':'u','environment':{'candidate_pool':[{'id':'a'}]}}}]
   with self.assertRaises(ValueError):validate_predictions(inputs,{'x':[]})

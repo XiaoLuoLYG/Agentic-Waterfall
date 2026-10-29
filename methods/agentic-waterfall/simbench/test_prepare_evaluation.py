@@ -8,6 +8,8 @@ class PrepareTest(unittest.TestCase):
   ranks,catalog=prepare([(data,result)],docs);self.assertEqual(ranks,{'a':['one']});self.assertEqual(catalog['one']['source_id'],'x')
   failed={**result,'status':'failed','ordered_item_ids':[],'acquired_ids':[]};self.assertEqual(prepare([(data,failed)],docs)[0],{'a':[]})
   with self.assertRaises(ValueError):prepare([(data,{**failed,'error':'global_request_budget_exhausted'})],docs)
+  with self.assertRaises(ValueError):prepare([(data,{**failed,'error':'local_inference_failed'})],docs)
+  with self.assertRaises(ValueError):prepare([(data,{**failed,'error':'model_calls_not_enabled'})],docs)
   with self.assertRaises(ValueError):prepare([(data,{**result,'ordered_item_ids':['bad']})],docs)
   with self.assertRaises(ValueError):prepare([(data,{**result,'case_id':'other'})],docs)
 if __name__=='__main__':unittest.main()

@@ -1,7 +1,9 @@
 """Freeze public SimBench cases and optionally run each user's sequential events."""
-import argparse,hashlib,json,subprocess
+import argparse,hashlib,json,subprocess,sys
 from pathlib import Path
 from case_input import load_case
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from error_policy import operational_failure
 
 def sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 def plan(cases,snapshot):
@@ -32,11 +34,11 @@ def main():
         if any(sha(Path(row['input'])/n)!=h for n,h in row['input_hashes'].items()) or sha(snapshot/'catalog.jsonl')!=m['snapshot_sha256'] or any(sha(Path(__file__).parent/n)!=h for n,h in m['source_hashes'].items()):raise ValueError('input or source changed after freeze')
         cmd=['node',str(Path(__file__).with_name('run_round.mjs')),a.method,row['input'],str(snapshot),str(dest)]
         if row['event']>1:cmd.append(str(state[user]))
-        run=subprocess.run(cmd,capture_output=True,text=True);status=json.loads((dest/'result.json').read_text())['status'] if (dest/'result.json').exists() else 'failed'
+        run=subprocess.run(cmd,capture_output=True,text=True);result=json.loads((dest/'result.json').read_text()) if (dest/'result.json').exists() else {'status':'failed','error':'runner_before_result'};status=result['status']
         results.append({'case_id':row['case_id'],'status':status,'exit_code':run.returncode})
         (out/'progress.json').write_text(json.dumps(results,indent=2)+'\n')
         if run.returncode or status not in ('submitted','no_delivery'):failed.add(user)
         else:state[user]=dest/'next-state.json'
-        if 'budget_exhausted' in run.stderr:break
+        if operational_failure(result):break
     print(json.dumps({'attempted':len(results),'failures':sum(x['status'] not in ('submitted','no_delivery') for x in results)}))
 if __name__=='__main__':main()

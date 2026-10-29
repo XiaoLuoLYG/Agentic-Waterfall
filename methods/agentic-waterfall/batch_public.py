@@ -1,6 +1,7 @@
 """Prepare or execute a frozen public fixed-candidate batch without training."""
 import argparse,hashlib,json,math,subprocess,sys
 from pathlib import Path
+from error_policy import operational_failure
 ROOT=Path(__file__).resolve().parent
 
 def make_manifest(samples,method,dataset,input_hash):
@@ -35,7 +36,7 @@ def main():
         (folder/'process.log').write_text(proc.stdout+proc.stderr);attempted+=1
         result=json.loads((run/'result.json').read_text()) if (run/'result.json').exists() else {'status':'failed','error':'runner_before_result'}
         submitted+=result.get('status')=='submitted'
-        if any(code in result.get('error','') for code in ('model_calls_not_enabled','experiment_request_budget_exhausted','global_request_budget_exhausted','model_slots_busy')):
+        if operational_failure(result):
             break
     status={'attempted':attempted,'submitted':submitted,'planned':a.count,'all_submitted':submitted==a.count}
     (out/'batch-status.json').write_text(json.dumps(status,indent=2)+'\n');print(json.dumps(status))

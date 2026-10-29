@@ -1,6 +1,8 @@
 """Freeze and optionally run RecAgent's full short-window public task set."""
 import argparse,hashlib,json,re,subprocess,sys
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from error_policy import operational_failure
 from bench_paths import resolve_paths
 
 def freeze_tasks(path):
@@ -48,7 +50,7 @@ def main():
         proc=subprocess.run(cmd,capture_output=True,text=True);done+=1
         if run.is_dir():(run/'batch-process.log').write_text(proc.stdout+proc.stderr)
         r=json.loads((run/'result.json').read_text()) if (run/'result.json').exists() else {'status':'failed','error':'runner_before_result'};submitted+=r.get('status')=='submitted'
-        if any(x in r.get('error','') for x in ('model_calls_not_enabled','experiment_request_budget_exhausted','global_request_budget_exhausted','model_slots_busy')):break
+        if operational_failure(r):break
     status={'attempted':done,'submitted':submitted,'planned':len(tasks),'all_submitted':submitted==len(tasks)};(out/'batch-status.json').write_text(json.dumps(status,indent=2)+'\n');print(json.dumps(status))
     if not status['all_submitted']:raise SystemExit(1)
 if __name__=='__main__':main()

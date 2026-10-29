@@ -10,7 +10,7 @@ DIR=DATA/'caption-chunks-20261029';FINAL=DATA/'kuairand-video-captions-20261029.
 def part(n):
     start=TOTAL*n//COUNT;end=TOTAL*(n+1)//COUNT-1;p=DIR/f'{n:02d}.part';size=p.stat().st_size if p.exists() else 0;expected=end-start+1
     if size>expected:raise ValueError('oversized range')
-    for attempt in range(4):
+    for attempt in range(10):
         if size==expected:return n
         req=urllib.request.Request(URL,headers={'Range':f'bytes={start+size}-{end}','Accept-Encoding':'identity'})
         try:
@@ -25,8 +25,8 @@ def part(n):
                         f.write(block)
             if size==expected:return n
         except Exception:
-            if attempt==3:raise
-        time.sleep(2*(attempt+1));size=p.stat().st_size if p.exists() else 0
+            if attempt==9:raise
+        time.sleep(min(30,2*(attempt+1)));size=p.stat().st_size if p.exists() else 0
     raise RuntimeError('incomplete range')
 
 def main():

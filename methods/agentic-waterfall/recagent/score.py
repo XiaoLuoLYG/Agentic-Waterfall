@@ -6,10 +6,13 @@ sys.path.insert(0,str(ROOT/'experiments/agentic-waterfall/agentrecbench/scripts'
 sys.path.insert(0,str(ROOT/'methods/agentic-waterfall'))
 from official_components import load_components
 from resource_report import collect_runs
+from error_policy import operational_failure
 
 def safe_predictions(tasks,rows):
     lookup={r['task_id']:r for r in rows}
     if len(lookup)!=len(rows):raise ValueError('duplicate results')
+    if set(lookup)!={x['task_id'] for x in tasks}:raise ValueError('missing or unexpected results')
+    if any(operational_failure(row) for row in rows):raise ValueError('operationally incomplete results')
     predictions=[];invalid=[]
     for task in tasks:
         row=lookup.get(task['task_id'],{});rank=row.get('ordered_item_ids',[]);ids=task['candidates']

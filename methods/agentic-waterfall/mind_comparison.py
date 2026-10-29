@@ -2,6 +2,7 @@
 import argparse,collections,hashlib,importlib.util,io,json
 from pathlib import Path
 from cost_reporting import summarize_usage
+from error_policy import operational_failure
 
 ROOT=Path(__file__).resolve().parents[2]
 MIND=ROOT/'experiments/agentic-waterfall/mind'
@@ -17,6 +18,7 @@ def validate_predictions(inputs,methods):
     for name,rows in methods.items():
         index={x['decision_id']:x for x in rows}
         if len(index)!=len(rows) or set(index)!=set(ids): raise ValueError(f'{name}: incomplete or duplicate decisions')
+        if any(operational_failure(row) for row in rows):raise ValueError(f'{name}: operationally incomplete decisions')
         fixed[name]=index
     return fixed
 

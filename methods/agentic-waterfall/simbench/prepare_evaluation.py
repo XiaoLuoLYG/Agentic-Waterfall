@@ -1,7 +1,9 @@
 """Freeze actual output for the existing shared-pool evaluator; no hidden labels are read."""
-import argparse,hashlib,json
+import argparse,hashlib,json,sys
 from pathlib import Path
 from catalog import published_ms
+sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
+from error_policy import operational_failure
 
 def prepare(runs,docs):
     if not runs:raise ValueError('no runs')
@@ -13,7 +15,7 @@ def prepare(runs,docs):
         method=result['method'];
         if data.get('method')!=method:raise ValueError('method mismatch')
         ids=result.get('ordered_item_ids',[]);acquired=result.get('acquired_ids',[])
-        if result.get('status')=='failed' and any(x in str(result.get('error','')) for x in ('budget_exhausted','model_calls_disabled','snapshot search failed')):raise ValueError('operationally incomplete run')
+        if result.get('status')=='failed' and operational_failure(result):raise ValueError('operationally incomplete run')
         if method in rankings or result.get('status') not in ('submitted','no_delivery','failed') or not isinstance(ids,list) or len(ids)>20 or len(ids)!=len(set(ids)) or not set(ids)<=set(acquired):raise ValueError('invalid ranking')
         if result['status']!='submitted' and ids:raise ValueError('failed run cannot submit items')
         rankings[method]=ids

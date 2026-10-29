@@ -1,6 +1,7 @@
 """Freeze and run the existing KuaiRec ClawRec or generic-agent adaptation."""
 import argparse,hashlib,json,subprocess
 from pathlib import Path
+from error_policy import operational_failure
 ROOT=Path(__file__).resolve().parent
 WORKSPACE=ROOT.parents[1]
 
@@ -45,9 +46,9 @@ def main():
         if run_dir.exists():
             (run_dir/'result.json').write_text(json.dumps({'status':'failed','error':'interrupted before result was committed'})+'\n');continue
         run=subprocess.run(['node',str(ROOT/a.method/'kuairec_run.mjs'),row['run_id'],str(inp),str(row['line'])],capture_output=True,text=True)
-        run_dir=ROOT/a.method/'runs'/row['run_id'];result=json.loads((run_dir/'result.json').read_text()) if (run_dir/'result.json').exists() else {'status':'failed'}
+        run_dir=ROOT/a.method/'runs'/row['run_id'];result=json.loads((run_dir/'result.json').read_text()) if (run_dir/'result.json').exists() else {'status':'failed','error':'runner_before_result'}
         attempts.append({'user_id':row['user_id'],'status':result['status'],'exit_code':run.returncode});(out/'progress.json').write_text(json.dumps(attempts,indent=2)+'\n')
-        if 'budget_exhausted' in run.stderr or 'budget_exhausted' in result.get('error',''):break
+        if operational_failure(result):break
     print(json.dumps({'attempted':len(attempts),'total':len(records)}))
 
 if __name__=='__main__':main()

@@ -18,7 +18,7 @@ def export_rows(dataset,pairs):
         if len(pool)!=len(set(pool)) or len(ranking)!=len(set(ranking)) or not set(ranking)<=set(pool): raise ValueError('invalid ranking')
         if dataset in {'mind','kuairand'}:
             if submitted and set(ranking)!=set(pool): raise ValueError('fixed-candidate evaluation requires full permutation')
-            rows.append({'decision_id':context,'status':'submitted' if submitted else 'failed','ordered_item_ids':ranking,'model_request_count':result.get('model_request_count'),'model_calls':result.get('model_calls',[])})
+            rows.append({'decision_id':context,'status':'submitted' if submitted else 'failed','error':result.get('error') if not submitted else None,'ordered_item_ids':ranking,'model_request_count':result.get('model_request_count'),'model_calls':result.get('model_calls',[])})
         else:
             if user in users: raise ValueError('KuaiRec requires unique users')
             users.add(user)

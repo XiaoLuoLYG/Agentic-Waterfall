@@ -2,6 +2,7 @@
 import argparse,hashlib,json
 from pathlib import Path
 from kuairec_batch import ROOT,prediction
+from error_policy import operational_failure
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--batch',required=True);p.add_argument('--output',required=True);a=p.parse_args()
@@ -10,7 +11,7 @@ def main():
         run=ROOT/m['method']/'runs'/entry['run_id'];rp=run/'result.json';sp=run/'search-results.json'
         if not rp.exists():raise ValueError('batch incomplete; missing result for '+entry['run_id'])
         result=json.loads(rp.read_bytes())
-        if 'budget_exhausted' in result.get('error','') or result.get('error')=='interrupted before result was committed':raise ValueError('operationally incomplete result: '+entry['run_id'])
+        if operational_failure(result):raise ValueError('operationally incomplete result: '+entry['run_id'])
         searches=json.loads(sp.read_bytes()) if sp.exists() else []
         if result.get('status')=='submitted':
             state=run/('next-state.json' if m['method']=='clawrec' else 'state.json')

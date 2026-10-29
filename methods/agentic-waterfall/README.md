@@ -19,13 +19,13 @@
 | LLM-SRec | KuaiRand | 有作者源码；训练与可用权重未完成。 |
 | LightGCN | KuaiRec | 有作者源码和数据适配；旧短训仅覆盖小子集，未确认有完整协议的匹配权重。 |
 
-Baseline666 和模拟用户增益用的小排序器仍需分别核查或准备；没有把某个占位接口称作已部署。真人内容评分需真实用户与内容环境；盲选保持暂停。五组 Waterfall 消融沿用现有研究设计，只有合成检查，没有效果结论。
+Baseline666 因未找到可核实作者代码，按用户决定移出当前实验；模拟用户增益用的小排序器仍需另行准备；没有把某个占位接口称作已部署。真人内容评分需真实用户与内容环境；盲选保持暂停。五组 Waterfall 消融沿用现有研究设计，只有合成检查，没有效果结论。
 
 ## 既定数据与方法对应关系
 
 - ClawRec-SimBench：Waterfall、ClawRec、通用工具 Agent。
 - KuaiRec：Waterfall、ClawRec、LightGCN、固定检索；RecBot/MARS 如适配则只做固定候选重排。
-- AgentRecBench：Waterfall、作者 RecAgent；Baseline666 作者源码仍待核查。
+- AgentRecBench：Waterfall、作者 RecAgent；Baseline666 已按用户决定移出当前实验。
 - MIND-small：Waterfall、NRMS、TF-IDF；其他 Agent 作为候选排序适配，正式扩跑前统一可见信息和评测设置，并分别报告实际调用与成本。
 - KuaiRand-1K：Waterfall、SASRec、LLM-SRec；其他 Agent 作为候选排序适配，正式扩跑前统一可见信息和评测设置，并分别报告实际调用与成本。
 - 自采内容评分：先 Waterfall 与 ClawRec，再按既定方案接其他对照；各方法有各自状态，不共享 Waterfall 总结的画像。
@@ -88,4 +88,4 @@ python3 methods/agentic-waterfall/batch_public.py \
 
 2026-10-29 补充：三领域 AgentRecBench、SimBench 受限共同快照、Yelp 缺失资料处理和重新验证后的最新状态，以 [实验就绪报告](实验就绪报告-20261029.md) 为准；上方旧状态保留作历史记录。
 
-版本库中只含代码和文档，不含本地数据、日志、模型权重与凭据；安装及固定上游来源见 [版本库使用说明](版本库使用说明.md)，实验边界见 [实验限制与解读](实验限制与解读-20261029.md)。
+版本库仅保存代码和文档，不包含本地数据、日志、权重或凭据；安装与固定上游来源见 [版本库使用说明](版本库使用说明.md)，实验边界见 [实验限制与解读](实验限制与解读-20261029.md)。

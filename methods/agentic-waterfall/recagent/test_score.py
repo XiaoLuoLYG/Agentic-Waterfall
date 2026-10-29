@@ -9,6 +9,10 @@ class ScoreTests(unittest.TestCase):
   p,b=safe_predictions([{'task_id':0,'candidates':['a','b']}],[{'task_id':0,'status':'submitted','ordered_item_ids':['a','a']}]);self.assertEqual(p,[[]]);self.assertEqual(b,[0])
  def test_missing_metadata_is_reported_not_silently_filled(self):
   r=missing_summary([{'missing_item_ids':['a','b'],'missing_user_ids':['u']},{'missing_item_ids':[],'missing_user_ids':[]}]);self.assertEqual(r['tasks_with_missing_items'],1);self.assertEqual(r['missing_item_occurrences'],2);self.assertEqual(r['tasks_with_missing_user'],1)
+ def test_unrun_or_operational_failure_must_not_be_scored(self):
+  tasks=[{'task_id':0,'candidates':['a']} ]
+  with self.assertRaises(ValueError):safe_predictions(tasks,[])
+  with self.assertRaises(ValueError):safe_predictions(tasks,[{'task_id':0,'status':'failed','error':'global_request_budget_exhausted'}])
  def test_duplicate_results_rejected(self):
   with self.assertRaises(ValueError):safe_predictions([{'task_id':0,'candidates':['a']}],[{'task_id':0},{'task_id':0}])
 if __name__=='__main__':unittest.main()

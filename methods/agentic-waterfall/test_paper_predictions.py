@@ -6,6 +6,9 @@ class ExportTests(unittest.TestCase):
   result={'status':'submitted','context_id':'d','method':'mars','ordered_item_ids':['b','a']}
   m=export_rows('mind',[(source,result)])[0];self.assertEqual(m['decision_id'],'d');self.assertEqual(m['ordered_item_ids'],['b','a'])
   k=export_rows('kuairec',[(source,result)])[0];self.assertEqual(k['user_id'],'12');self.assertEqual(k['acquired_item_ids'],['a','b'])
+ def test_error_cause_is_preserved(self):
+  source={'context_id':'d','user_id':'u','candidates':[{'id':'a'}]};result={'status':'failed','context_id':'d','method':'mars','error':'model_http_429'}
+  self.assertEqual(export_rows('mind',[(source,result)])[0]['error'],'model_http_429')
  def test_failed_mind_is_preserved_for_evaluator_fallback(self):
   source={'context_id':'d','user_id':'u','candidates':[{'id':'a'}]};result={'status':'failed','context_id':'d','method':'mars'}
   self.assertEqual(export_rows('mind',[(source,result)])[0]['status'],'failed')
