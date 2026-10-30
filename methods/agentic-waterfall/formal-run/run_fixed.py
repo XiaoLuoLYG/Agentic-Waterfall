@@ -18,11 +18,14 @@ def next_attempt(folder):
     nums=[int(p.name.split('-')[1]) for p in folder.glob('attempt-[0-9][0-9][0-9]') if p.name.split('-')[1].isdigit()]
     return max(nums,default=0)+1
 
+def selected_jobs(plan,dataset):
+    return [j for j in plan['jobs'] if not dataset or j['dataset']==dataset]
+
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--workers',type=int,default=2);p.add_argument('--max-infrastructure-attempts',type=int,default=3);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--workers',type=int,default=2);p.add_argument('--max-infrastructure-attempts',type=int,default=3);p.add_argument('--dataset',choices=['mind','kuairand']);a=p.parse_args()
     if not 1<=a.workers<=2 or not 1<=a.max_infrastructure_attempts<=10:raise ValueError('invalid operational limits')
-    plan=json.loads((ROOT/'experiment-plan.json').read_text());base=ROOT/'formal/fixed-candidates';jobs=[];maxcount=max(j['tasks'] for j in plan['jobs'])
-    for j in plan['jobs']:
+    plan=json.loads((ROOT/'experiment-plan.json').read_text());base=ROOT/'formal/fixed-candidates';jobs=[];selected=selected_jobs(plan,a.dataset);maxcount=max(j['tasks'] for j in selected)
+    for j in selected:
         folder=base/j['dataset']/j['method'];manifest=json.loads((folder/'manifest.json').read_text());input_path=Path(j['input'])
         if sha(input_path.read_bytes())!=j['input_sha256'] or manifest['input_sha256']!=j['input_sha256']:raise ValueError('frozen input changed')
         expected=[]
@@ -44,14 +47,15 @@ def main():
         final=folder/'run'
         if final.is_symlink() and (final/'result.json').exists():emit({'dataset':j['dataset'],'method':j['method'],'task_id':expected['task_id'],'outcome':'skipped_existing'});return
         if final.exists() or final.is_symlink():raise FileExistsError('unexpected run path')
-        method_path=METHODS/j['method']/('fixed_candidates.mjs' if j['method'] in ('clawrec','generic-agent') else 'adapter.py' if j['method']=='i2agent' else j['method']+'.mjs')
-        runner=METHODS/('i2agent/batch_run.py' if j['method']=='i2agent' else 'paper-reproductions-run.mjs');manifest=json.loads((Path(j['folder'])/'manifest.json').read_text())
+        method_dir='i2agent-mind' if j['method']=='i2agent' and j['dataset']=='mind' else j['method']
+        method_path=METHODS/method_dir/('fixed_candidates.mjs' if j['method'] in ('clawrec','generic-agent') else 'adapter.py' if j['method']=='i2agent' else j['method']+'.mjs')
+        runner=METHODS/(method_dir+'/batch_run.py' if j['method']=='i2agent' else 'paper-reproductions-run.mjs');manifest=json.loads((Path(j['folder'])/'manifest.json').read_text())
         if sha(method_path.read_bytes())!=manifest['method_source_sha256'] or sha(runner.read_bytes())!=manifest['runner_sha256']:raise ValueError('method source changed')
         infra_failures=0;output_failures=0
         while True:
             number=next_attempt(folder);dest=folder/f'attempt-{number:03d}'
-            command=[sys.executable,str(METHODS/'i2agent/batch_run.py'),'--input',str(source),'--line','0','--dataset',j['dataset'],'--output',str(dest)] if j['method']=='i2agent' else ['node',str(METHODS/'paper-reproductions-run.mjs'),j['method'],str(source),'0',str(dest),j['dataset']]
-            if j['method']=='i2agent' and j['dataset']=='kuairand':command.extend(['--rank-max-tokens','8192'])
+            command=[sys.executable,str(runner),'--input',str(source),'--line','0','--dataset',j['dataset'],'--output',str(dest)] if j['method']=='i2agent' else ['node',str(METHODS/'paper-reproductions-run.mjs'),j['method'],str(source),'0',str(dest),j['dataset']]
+            if j['method']=='i2agent':command.extend(['--rank-max-tokens','8192'])
             lock=locked() if j['method']=='recbot' else nullcontext()
             with lock:
                 run=subprocess.run(command,cwd=ROOT,capture_output=True,text=True)
