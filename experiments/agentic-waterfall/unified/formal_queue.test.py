@@ -83,13 +83,14 @@ class QueueChecks(unittest.TestCase):
                 'model_request_count':1,'duration_ms':1,'state_after':{'version':0,'records':[]},'trace':trace or []}
         return {'task':task,'input':{'observation':{'decision_id':task['id']}},'result':result}
 
-    def execute(self,run,outcomes,stop_in_wait=False,memory=None,env_check=None,predictions_only=False):
+    def execute(self,run,outcomes,stop_in_wait=False,memory=None,env_check=None,predictions_only=False,command_check=None):
         calls=[];sleeps=[];updates=[];handlers={};original_save=queue.save
         def save(path,value):
             if pathlib.Path(path).name=='progress.json':updates.append(value)
             original_save(path,value)
         def popen(command,**kwargs):
             if env_check:env_check(kwargs['env'])
+            if command_check:command_check(command)
             task=json.loads(pathlib.Path(command[2]).read_text());calls.append(task['id'])
             outcome=outcomes[len(calls)-1]
             if outcome!='no_result':
@@ -115,6 +116,13 @@ class QueueChecks(unittest.TestCase):
             run,tasks=self.fixture(directory);(run/'tasks.jsonl').write_text(json.dumps(tasks[0])+'\n')
             calls,_,_,progress=self.execute(run,[None],predictions_only=True)
             self.assertEqual(calls,['a']);self.assertEqual(progress['status'],'predictions_complete')
+
+    def test_task_entrypoint_resolves_shared_code_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,_=self.fixture(directory);(run/'code').rename(run/'shared-code');(run/'code').symlink_to(run/'shared-code',target_is_directory=True)
+            def check(command):
+                self.assertEqual(command[1],str((run/'shared-code/experiments/agentic-waterfall/unified/formal_task.mjs').resolve()))
+            self.execute(run,[None],command_check=check)
 
     def test_frozen_model_selection_overrides_inherited_model(self):
         with tempfile.TemporaryDirectory() as directory:

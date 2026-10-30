@@ -135,7 +135,7 @@ def main():
                     # Every removed canonical file already has a verified immutable attempt copy.
                     for path in (output,started,logfile):path.unlink()
                 save(started,{'task':task['id'],'attempt':attempt,'started_at':datetime.datetime.now(datetime.timezone.utc).isoformat()})
-                taskfile=run/'task-configs'/(task['id']+'.json');save(taskfile,task);cmd=['node',str(run/'code/experiments/agentic-waterfall/unified/formal_task.mjs'),str(taskfile),str(output)]
+                taskfile=run/'task-configs'/(task['id']+'.json');save(taskfile,task);cmd=['node',str((run/'code/experiments/agentic-waterfall/unified/formal_task.mjs').resolve()),str(taskfile),str(output)]
                 if previous:cmd.append(str(previous))
                 progress('running',current=task['id'],attempt=attempt)
                 with logfile.open('x') as log:
