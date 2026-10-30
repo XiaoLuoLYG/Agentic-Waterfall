@@ -49,15 +49,16 @@ class QueueChecks(unittest.TestCase):
         self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
 
     def test_budget_refusal_requires_the_agent_to_see_it_before_recommendation(self):
-        failed={'action_id':'over-limit','kind':'acquire','status':'failed','error':'tool_budget_exhausted'}
-        result={'status':'submitted','model_calls':[{'context':{'call_index':1},'input':{'environment':{'tool_results':[failed]}}}],
-                'trace':[{'call_index':0,'execution_results':[failed]}, {'call_index':1,'execution_results':[{'kind':'recommend','status':'success'}]}]}
-        self.assertIsNone(queue.failure_reason(result))
-        result['model_calls'][0]['input']['environment']['tool_results']=[]
-        self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
-        result['model_calls'][0]['input']['environment']['tool_results']=[failed]
-        result['trace'][1]['execution_results']=[]
-        self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
+        for error in ('tool_budget_exhausted','unique_acquisition_budget_exhausted'):
+            failed={'action_id':'over-limit','kind':'acquire','status':'failed','error':error}
+            result={'status':'submitted','model_calls':[{'context':{'call_index':1},'input':{'environment':{'tool_results':[failed]}}}],
+                    'trace':[{'call_index':0,'execution_results':[failed]}, {'call_index':1,'execution_results':[{'kind':'recommend','status':'success'}]}]}
+            self.assertIsNone(queue.failure_reason(result))
+            result['model_calls'][0]['input']['environment']['tool_results']=[]
+            self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
+            result['model_calls'][0]['input']['environment']['tool_results']=[failed]
+            result['trace'][1]['execution_results']=[]
+            self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
 
     def fixture(self,directory):
         run=pathlib.Path(directory)

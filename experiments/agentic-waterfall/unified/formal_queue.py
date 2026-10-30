@@ -42,13 +42,13 @@ def failure_reason(result):
                 seen=any(call.get('context',{}).get('call_index')==idx and any(r.get('action_id')==receipt.get('action_id') and r.get('error')=='state_evidence_missing' for r in call.get('input',{}).get('environment',{}).get('tool_results',[])) for call in result.get('model_calls',[]))
                 corrected=seen and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
                 if corrected:break
-        if receipt.get('kind')=='acquire' and receipt.get('error')=='tool_budget_exhausted':
+        if receipt.get('kind')=='acquire' and receipt.get('error') in {'tool_budget_exhausted','unique_acquisition_budget_exhausted'}:
             failed_step=next((step.get('call_index') for step in trace if receipt in step.get('execution_results',[])),None)
             for step in trace:
                 idx=step.get('call_index')
                 if type(failed_step) is not int or type(idx) is not int or idx<=failed_step:continue
                 if not any(r.get('kind')=='recommend' and r.get('status')=='success' for r in step.get('execution_results',[])):continue
-                corrected=any(call.get('context',{}).get('call_index')==idx and any(r.get('action_id')==receipt.get('action_id') and r.get('error')=='tool_budget_exhausted' for r in call.get('input',{}).get('environment',{}).get('tool_results',[])) for call in result.get('model_calls',[]))
+                corrected=any(call.get('context',{}).get('call_index')==idx and any(r.get('action_id')==receipt.get('action_id') and r.get('error')==receipt.get('error') for r in call.get('input',{}).get('environment',{}).get('tool_results',[])) for call in result.get('model_calls',[]))
                 if corrected:break
         if not corrected:return 'failed_tool_action; inspect before continuing'
     return None
