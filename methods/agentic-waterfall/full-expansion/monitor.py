@@ -411,7 +411,8 @@ def snapshot(root, details=False):
         lines.append('Waterfall 当前失败：' + '；'.join(f'{reason} ×{count}' for reason, count in errors.items()))
     if warnings and details:
         labels={'state_evidence_missing':'曾有状态更新被拒','input_byte_budget_exceeded':'交付后输入超限',
-                'candidate_or_history_too_large':'交付后上下文超限','batch_model_budget_insufficient':'交付后批处理额度用尽'}
+                'candidate_or_history_too_large':'交付后上下文超限','batch_model_budget_insufficient':'交付后批处理额度用尽',
+                'dependency_failed':'曾有依赖动作取消'}
         lines.append('Waterfall 动作告警（含已纠正；原始记录保留）：'+'；'.join(f'{labels.get(reason,reason)} {count}题' for reason,count in warnings.items()))
     if database_error:
         lines.append('KuaiRand SQLite 无法读取（显示仅含旧队列）：' + database_error)

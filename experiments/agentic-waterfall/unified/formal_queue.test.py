@@ -49,6 +49,17 @@ class QueueChecks(unittest.TestCase):
             calls,sleeps,_,progress=self.execute(run,[row])
             self.assertEqual(calls,['a']);self.assertEqual(sleeps,[]);self.assertEqual(progress['status'],'preflight_complete')
             self.assertFalse((run/'attempts').exists())
+
+    def test_cancelled_actions_from_known_atomic_rejection_do_not_erase_proven_delivery(self):
+        for kind in ('recommend','update_state','acquire','lookup_history','respond','idle'):
+            result=self.delivered_with_warning('state_evidence_missing');failed=result['trace'][0]['execution_results'][0];failed['action_id']='rejected'
+            cancelled={'kind':kind,'action_id':'cancelled','status':'skipped','error':'dependency_failed'}
+            result['trace'][0]['execution_results'].insert(1,cancelled)
+            result['trace'][0]['decision']={'actions':[{'action_id':'cancelled','kind':kind,'depends_on':['rejected']}]}
+            with self.subTest(kind=kind):
+                self.assertIsNone(queue.failure_reason(result))
+                self.assertEqual(queue.result_warnings(result),['dependency_failed','state_evidence_missing'])
+                failed['error']='unknown_error';self.assertIsNotNone(queue.failure_reason(result))
     def test_agent_corrected_ranking_is_valid_but_unresolved_tools_stop(self):
         trace=[{'execution_results':[{'kind':'recommend','status':'failed','error':'invalid_candidate_indices'}]},{'execution_results':[{'kind':'recommend','status':'success'}]}]
         self.assertIsNone(queue.failure_reason({'status':'submitted','trace':trace}))

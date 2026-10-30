@@ -50,7 +50,9 @@ def failure_reason(result):
     def recoverable_dependency(action_id,seen):
         if not isinstance(action_id,str) or action_id in seen:return False
         receipt=by_id.get(action_id,{})
-        if receipt.get('kind')!='recommend':return False
+        if delivered and receipt.get('kind')=='update_state' and receipt.get('status')=='failed' and receipt.get('error')=='state_evidence_missing':return True
+        cancelled=delivered and receipt.get('status')=='skipped' and receipt.get('kind') in {'update_state','acquire','lookup_history','respond','idle'}
+        if receipt.get('kind')!='recommend' and not cancelled:return False
         if receipt.get('status')=='failed':return receipt.get('error') in recoverable
         if receipt.get('status')!='skipped' or receipt.get('error')!='dependency_failed':return False
         dependencies=actions.get(action_id,{}).get('depends_on',[])
@@ -59,7 +61,7 @@ def failure_reason(result):
         return bool(blocked) and all(recoverable_dependency(dep,seen|{action_id}) for dep in blocked)
     for i,receipt in enumerate(receipts):
         if receipt.get('status')=='skipped' or receipt.get('error')=='dependency_failed':
-            # A later valid delivery can supersede cancelled recommendations, not skipped state or source actions.
+            # Cancelled actions never ran; only known nondestructive ancestor failures can be superseded.
             corrected=recoverable_dependency(receipt.get('action_id'),set()) and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
             if corrected:continue
             return 'skipped_dependency; inspect before continuing'
@@ -85,6 +87,8 @@ def result_warnings(result):
     if any(r.get('kind')=='update_state' and r.get('status')=='failed' and r.get('error')=='state_evidence_missing' for step in result.get('trace',[]) for r in step.get('execution_results',[])):
         warnings.add('state_evidence_missing')
     if result.get('continuation_error') in LOCAL_CONTEXT_LIMITS:warnings.add(result['continuation_error'])
+    if any(r.get('status')=='skipped' and r.get('error')=='dependency_failed' for step in result.get('trace',[]) for r in step.get('execution_results',[])):
+        warnings.add('dependency_failed')
     return sorted(warnings)
 
 def retryable_failure(result):
