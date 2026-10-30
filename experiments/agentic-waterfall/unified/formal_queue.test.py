@@ -77,6 +77,15 @@ class QueueChecks(unittest.TestCase):
             calls,_,_,progress=self.execute(run,[row,None]);self.assertEqual(calls,['a','a']);self.assertEqual(progress['status'],'preflight_complete')
             self.assertEqual(json.loads((run/'attempts/a/service-attempt-001/result.json').read_text())['result']['error'],'action_execution_failed')
 
+    def test_submitted_recommendation_with_failed_state_is_retried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);row=self.result(tasks[0]);row['result']['trace']=[{'execution_results':[
+                {'kind':'update_state','status':'failed','error':'state_evidence_missing'},
+                {'kind':'recommend','status':'success'}]}]
+            self.assertEqual(queue.failure_reason(row['result']),'failed_tool_action; inspect before continuing')
+            calls,_,_,progress=self.execute(run,[row,None]);self.assertEqual(calls,['a','a']);self.assertEqual(progress['status'],'preflight_complete')
+            self.assertEqual(json.loads((run/'attempts/a/service-attempt-001/result.json').read_text())['result']['status'],'submitted')
+
     def fixture(self,directory):
         run=pathlib.Path(directory)
         for name in ('results','started','logs','task-configs','code','reviewed'):(run/name).mkdir()
