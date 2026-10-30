@@ -48,17 +48,24 @@ class QueueChecks(unittest.TestCase):
         result['trace'][1]['execution_results']=[recommend]
         self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
 
-    def test_budget_refusal_requires_the_agent_to_see_it_before_recommendation(self):
+    def test_acquisition_refusal_is_never_hidden_by_a_later_recommendation(self):
         for error in ('tool_budget_exhausted','unique_acquisition_budget_exhausted'):
             failed={'action_id':'over-limit','kind':'acquire','status':'failed','error':error}
             result={'status':'submitted','model_calls':[{'context':{'call_index':1},'input':{'environment':{'tool_results':[failed]}}}],
                     'trace':[{'call_index':0,'execution_results':[failed]}, {'call_index':1,'execution_results':[{'kind':'recommend','status':'success'}]}]}
-            self.assertIsNone(queue.failure_reason(result))
+            self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
             result['model_calls'][0]['input']['environment']['tool_results']=[]
             self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
             result['model_calls'][0]['input']['environment']['tool_results']=[failed]
             result['trace'][1]['execution_results']=[]
             self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
+
+    def test_acquisition_failure_is_retried_even_after_partial_submission(self):
+        result={'status':'submitted','ordered_item_ids':['a'],'model_calls':[],
+                'trace':[{'execution_results':[{'kind':'acquire','status':'failed','error':'unique_acquisition_budget_exhausted'}]}]}
+        self.assertEqual(queue.retryable_failure(result),'acquisition_failed:unique_acquisition_budget_exhausted')
+        result['model_calls']=[{'error':'model_http_403'}]
+        self.assertIsNone(queue.retryable_failure(result))
 
     def fixture(self,directory):
         run=pathlib.Path(directory)
@@ -76,7 +83,7 @@ class QueueChecks(unittest.TestCase):
                 'model_request_count':1,'duration_ms':1,'state_after':{'version':0,'records':[]},'trace':trace or []}
         return {'task':task,'input':{'observation':{'decision_id':task['id']}},'result':result}
 
-    def execute(self,run,outcomes,stop_in_wait=False,memory=None,env_check=None):
+    def execute(self,run,outcomes,stop_in_wait=False,memory=None,env_check=None,predictions_only=False):
         calls=[];sleeps=[];updates=[];handlers={};original_save=queue.save
         def save(path,value):
             if pathlib.Path(path).name=='progress.json':updates.append(value)
@@ -93,7 +100,7 @@ class QueueChecks(unittest.TestCase):
         def sleep(seconds):
             sleeps.append(seconds)
             if stop_in_wait:handlers[signal.SIGTERM](signal.SIGTERM,None)
-        with patch.object(sys,'argv',['formal_queue.py','--run-dir',str(run),'--max-new-tasks','1']),\
+        with patch.object(sys,'argv',['formal_queue.py','--run-dir',str(run),'--max-new-tasks','1']+(['--predictions-only'] if predictions_only else [])),\
              patch.object(queue,'save',side_effect=save),patch.object(queue.subprocess,'Popen',side_effect=popen),\
              patch.object(queue.subprocess,'run',return_value=types.SimpleNamespace(returncode=0)),\
              patch.object(queue.signal,'signal',side_effect=lambda sig,fn:handlers.__setitem__(sig,fn)),\
@@ -102,6 +109,12 @@ class QueueChecks(unittest.TestCase):
              patch.object(queue,'memory_free',side_effect=memory or (lambda:100)):
             queue.main()
         return calls,sleeps,updates,json.loads((run/'progress.json').read_text())
+
+    def test_prediction_shard_never_scores_before_other_shards_finish(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);(run/'tasks.jsonl').write_text(json.dumps(tasks[0])+'\n')
+            calls,_,_,progress=self.execute(run,[None],predictions_only=True)
+            self.assertEqual(calls,['a']);self.assertEqual(progress['status'],'predictions_complete')
 
     def test_frozen_model_selection_overrides_inherited_model(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -127,6 +140,14 @@ class QueueChecks(unittest.TestCase):
             self.assertEqual(json.loads((run/'results/a.json').read_text())['result']['status'],'submitted')
             waiting=[u for u in updates if u['status']=='waiting_for_service']
             self.assertEqual([(u['attempt'],u['delay_seconds']) for u in waiting],[(2,30)])
+
+    def test_acquisition_failure_preserves_submitted_attempt_and_retries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);row=self.result(tasks[0]);row['result']['trace']=[{'execution_results':[{'kind':'acquire','status':'failed','error':'unique_acquisition_budget_exhausted'}]}]
+            calls,_,_,progress=self.execute(run,[row,None])
+            self.assertEqual(calls,['a','a']);self.assertEqual(progress['status'],'preflight_complete')
+            archived=json.loads((run/'attempts/a/service-attempt-001/result.json').read_text())['result']
+            self.assertEqual(archived['status'],'submitted');self.assertEqual(archived['trace'][0]['execution_results'][0]['status'],'failed')
 
     def test_three_attempt_limit_survives_queue_restart(self):
         with tempfile.TemporaryDirectory() as directory:

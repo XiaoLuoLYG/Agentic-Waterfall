@@ -27,6 +27,17 @@ export function pythonJSON(python,script,request){
   });
 }
 
+export function makeKuaiRecAcquirer(input,fetch){
+  const seen=new Set(input.observation.environment.candidate_pool.map(item=>item.id)),acquired=new Set();
+  return async (args,context)=>{
+    for(const item of context.observation.environment.candidate_pool)seen.add(item.id);
+    const remaining=Math.max(0,input.protocol.max_acquired_items-acquired.size);
+    const result=await fetch({user_id:input.observation.user_id,arguments:args,exclude:[...seen],remaining_acquired_items:remaining});
+    for(const item of result.items||[])if(!seen.has(item.id)){seen.add(item.id);acquired.add(item.id);}
+    return result;
+  };
+}
+
 async function main(){
   const [taskPath,output,priorPath]=process.argv.slice(2);
   if(!taskPath||!output)throw Error('task_path and output required');
@@ -42,7 +53,7 @@ async function main(){
       if(prior.task.id!==task.previous||prior.task.dataset!=='kuairand'||prior.input.observation.user_id!==input.observation.user_id||Date.parse(prior.input.observation.observed_at)>Date.parse(input.observation.observed_at)||!Number.isInteger(prior.result.state_after?.version)||!Array.isArray(prior.result.state_after?.records))throw Error('invalid_previous_user_state');
       input.observation.user_state=structuredClone(prior.result.state_after);
     }
-    if(task.dataset==='kuairec')acquire=(args,context)=>pythonJSON(task.python,resolve(task.root,'experiments/agentic-waterfall/kuairec/scripts/acquire_cli.py'),{user_id:input.observation.user_id,arguments:args,exclude:context.observation.environment.candidate_pool.map(x=>x.id),remaining_acquired_items:context.observation.environment.budget.remaining_acquired_items});
+    if(task.dataset==='kuairec')acquire=makeKuaiRecAcquirer(input,request=>pythonJSON(task.python,resolve(task.root,'experiments/agentic-waterfall/kuairec/scripts/acquire_cli.py'),request));
   }
   // Match the demo decision allowance; this is a new protocol, not the old one-call MIND run.
   input.protocol={...input.protocol,max_model_calls:20,max_output_tokens:8192};

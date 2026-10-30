@@ -42,18 +42,14 @@ def failure_reason(result):
                 seen=any(call.get('context',{}).get('call_index')==idx and any(r.get('action_id')==receipt.get('action_id') and r.get('error')=='state_evidence_missing' for r in call.get('input',{}).get('environment',{}).get('tool_results',[])) for call in result.get('model_calls',[]))
                 corrected=seen and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
                 if corrected:break
-        if receipt.get('kind')=='acquire' and receipt.get('error') in {'tool_budget_exhausted','unique_acquisition_budget_exhausted'}:
-            failed_step=next((step.get('call_index') for step in trace if receipt in step.get('execution_results',[])),None)
-            for step in trace:
-                idx=step.get('call_index')
-                if type(failed_step) is not int or type(idx) is not int or idx<=failed_step:continue
-                if not any(r.get('kind')=='recommend' and r.get('status')=='success' for r in step.get('execution_results',[])):continue
-                corrected=any(call.get('context',{}).get('call_index')==idx and any(r.get('action_id')==receipt.get('action_id') and r.get('error')==receipt.get('error') for r in call.get('input',{}).get('environment',{}).get('tool_results',[])) for call in result.get('model_calls',[]))
-                if corrected:break
         if not corrected:return 'failed_tool_action; inspect before continuing'
     return None
 
 def retryable_failure(result):
+    receipts=[r for step in result.get('trace',[]) for r in step.get('execution_results',[])]
+    failed=[r for r in receipts if r.get('kind')=='acquire' and r.get('status')=='failed']
+    if failed and not infrastructure_failure(result) and not any(r.get('status')=='skipped' for r in receipts):
+        return 'acquisition_failed:'+str(failed[0].get('error') or 'unknown')
     if result.get('status')!='failed' or result.get('ordered_item_ids'):return None
     errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
     errors=[error for error in errors if error]
@@ -91,7 +87,7 @@ def wait_for_retry(seconds,stopped):
     return not stopped()
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--run-dir',type=pathlib.Path,required=True);parser.add_argument('--max-new-tasks',type=int);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--run-dir',type=pathlib.Path,required=True);parser.add_argument('--max-new-tasks',type=int);parser.add_argument('--predictions-only',action='store_true');args=parser.parse_args()
     run=args.run_dir.resolve();plan=json.loads((run/'plan.json').read_text());tasks=[json.loads(x) for x in (run/'tasks.jsonl').read_text().splitlines()]
     lock=run/'queue.lock';lock.mkdir();(lock/'pid').write_text(str(os.getpid()))
     stop=False
@@ -165,6 +161,7 @@ def main():
                 archive_attempt(run,task,attempt)
                 attempt+=1
             progress('running',last=task['id'])
+        if args.predictions_only:progress('predictions_complete');return
         progress('scoring')
         with (run/'scoring.log').open('a') as log:
             scored=subprocess.run(['python3',str(run/'code/experiments/agentic-waterfall/unified/score_formal.py'),'--run-dir',str(run)],env=env,stdout=log,stderr=subprocess.STDOUT)
