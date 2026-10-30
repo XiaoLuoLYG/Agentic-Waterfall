@@ -230,6 +230,29 @@ class MonitorTests(unittest.TestCase):
         self.assertIn('已暂停', text)
         self.assertLessEqual(len(text.splitlines()), 24)
 
+    def test_failed_sequence_descendant_is_blocked_not_waiting_to_run(self):
+        run = self.waterfall_fixture()
+        save(run / 'plan.json', {'core_sha256': 'expected', 'method_outcome_policy': 'first-complete-episode-v2'})
+        invalid_table = defaultdict(Counter)
+        monitor.waterfall(invalid_table, run)
+        self.assertEqual(invalid_table[('kuairand', 'test', '', 'Waterfall')]['failed'], 3)
+        tasks = [{'id': 'a', 'dataset': 'kuairand', 'split': 'test'},
+                 {'id': 'b', 'dataset': 'kuairand', 'split': 'test', 'previous': 'a'},
+                 {'id': 'c', 'dataset': 'kuairand', 'split': 'test'}]
+        lines(run / 'tasks.jsonl', tasks)
+        row = json.loads((run / 'results/a.json').read_text())
+        row['result'].update(status='failed', error='action_execution_failed', ordered_item_ids=[],
+                             state_after={'version': 0, 'records': []},
+                             model_calls=[{'status': 'success', 'attempt_id': 'paid-a'}],
+                             trace=[{'execution_results': [{'kind': 'update_state', 'status': 'failed',
+                                     'error': 'state_evidence_missing'}]}])
+        save(run / 'results/a.json', row)
+        (run / 'results/b.json').unlink()
+        table = defaultdict(Counter)
+        monitor.waterfall(table, run)
+        counts = table[('kuairand', 'test', '', 'Waterfall')]
+        self.assertEqual((counts['failed'], counts['blocked'], counts['pending']), (1, 1, 0))
+
     def test_prefix_completion_is_visible_without_counting_tasks_twice(self):
         self.waterfall_fixture()
         save(self.root / 'minimal-rerun-control-20261030/bounded-prefix-execution.json',

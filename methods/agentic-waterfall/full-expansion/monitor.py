@@ -124,6 +124,7 @@ def waterfall(table, run, warnings=None):
     validation = validator(run / 'code/experiments/agentic-waterfall/unified/formal_queue.py')
     dispositions = validation.load_validation_dispositions(run, plan)
     errors = Counter()
+    failed_lineage = set()
     for task in jsonlines(run / 'tasks.jsonl'):
         if task['dataset'] == 'mind':
             continue
@@ -133,7 +134,9 @@ def waterfall(table, run, warnings=None):
         disposition = validation.checked_disposition(task, output, dispositions)
         if disposition in {'hold', 'failed'}:
             row['held' if disposition == 'hold' else 'failed'] += 1
-            if disposition == 'failed':row['audited_failures'] += 1
+            if disposition == 'failed':
+                row['audited_failures'] += 1
+                failed_lineage.add(task['id'])
             if output.exists():
                 result = validation.read_committed(output, task)
                 if disposition == 'hold' and isinstance(result.get('ordered_item_ids'),list) and result['ordered_item_ids']:row['held_with_slate'] += 1
@@ -141,6 +144,10 @@ def waterfall(table, run, warnings=None):
                 if codes:
                     row['warning_cases'] += 1
                     if warnings is not None:warnings.update(codes)
+            continue
+        if plan.get('method_outcome_policy') == 'first-complete-episode-v2' and task.get('previous') in failed_lineage:
+            failed_lineage.add(task['id'])
+            row['blocked'] += 1
             continue
         if not output.exists():
             row['uncommitted' if (run / 'started' / output.name).exists() else 'pending'] += 1
@@ -172,6 +179,12 @@ def waterfall(table, run, warnings=None):
             CACHE[key] = stamp, check(output)
         status, reason, warning_codes = CACHE[key][1]
         row[status] += 1
+        if status == 'failed' and plan.get('method_outcome_policy') == 'first-complete-episode-v2':
+            try:
+                if validation.terminal_method_failure(validation.read_committed(output, task)):
+                    failed_lineage.add(task['id'])
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                pass  # The invalid result is already failed; it cannot establish a terminal method outcome.
         if warning_codes:
             row['warning_cases'] += 1
             if warnings is not None:warnings.update(warning_codes)
