@@ -2,6 +2,7 @@
 """Read-only experiment receipts; Ctrl+C never signals experiment processes."""
 import argparse
 from collections import Counter, defaultdict
+import curses
 import datetime
 import importlib.util
 import json
@@ -12,6 +13,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import unicodedata
 
 sys.dont_write_bytecode = True
 CACHE = {}
@@ -223,7 +225,7 @@ def kuairand(table, expansion):
         row['inapplicable'] = max(0, total - row['total'])
 
 
-def queue_line(title, state, pid, script, states=(), fatal=None, expected=()):
+def queue_line(title, state, pid, script, states=(), fatal=None, expected=(), short=False):
     running = live(pid, script, *expected)
     status = state.get('status') or ('running' if state.get('running') else 'stopped' if state.get('stopped') else 'not_running')
     completed = sum(state.get(key, 0) for key in ('submitted', 'no_delivery', 'skipped_existing'))
@@ -242,6 +244,15 @@ def queue_line(title, state, pid, script, states=(), fatal=None, expected=()):
     label = {'running': '运行中', 'waiting_for_service': '等待重试', 'needs_attention': '已暂停，需检查',
              'predictions_complete': '预测已交付，待评分', 'stopped': '已停止', 'not_running': '未运行',
              'preflight_running': '复验中', 'complete': '队列已结束'}.get(status, status)
+    if short:
+        if status in ('running', 'preflight_running', 'waiting_for_service') and not running:
+            label = '未运行，状态待检查'
+        for code, meaning in [('model_http_429', '接口限流429'),
+                              ('action_id_reuse_with_different_payload', '动作编号冲突'),
+                              ('state_evidence_missing', '状态引用无效证据'),
+                              ('acquisition_failed:unsupported_source_or_mode', '获取来源/方式不支持')]:
+            detail = detail.replace(code, meaning)
+        return f'  {title}: {label}' + detail + (f'；{current}' if current else '')
     return f"  {title}: {label} ({status})；进程{'存活' if running else '未匹配/未运行'}" + (f'；当前: {current}' if current else '') + detail
 
 
@@ -263,8 +274,66 @@ def resources(root):
 def preparation(expansion):
     arb = expansion / 'agentrecbench'
     manifests = len(list(arb.glob('*.manifest.json')))
-    receipts = list((arb / 'prepared').rglob('*manifest*.json'))
-    return f'AgentRecBench 补充场景：下载回执 {manifests}；准备索引回执 {len(receipts)}；未配对 Waterfall 任务，不计入完成。'
+    return f'补充数据：已核验 {manifests} 组；尚未配对、未开跑，不计入预测总进度。'
+
+
+def display_width(text):
+    return sum(0 if unicodedata.combining(c) else 2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in str(text))
+
+
+def cell(text, width, right=False):
+    text = str(text)
+    padding = ' ' * max(0, width - display_width(text))
+    return padding + text if right else text + padding
+
+
+def totals(table, method=None, split=None):
+    result = Counter()
+    for key, counts in table.items():
+        if key[0] != 'mind' and (method is None or key[3] == method) and (split is None or key[1] == split):
+            result.update(counts)
+    return result
+
+
+def progress_text(counts, width=12):
+    done, total = counts['delivered'] + counts['empty'], counts['total']
+    filled = min(width, done * width // total) if total else 0
+    percent = f'{done / total * 100:.1f}%' if total else '—'
+    return f"[{'█' * filled}{'░' * (width - filled)}] {done:,}/{total:,} {percent}"
+
+
+def compact_rows(table):
+    rows = [cell('数据 / 划分', 20) + cell('Waterfall', 13, True) + cell('其他方法合计', 15, True) + '  失败/未提交']
+    groups = [('kuairec', 'test', 'KuaiRec 测试'), ('kuairec', 'dev', 'KuaiRec 开发'),
+              ('kuairand', 'test', 'KuaiRand 测试'), ('kuairand', 'dev', 'KuaiRand 旧开发'),
+              ('agentrecbench', 'short_term', 'AgentRecBench 短历史'), ('simbench', 'five_events', 'SimBench 五轮')]
+    for dataset, split, title in groups:
+        selected = {key: value for key, value in table.items() if key[:2] == (dataset, split)}
+        all_counts = totals(selected)
+        own = totals(selected, method='Waterfall')
+        other = all_counts.copy()
+        other.subtract(own)
+        def fraction(counts):
+            return f"{counts['delivered'] + counts['empty']:,}/{counts['total']:,}" if counts['total'] else '—'
+        rows.append(cell(title, 20) + cell(fraction(own), 13, True) + cell(fraction(other), 15, True) +
+                    f"  {all_counts['failed']}/{all_counts['uncommitted']}")
+    return rows
+
+
+def screen_lines(lines, height, width):
+    if height <= 0 or width <= 1:
+        return []
+    if len(lines) > height:
+        lines = lines[:max(0, height - 2)] + ['…余下状态已省略；完整明细加 --details'] + lines[-1:]
+    result = []
+    for line in lines[:height]:
+        text = ''
+        for c in line:
+            if display_width(text + c) > width - 1:
+                break
+            text += c
+        result.append(text)
+    return result
 
 
 def table_lines(table, dev=False):
@@ -283,11 +352,11 @@ def table_lines(table, dev=False):
         delivered = f"{counts['delivered']:,}/{counts['total']:,}"
         filled = min(8, counts['delivered'] * 8 // counts['total']) if counts['total'] else 0
         bar = '[' + '█' * filled + '░' * (8 - filled) + ']'
-        lines.append(f"  {names.get(method, method):<12} {delivered:>11} {bar} {counts['empty']:>3} {counts['failed']:>4} {counts['uncommitted']:>4} {counts['pending']:>4} {counts['blocked']:>4} {counts['inapplicable']:>6}")
+        lines.append(f"  {cell(names.get(method, method), 12)} {delivered:>11} {bar} {counts['empty']:>3} {counts['failed']:>4} {counts['uncommitted']:>4} {counts['pending']:>4} {counts['blocked']:>4} {counts['inapplicable']:>6}")
     return lines
 
 
-def snapshot(root):
+def snapshot(root, details=False):
     root = Path(root)
     base = root / 'formal-20261029-224252/formal'
     expansion = root / 'full-expansion-20261030'
@@ -300,42 +369,82 @@ def snapshot(root):
         kuairand(table, expansion)
     except sqlite3.Error as exc:
         database_error = str(exc)
-    lines = [f'统一实验进度  {datetime.datetime.now():%Y-%m-%d %H:%M:%S}',
-             resources(root), '有效 = 非空交付；空推荐、失败、在途分别列出，保留完整分母。MIND 已排除。', '',
-             *table_lines(table), '', '开发集（单独列示，不并入测试进度）：', *table_lines(table, dev=True), '', '队列状态：']
+    all_counts = totals(table)
+    own = totals(table, method='Waterfall')
+    other = all_counts.copy()
+    other.subtract(own)
+    dev = totals(table, split='dev')
+    test = all_counts.copy()
+    test.subtract(dev)
+    lines = [f'统一实验进度  {datetime.datetime.now():%m-%d %H:%M:%S}  MIND 暂停', resources(root),
+             '总交付    ' + progress_text(all_counts), 'Waterfall ' + progress_text(own),
+             '对照方法  ' + progress_text(other),
+             f"其中测试 {test['delivered'] + test['empty']:,}/{test['total']:,}；开发 {dev['delivered'] + dev['empty']:,}/{dev['total']:,}；不适用 {all_counts['inapplicable']} 另列",
+             f"交付含空推荐 {all_counts['empty']}；失败 {all_counts['failed']}、未提交 {all_counts['uncommitted']} 不计交付；尚未统一评分。",
+             '', *(table_lines(table) if details else compact_rows(table))]
+    if details:
+        lines += ['', '开发集（单独列示，不并入测试进度）：', *table_lines(table, dev=True), '', '队列状态：']
     for shard in ('kuairec', 'other'):
         folder = run / 'shards' / shard
-        state = read(folder / 'progress.json')
+        state = dict(read(folder / 'progress.json'))
+        if state.get('status') == 'needs_attention' and state.get('task'):
+            result = read(run / 'results' / (state['task'] + '.json')).get('result', {})
+            codes = [call['error'] for call in result.get('model_calls', []) if call.get('error')]
+            state['reason'] = ', '.join(dict.fromkeys([str(state.get('reason') or 'unknown'), *codes]))
         supervisor = read(folder / 'supervisor.json')
-        lines.append(queue_line('Waterfall/' + shard, state, state.get('pid'), 'formal_queue.py', expected=(str(folder),)))
-        if supervisor.get('reason') and supervisor['reason'] != state.get('reason'):
+        lines.append(queue_line('WF/' + shard, state, state.get('pid'), 'formal_queue.py', expected=(str(folder),), short=not details))
+        if details and supervisor.get('reason') and supervisor['reason'] != state.get('reason'):
             lines.append('    supervisor: ' + str(supervisor['reason']))
     pids = read(base / 'processes.json')
     for name, script in [('fixed', 'run_fixed.py'), ('additional', 'run_agents.py'), ('local', 'run_local.py')]:
-        lines.append(queue_line(name, read(base / f'{name}-progress.json'), pids.get(name), script,
-                                states[name].values(), read(base / f'{name}-fatal.json')))
+        title = {'fixed': '旧候选', 'additional': 'Agent对照', 'local': '本地检索'}[name]
+        lines.append(queue_line(title, read(base / f'{name}-progress.json'), pids.get(name), script,
+                                states[name].values(), read(base / f'{name}-fatal.json'), short=not details))
     k = read(expansion / 'kuairand/progress.json')
-    lines.append(queue_line('KuaiRand 扩展', k, k.get('pid'), 'run_kuairand.py'))
-    if errors:
+    lines.append(queue_line('KuaiRand对照', k, k.get('pid'), 'run_kuairand.py', short=not details))
+    if errors and details:
         lines.append('Waterfall 当前失败：' + '；'.join(f'{reason} ×{count}' for reason, count in errors.items()))
     if database_error:
         lines.append('KuaiRand SQLite 无法读取（显示仅含旧队列）：' + database_error)
-    lines += ['', preparation(expansion), '', '每 30 秒只读刷新；Ctrl+C 只关闭本显示，不停止实验。']
+    lines += [preparation(expansion), '30秒原位刷新；q / Ctrl+C 仅关闭显示。完整明细：加 --details']
     return '\n'.join(lines)
+
+
+def dashboard(screen, root):
+    try:
+        curses.curs_set(0)
+    except curses.error:
+        pass
+    screen.timeout(1000)
+    deadline, lines, size = 0, [], None
+    while True:
+        if time.monotonic() >= deadline:
+            lines = snapshot(root).splitlines()
+            deadline = time.monotonic() + 30
+            size = None
+        current = screen.getmaxyx()
+        if current != size:
+            screen.erase()
+            for row, line in enumerate(screen_lines(lines, *current)):
+                screen.addstr(row, 0, line)
+            screen.refresh()
+            size = current
+        if screen.getch() in (ord('q'), ord('Q')):
+            return
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, help='output/agentic-waterfall 路径')
     parser.add_argument('--once', action='store_true')
+    parser.add_argument('--details', action='store_true', help='显示一次完整方法明细，可滚动阅读')
     args = parser.parse_args()
     root = args.root.resolve() if args.root else find_root()
     try:
-        while True:
-            print(('\033[H\033[2J' if sys.stdout.isatty() else '') + snapshot(root), flush=True)
-            if args.once:
-                break
-            time.sleep(30)
+        if args.once or args.details or not sys.stdout.isatty():
+            print(snapshot(root, args.details), flush=True)
+        else:
+            curses.wrapper(dashboard, root)
     except KeyboardInterrupt:
         pass
 

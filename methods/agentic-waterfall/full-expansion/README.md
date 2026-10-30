@@ -4,6 +4,10 @@
 
 `prepare_mind.py` 和 `prepare_kuairand.py` 只处理公开输入，建立不重复的任务索引；`run_mind.py` / `run_kuairand.py` 通过共享旧队列的账本锁限制总模型并发，新的已完成回执写入 SQLite；`fetch_agentrecbench.py` 固定作者发布版本并验证文件哈希，不解析评测标签；`monitor.py` 是只读显示。缺失条件或未解决在途任务时必须停队审计，不得盲目续跑。
 
+`python3 monitor.py` 在终端使用固定屏幕显示总进度、Waterfall与对照进度、开发/测试和队列停因；按窗口尺寸裁切，中文按显示宽度对齐。每30秒原位刷新，`q`或`Ctrl+C`只关闭显示。`--details`输出一次完整方法明细供滚动阅读；`--once`输出一次摘要，可交给`watch -n 30 'python3 monitor.py --once'`。显示使用Python自带终端库，不要求安装watch。
+
+总进度的单位是“题目×方法”，含计划内开发和测试任务；合法空推荐单列但表示该方法已结束本题，失败/未提交不计交付，不适用另列。下载准备、未配对场景与最终评分不计入预测进度，所以100%预测交付不等于完整研究完成。
+
 MIND 已按用户要求暂停。MIND 专用 i²Agent 适配位于上一级 `i2agent-mind/`：其输入、输出上限及最多两次模型纠错属于单独的 MIND 修订，受影响旧结果须留档并统一重跑；未将该修订扩散到其他数据集。作者 `model.py` 未随仓库分发，需按 `i2agent-mind/fetch_author.py` 固定版本及哈希单独取得。
 
 当前 KuaiRand 617 条测试输入与 Waterfall 共用，原队列的 14 条测试样本不重复运行；旧输入与 Waterfall 的字幕状态字段不同，历史和候选内容核对一致。其他 AgentRecBench 场景的数据与 Waterfall 同题对比仍需准备，不能当作已完成。

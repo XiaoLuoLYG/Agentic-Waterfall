@@ -154,6 +154,42 @@ class MonitorTests(unittest.TestCase):
         self.assertIn('predictions_complete', text)
         self.assertNotIn('old MIND failure', text)
 
+    def test_totals_count_committed_empty_once_and_exclude_mind(self):
+        table = {
+            ('kuairand', 'test', '', 'Waterfall'): Counter(total=4, delivered=1, empty=1, failed=1, pending=1),
+            ('kuairec', 'dev', '', 'clawrec'): Counter(total=3, delivered=2, uncommitted=1, inapplicable=2),
+            ('mind', 'test', '', 'Waterfall'): Counter(total=100, delivered=100),
+        }
+        self.assertEqual(monitor.totals(table), Counter(total=7, delivered=3, empty=1, failed=1, pending=1, uncommitted=1, inapplicable=2))
+        self.assertEqual(monitor.totals(table, method='Waterfall')['total'], 4)
+        self.assertEqual(monitor.totals(table, split='dev')['total'], 3)
+        self.assertIn('4/7', monitor.progress_text(monitor.totals(table)))
+        self.assertNotIn('5/7', monitor.progress_text(monitor.totals(table)))
+
+    def test_screen_fits_chinese_columns_and_keeps_footer_on_short_terminal(self):
+        self.assertEqual(monitor.display_width('通用Agent'), 9)
+        self.assertEqual(monitor.display_width(monitor.cell('通用Agent', 12)), 12)
+        self.assertEqual(monitor.display_width(monitor.cell('1/100', 12, right=True)), 12)
+        lines = ['标题' * 50, *[str(n) for n in range(30)], '按 q 退出']
+        frame = monitor.screen_lines(lines, 20, 80)
+        self.assertLessEqual(len(frame), 20)
+        self.assertTrue(all(monitor.display_width(line) <= 79 for line in frame))
+        self.assertEqual(frame[-1], '按 q 退出')
+        self.assertTrue(any('省略' in line for line in frame))
+
+    def test_compact_snapshot_reports_mixed_errors_and_totals(self):
+        run = self.waterfall_fixture()
+        row = json.loads((run / 'results/b.json').read_text())
+        row['result']['model_calls'].append({'error': 'action_id_reuse_with_different_payload'})
+        save(run / 'results/b.json', row)
+        save(run / 'shards/other/progress.json', {'status': 'needs_attention', 'task': 'b', 'reason': 'model_http_429'})
+        with mock.patch.object(monitor, 'resources', return_value='资源'), mock.patch.object(monitor, 'live', return_value=False):
+            text = monitor.snapshot(self.root)
+        self.assertIn('2/7', text)
+        self.assertIn('接口限流429, 动作编号冲突', text)
+        self.assertIn('已暂停', text)
+        self.assertLessEqual(len(text.splitlines()), 24)
+
 
 if __name__ == '__main__':
     unittest.main()
