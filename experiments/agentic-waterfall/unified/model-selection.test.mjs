@@ -13,7 +13,7 @@ test('GLM override enables low thinking without changing the original recommenda
   for(const k of names)delete process.env[k];
   const path=join(dir,'config.json');writeFileSync(path,JSON.stringify({apiKey:'synthetic',apiBase:'https://model.invalid/v1',modelName:'GLM-5.3',recommendationModelName:'DeepSeek-V4.1-Flash'}));process.env.MODEL_CONFIG_FILE=path;
   process.env.OPENAI_MODEL='GLM-5.3-Flash';const glm=loadModelConfig();
-  assert.equal(glm.model,'GLM-5.3-Flash');assert.deepEqual(glm.parameters,{thinking:{type:'enabled'},reasoning_effort:'low'});
+  assert.equal(glm.model,'GLM-5.3-Flash');assert.deepEqual(glm.parameters,{thinking:{type:'enabled'},reasoning_effort:'low',stream:true,stream_options:{include_usage:true}});
   assert.equal(glm.endpoint,'https://model.invalid/v1/chat/completions');
   delete process.env.OPENAI_MODEL;const original=loadModelConfig();assert.equal(original.model,'DeepSeek-V4.1-Flash');assert.equal(original.parameters.thinking.type,'disabled');
  }finally{for(const k of names){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}rmSync(dir,{recursive:true,force:true});}

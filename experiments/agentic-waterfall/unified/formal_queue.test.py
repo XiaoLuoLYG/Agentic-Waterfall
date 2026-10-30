@@ -13,6 +13,10 @@ class QueueChecks(unittest.TestCase):
         self.assertEqual(queue.infrastructure_failure({'status':'submitted','continuation_error':'model_timeout'}),'model_timeout')
         self.assertEqual(queue.infrastructure_failure({'model_calls':[{'error':'model_http_429'}]}),'model_http_429')
         self.assertIsNone(queue.infrastructure_failure({'status':'failed','error':'invalid_batch_ranking'}))
+    def test_incomplete_or_invalid_stream_is_not_accepted_or_automatically_retried(self):
+        for error in ('model_stream_incomplete','model_stream_invalid','model_stream_error'):
+            self.assertEqual(queue.failure_reason({'status':'submitted','model_calls':[{'error':error}]}),error)
+            self.assertIsNone(queue.retryable_failure({'status':'failed','error':error}))
     def test_agent_corrected_ranking_is_valid_but_unresolved_tools_stop(self):
         trace=[{'execution_results':[{'kind':'recommend','status':'failed','error':'invalid_candidate_indices'}]},{'execution_results':[{'kind':'recommend','status':'success'}]}]
         self.assertIsNone(queue.failure_reason({'status':'submitted','trace':trace}))

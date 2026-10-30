@@ -15,7 +15,7 @@ def result_state(output,started):
 
 def infrastructure_failure(result):
     errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
-    return next((e for e in errors if e and (e in {'model_transport_error','model_timeout','model_missing_content','model_slots_busy','ledger_locked_manual_inspection_required','model_calls_not_enabled'} or e.startswith(('model_http_','global_request_','experiment_request_')))),None)
+    return next((e for e in errors if e and (e in {'model_transport_error','model_timeout','model_missing_content','model_slots_busy','ledger_locked_manual_inspection_required','model_calls_not_enabled'} or e.startswith(('model_http_','model_stream_','global_request_','experiment_request_')))),None)
 
 def failure_reason(result):
     failure=infrastructure_failure(result) or result.get('continuation_error')

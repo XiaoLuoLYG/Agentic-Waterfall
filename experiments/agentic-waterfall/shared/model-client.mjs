@@ -25,9 +25,39 @@ export function loadModelConfig() {
   endpoint.pathname = endpoint.pathname.replace(/\/+$/, '');
   if (!endpoint.pathname.endsWith('/chat/completions')) endpoint.pathname += '/chat/completions';
   const parameters = model === 'GLM-5.3-Flash'
-    ? {thinking:{type:'enabled'},reasoning_effort:'low'}
+    ? {thinking:{type:'enabled'},reasoning_effort:'low',stream:true,stream_options:{include_usage:true}}
     : file.recommendationModelName ? {enable_thinking:false,thinking:{type:'disabled'},extra_body:{thinking:{type:'disabled'}}} : {};
   return {key, model, endpoint: endpoint.href, parameters};
+}
+
+export async function readModelResponse(response) {
+  if(!response.headers?.get('content-type')?.includes('text/event-stream'))return response.json();
+  const result={model:null,choices:[{message:{content:''},finish_reason:null}],usage:null};
+  const decoder=new TextDecoder();let buffer='',data=[],done=false;
+  try {
+    for await(const bytes of response.body){
+      buffer+=decoder.decode(bytes,{stream:true});let end;
+      while((end=buffer.indexOf('\n'))!==-1){
+        const line=buffer.slice(0,end).replace(/\r$/,'');buffer=buffer.slice(end+1);
+        if(line.startsWith('data:'))data.push(line.slice(5).trimStart());
+        else if(!line&&data.length){
+          const value=data.join('\n');data=[];
+          if(value==='[DONE]'){done=true;break;}
+          let event;
+          try{event=JSON.parse(value);}catch{throw Error('model_stream_invalid');}
+          if(event.error){const status=event.error.status_code??event.error.code;throw Error(/^[45]\d\d$/.test(String(status))?`model_http_${status}`:'model_stream_error');}
+          if(event.model)result.model=event.model;
+          if(event.usage)result.usage=event.usage;
+          const choice=event.choices?.find(x=>x.index===0);
+          if(typeof choice?.delta?.content==='string')result.choices[0].message.content+=choice.delta.content;
+          if(choice?.finish_reason)result.choices[0].finish_reason=choice.finish_reason;
+        }
+      }
+      if(done)break;
+    }
+    if(!done||!result.choices[0].finish_reason)throw Error('model_stream_incomplete');
+    return result;
+  }catch(error){error.model_response=result;throw error;}
 }
 
 async function withLedger(fn) {
@@ -79,14 +109,14 @@ export async function callModel(request, {experiment}={}) {
   try {
     const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
     if (!response.ok) throw new Error(`model_http_${response.status}`);
-    const result=await response.json();
+    const result=await readModelResponse(response);
     const content=result.choices?.[0]?.message?.content;
     if (typeof content!=='string') throw new Error('model_missing_content');
     receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters},duration_ms:Date.now()-started};
     return receipt;
   } catch(e) {
-    const code=/^model_http_\d+$/.test(e.message)||e.message==='model_missing_content'?e.message:e.name==='TimeoutError'?'model_timeout':'model_transport_error';
-    receipt={attempt_id:attempt.id,status:'failed',error:code,duration_ms:Date.now()-started};
+    const code=/^model_http_\d+$/.test(e.message)||e.message==='model_missing_content'||e.message.startsWith('model_stream_')?e.message:e.name==='TimeoutError'?'model_timeout':'model_transport_error';
+    receipt={attempt_id:attempt.id,status:'failed',error:code,duration_ms:Date.now()-started,...(e.model_response?{partial_response:e.model_response,usage:e.model_response.usage,provider_response_model:e.model_response.model}:{})};
     const error=new Error(code); error.receipt=receipt; throw error;
   } finally {
     await withLedger(ledger=>{
