@@ -24,7 +24,10 @@ export function loadModelConfig() {
   if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !key || !model) throw new Error('invalid_model_config');
   endpoint.pathname = endpoint.pathname.replace(/\/+$/, '');
   if (!endpoint.pathname.endsWith('/chat/completions')) endpoint.pathname += '/chat/completions';
-  return {key, model, endpoint: endpoint.href, parameters: file.recommendationModelName ? {enable_thinking:false,thinking:{type:'disabled'},extra_body:{thinking:{type:'disabled'}}} : {}};
+  const parameters = model === 'GLM-5.3-Flash'
+    ? {thinking:{type:'enabled'},reasoning_effort:'low'}
+    : file.recommendationModelName ? {enable_thinking:false,thinking:{type:'disabled'},extra_body:{thinking:{type:'disabled'}}} : {};
+  return {key, model, endpoint: endpoint.href, parameters};
 }
 
 async function withLedger(fn) {

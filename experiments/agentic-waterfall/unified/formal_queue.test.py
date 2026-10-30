@@ -51,12 +51,13 @@ class QueueChecks(unittest.TestCase):
                 'model_request_count':1,'duration_ms':1,'state_after':{'version':0,'records':[]},'trace':trace or []}
         return {'task':task,'input':{'observation':{'decision_id':task['id']}},'result':result}
 
-    def execute(self,run,outcomes,stop_in_wait=False,memory=None):
+    def execute(self,run,outcomes,stop_in_wait=False,memory=None,env_check=None):
         calls=[];sleeps=[];updates=[];handlers={};original_save=queue.save
         def save(path,value):
             if pathlib.Path(path).name=='progress.json':updates.append(value)
             original_save(path,value)
         def popen(command,**kwargs):
+            if env_check:env_check(kwargs['env'])
             task=json.loads(pathlib.Path(command[2]).read_text());calls.append(task['id'])
             outcome=outcomes[len(calls)-1]
             if outcome!='no_result':
@@ -76,6 +77,14 @@ class QueueChecks(unittest.TestCase):
              patch.object(queue,'memory_free',side_effect=memory or (lambda:100)):
             queue.main()
         return calls,sleeps,updates,json.loads((run/'progress.json').read_text())
+
+    def test_frozen_model_selection_overrides_inherited_model(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,_=self.fixture(directory)
+            queue.save(run/'plan.json',{'model_config_file':'unused-synthetic-config','model_name':'GLM-5.3-Flash'})
+            with patch.dict(queue.os.environ,{'OPENAI_MODEL':'DeepSeek-V4.1-Flash'}):
+                calls,_,_,progress=self.execute(run,[None],env_check=lambda env:self.assertEqual(env['OPENAI_MODEL'],'GLM-5.3-Flash'))
+            self.assertEqual(calls,['a']);self.assertEqual(progress['status'],'preflight_complete')
 
     def test_transient_failure_recovers_and_preserves_both_attempts(self):
         with tempfile.TemporaryDirectory() as directory:

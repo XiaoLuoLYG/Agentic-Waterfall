@@ -56,6 +56,7 @@ def score(run):
         save(manifest, run_binding)
     entries = []
     environment = dict(os.environ, MODEL_CONFIG_FILE=plan['model_config_file'])
+    if plan.get('model_name'):environment['OPENAI_MODEL']=plan['model_name']
     for task in [t for t in tasks if t['dataset'] == 'clawrec']:
         folder = dest / task['id']
         result_path = run / 'results' / (task['id'] + '.json')

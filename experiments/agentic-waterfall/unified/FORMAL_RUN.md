@@ -10,6 +10,8 @@
 | AgentRecBench | 300 | short_term 的 Amazon、Goodreads、Yelp 各 100 |
 | ClawRec-SimBench | 210 | 42 用户 × 5 事件，同一用户承接上个事件实际状态 |
 
+2026-10-30 用户改用 `GLM-5.3-Flash`。运行计划用 `model_name` 固定调用模型，队列和 ClawRec 评价入口均遵循该配置；该模型不接受关闭思考，使用 `thinking.type=enabled`、`reasoning_effort=low`。原 DeepSeek 工程验证与拒绝记录单独保留，不混入新模型正式结果。模型切换不改变共同核心、分配样本或原调用预算。
+
 总计 75,690 项。输入、任务顺序、代码哈希、模型账本、结果及历次失败尝试保存在本机 `output/agentic-waterfall/waterfall-full-20261029/`，没有改写历史实验。入口为 `formal_queue.py --run-dir <运行目录>`；启动前用 `--max-new-tasks 30` 做交错验收。任务有完成结果则跳过，有开始标记却无完整结果则停下查账，不盲目重复付费。
 
 `formal_task.mjs` 使用与 demo 相同的核心；适配层仅转换公开输入、内容获取接口和状态。当前核心 SHA-256 为 `89b38e7c0701ae770a8b2d5a6bd56f7b2078f2fba085c4322556ec62db46b36b`。工程验收补充了非法候选序号、JSON 截断的诊断反馈，由 Agent 在原 20 次模型调用预算内修正；不自动补排名。每次输出上限 8,192 tokens。初始行为窗口沿用 demo 的最近 60 条，原公开历史保留，可分页查询；这与旧单调用 MIND 协议不同，不合并为同一实验。
