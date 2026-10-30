@@ -81,9 +81,13 @@ class QueueChecks(unittest.TestCase):
     def test_frozen_model_selection_overrides_inherited_model(self):
         with tempfile.TemporaryDirectory() as directory:
             run,_=self.fixture(directory)
-            queue.save(run/'plan.json',{'model_config_file':'unused-synthetic-config','model_name':'GLM-5.3-Flash'})
+            queue.save(run/'plan.json',{'model_config_file':'unused-synthetic-config','model_name':'GLM-5.3-Flash','protocol':{'max_output_tokens':32768,'model_timeout_ms':600000}})
+            def check_environment(env):
+                self.assertEqual(env['OPENAI_MODEL'],'GLM-5.3-Flash')
+                self.assertEqual(env['WATERFALL_MAX_OUTPUT_TOKENS'],'32768')
+                self.assertEqual(env['WATERFALL_MODEL_TIMEOUT_MS'],'600000')
             with patch.dict(queue.os.environ,{'OPENAI_MODEL':'DeepSeek-V4.1-Flash'}):
-                calls,_,_,progress=self.execute(run,[None],env_check=lambda env:self.assertEqual(env['OPENAI_MODEL'],'GLM-5.3-Flash'))
+                calls,_,_,progress=self.execute(run,[None],env_check=check_environment)
             self.assertEqual(calls,['a']);self.assertEqual(progress['status'],'preflight_complete')
 
     def test_transient_failure_recovers_and_preserves_both_attempts(self):

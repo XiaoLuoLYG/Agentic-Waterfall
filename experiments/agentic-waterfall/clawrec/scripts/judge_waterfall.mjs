@@ -17,7 +17,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  if(existsSync(values.receipt)||existsSync(values.labels))throw Error('output_already_exists');
  const pool=JSON.parse(readFileSync(values.pool,'utf8')),prompt=readFileSync(values.prompt,'utf8'),cards=pool.cards.map((card,index)=>({...card,rank:index+1}));
  const message={evaluation_id:pool.evaluation_id,target_event_id:Number(values.event),k:20,visible_evidence:pool.visible_evidence,heldout_step:pool.heldout_step,candidate_cards:cards};
- const receipt=await callModel({messages:[{role:'system',content:prompt+'\nCards are randomly ordered for independent relevance assessment; their ranks are anonymized indices, not recommendation ordering.'},{role:'user',content:JSON.stringify(message)}],temperature:0,max_tokens:8192,response_format:{type:'json_object'}},{experiment:'clawrec'});
+ const receipt=await callModel({messages:[{role:'system',content:prompt+'\nCards are randomly ordered for independent relevance assessment; their ranks are anonymized indices, not recommendation ordering.'},{role:'user',content:JSON.stringify(message)}],temperature:0,max_tokens:Number(process.env.WATERFALL_MAX_OUTPUT_TOKENS||8192),response_format:{type:'json_object'}},{experiment:'clawrec'});
  writeFileSync(values.receipt,JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});
  const labels=judgeLabels(pool,JSON.parse(receipt.content));writeFileSync(values.labels,JSON.stringify(labels,null,2)+'\n',{flag:'wx'});
  console.log(JSON.stringify({status:'success',cards:cards.length,attempt_id:receipt.attempt_id}));

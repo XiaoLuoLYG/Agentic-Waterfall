@@ -82,8 +82,10 @@ def main():
         nonlocal stop
         stop=True
     signal.signal(signal.SIGTERM,stopping);signal.signal(signal.SIGINT,stopping)
-    env=dict(os.environ,MODEL_CONFIG_FILE=plan['model_config_file'],WATERFALL_MODEL_TIMEOUT_MS='180000',NODE_OPTIONS='--max-old-space-size=384',OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',VECLIB_MAXIMUM_THREADS='1',TOKENIZERS_PARALLELISM='false',PYTHONDONTWRITEBYTECODE='1')
+    env=dict(os.environ,MODEL_CONFIG_FILE=plan['model_config_file'],NODE_OPTIONS='--max-old-space-size=384',OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',VECLIB_MAXIMUM_THREADS='1',TOKENIZERS_PARALLELISM='false',PYTHONDONTWRITEBYTECODE='1')
     if plan.get('model_name'):env['OPENAI_MODEL']=plan['model_name']
+    env['WATERFALL_MAX_OUTPUT_TOKENS']=str(plan.get('protocol',{}).get('max_output_tokens',8192))
+    env['WATERFALL_MODEL_TIMEOUT_MS']=str(plan.get('protocol',{}).get('model_timeout_ms',180000))
     counts=collections.Counter();start=time.time();peak_rss=0;new_tasks=0
     def progress(status,**extra):
         save(run/'progress.json',{'status':status,'pid':os.getpid(),'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'total':len(tasks),'counts':dict(counts),'elapsed_seconds':round(time.time()-start),'peak_child_rss_kib':peak_rss,**extra})

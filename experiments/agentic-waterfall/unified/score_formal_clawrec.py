@@ -57,6 +57,8 @@ def score(run):
     entries = []
     environment = dict(os.environ, MODEL_CONFIG_FILE=plan['model_config_file'])
     if plan.get('model_name'):environment['OPENAI_MODEL']=plan['model_name']
+    environment['WATERFALL_MAX_OUTPUT_TOKENS']=str(plan.get('protocol',{}).get('max_output_tokens',8192))
+    environment['WATERFALL_MODEL_TIMEOUT_MS']=str(plan.get('protocol',{}).get('model_timeout_ms',180000))
     for task in [t for t in tasks if t['dataset'] == 'clawrec']:
         folder = dest / task['id']
         result_path = run / 'results' / (task['id'] + '.json')

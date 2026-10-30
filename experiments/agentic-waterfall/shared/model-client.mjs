@@ -9,9 +9,9 @@ const LEDGER = resolve(ROOT, 'shared/model-ledger.json');
 const LOCK = `${LEDGER}.lock`;
 const CONFIG = resolve(ROOT, '../../HyperAgent/.worktrees/xuanji-device-latest-20261021/entry/src/main/resources/rawfile/hyperagent_config.local.json');
 export const digest = data => createHash('sha256').update(typeof data === 'string' ? data : JSON.stringify(data)).digest('hex');
-export function modelTimeoutMs() {
+export function modelTimeoutMs(model) {
   const value=Number(process.env.WATERFALL_MODEL_TIMEOUT_MS || 60000);
-  if(!Number.isSafeInteger(value)||value<1000||value>180000)throw new Error('invalid_model_timeout');
+  if(!Number.isSafeInteger(value)||value<1000||value>(model==='GLM-5.3-Flash'?600000:180000))throw new Error('invalid_model_timeout');
   return value;
 }
 
@@ -71,9 +71,9 @@ async function reserve(experiment, request, model) {
 
 export async function callModel(request, {experiment}={}) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
-  const config=loadModelConfig(),timeoutMs=modelTimeoutMs();
+  const config=loadModelConfig(),timeoutMs=modelTimeoutMs(config.model);
   const body={model:config.model,messages:request.messages,temperature:request.temperature??0.3,max_tokens:request.max_tokens??4096,...config.parameters,...(request.response_format?{response_format:request.response_format}:{})};
-  if (!Number.isInteger(body.max_tokens)||body.max_tokens<1||body.max_tokens>8192) throw new Error('invalid_max_tokens');
+  if (!Number.isInteger(body.max_tokens)||body.max_tokens<1||body.max_tokens>(config.model==='GLM-5.3-Flash'?32768:8192)) throw new Error('invalid_max_tokens');
   const attempt=await reserve(experiment,body,config.model);
   const started=Date.now(); let receipt;
   try {

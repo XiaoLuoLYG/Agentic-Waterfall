@@ -44,8 +44,8 @@ async function main(){
     }
     if(task.dataset==='kuairec')acquire=(args,context)=>pythonJSON(task.python,resolve(task.root,'experiments/agentic-waterfall/kuairec/scripts/acquire_cli.py'),{user_id:input.observation.user_id,arguments:args,exclude:context.observation.environment.candidate_pool.map(x=>x.id),remaining_acquired_items:context.observation.environment.budget.remaining_acquired_items});
   }
-  // Match the demo decision allowance; this is a new protocol, not the old one-call MIND run.
-  input.protocol={...input.protocol,max_model_calls:20,max_output_tokens:8192};
+  // Keep the demo decision allowance; the frozen output budget also covers model reasoning.
+  input.protocol={...input.protocol,max_model_calls:20,max_output_tokens:Number(process.env.WATERFALL_MAX_OUTPUT_TOKENS||8192)};
   const history=prepareHistory(input);input=history.input;
   const result=await runEpisode(input,{experiment:task.dataset,modelCall:serial(callModel,true),lookupHistory:history.lookupHistory,...(acquire?{acquire:serial(acquire)}:{})});
   const temporary=output+'.tmp';
