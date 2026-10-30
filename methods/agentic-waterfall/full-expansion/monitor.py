@@ -328,8 +328,10 @@ def totals(table, method=None, split=None):
     return result
 
 
-def progress_text(counts, width=12):
+def progress_text(counts, width=12, include_terminal=False):
     done, total = counts['delivered'] + counts['empty'], counts['total']
+    if include_terminal:
+        done += sum(counts[key] for key in ('failed', 'held', 'blocked'))
     filled = min(width, done * width // total) if total else 0
     percent = f'{done / total * 100:.1f}%' if total else '—'
     return f"[{'█' * filled}{'░' * (width - filled)}] {done:,}/{total:,} {percent}"
@@ -411,10 +413,10 @@ def snapshot(root, details=False):
     test = all_counts.copy()
     test.subtract(dev)
     lines = [f'统一实验进度  {datetime.datetime.now():%m-%d %H:%M:%S}  MIND 暂停', resources(root),
-             '流程验收  ' + progress_text(all_counts), 'Waterfall ' + progress_text(own),
-             '对照方法  ' + progress_text(other),
-             f"其中测试 {test['delivered'] + test['empty']:,}/{test['total']:,}；开发 {dev['delivered'] + dev['empty']:,}/{dev['total']:,}；不适用 {all_counts['inapplicable']} 另列",
-             f"合法空交付 {all_counts['empty']}；失败 {all_counts['failed']}；隔离待审 {all_counts['held']}；在途 {all_counts['uncommitted']}；采集进度不是可比成绩。",
+             '已处理    ' + progress_text(all_counts, include_terminal=True), 'Waterfall ' + progress_text(own, include_terminal=True),
+             '对照方法  ' + progress_text(other, include_terminal=True),
+             f"验收含合法空交付：测试 {test['delivered'] + test['empty']:,}/{test['total']:,}；开发 {dev['delivered'] + dev['empty']:,}/{dev['total']:,}；不适用 {all_counts['inapplicable']} 另列",
+             f"合法空交付 {all_counts['empty']}；失败 {all_counts['failed']}；隔离 {all_counts['held']}；阻断 {all_counts['blocked']}；在途 {all_counts['uncommitted']}；已处理含失败/隔离/阻断，不是效果分。",
              '', *(table_lines(table) if details else compact_rows(table))]
     if details:
         lines += ['', '开发集（单独列示，不并入测试进度）：', *table_lines(table, dev=True), '', '队列状态：']

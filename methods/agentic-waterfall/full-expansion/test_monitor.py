@@ -205,6 +205,7 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(monitor.totals(table, split='dev')['total'], 3)
         self.assertIn('4/7', monitor.progress_text(monitor.totals(table)))
         self.assertNotIn('5/7', monitor.progress_text(monitor.totals(table)))
+        self.assertIn('5/7', monitor.progress_text(monitor.totals(table), include_terminal=True))
 
     def test_screen_fits_chinese_columns_and_keeps_footer_on_short_terminal(self):
         self.assertEqual(monitor.display_width('通用Agent'), 9)
