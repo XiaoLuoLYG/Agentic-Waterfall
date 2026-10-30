@@ -5,8 +5,11 @@ import json
 import os
 from pathlib import Path
 
-HERE=Path(__file__).resolve().parent
-WORK=HERE.parents[2]
+SCRIPT=Path(__file__).resolve()
+if SCRIPT.parent.name=='full-expansion-20261030':
+    HERE=SCRIPT.parent;WORK=HERE.parents[2]
+else:
+    WORK=SCRIPT.parents[3];HERE=WORK/'output/agentic-waterfall/full-expansion-20261030'
 SOURCE=HERE/'agentrecbench/reviews/long-review.json'
 EXPECTED='86b54f452108cc4fdec8b1e8402f625bb012ec85e9ce768e7fc7269b37ea23f4'
 DOMAINS=('amazon','yelp','goodreads')
