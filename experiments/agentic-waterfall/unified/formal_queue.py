@@ -33,6 +33,15 @@ def failure_reason(result):
         if receipt.get('status')=='skipped' or receipt.get('error')=='dependency_failed':return 'skipped_dependency; inspect before continuing'
         if receipt.get('status')!='failed':continue
         corrected=receipt.get('kind')=='recommend' and receipt.get('error') in recoverable and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
+        if receipt.get('kind')=='update_state' and receipt.get('error')=='state_evidence_missing':
+            failed_step=next((step.get('call_index') for step in trace if receipt in step.get('execution_results',[])),None)
+            for step in trace:
+                idx=step.get('call_index')
+                if type(failed_step) is not int or type(idx) is not int or idx<=failed_step:continue
+                if not any(r.get('kind')=='update_state' and r.get('status')=='success' for r in step.get('execution_results',[])):continue
+                seen=any(call.get('context',{}).get('call_index')==idx and any(r.get('action_id')==receipt.get('action_id') and r.get('error')=='state_evidence_missing' for r in call.get('input',{}).get('environment',{}).get('tool_results',[])) for call in result.get('model_calls',[]))
+                corrected=seen and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
+                if corrected:break
         if not corrected:return 'failed_tool_action; inspect before continuing'
     return None
 

@@ -35,6 +35,19 @@ class QueueChecks(unittest.TestCase):
             {'call_index':1,'execution_results':[{'kind':'recommend','status':'success'}]}]}
         self.assertIn('skipped_dependency',queue.failure_reason(result))
 
+    def test_state_evidence_failure_requires_seen_error_and_later_successful_update(self):
+        failed={'action_id':'bad-state','kind':'update_state','status':'failed','error':'state_evidence_missing'}
+        update={'kind':'update_state','status':'success'}
+        recommend={'kind':'recommend','status':'success'}
+        result={'status':'submitted','model_calls':[{'context':{'call_index':1},'input':{'environment':{'tool_results':[failed]}}}],
+                'trace':[{'call_index':0,'execution_results':[failed]}, {'call_index':1,'execution_results':[update,recommend]}]}
+        self.assertIsNone(queue.failure_reason(result))
+        result['model_calls'][0]['input']['environment']['tool_results']=[]
+        self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
+        result['model_calls'][0]['input']['environment']['tool_results']=[failed]
+        result['trace'][1]['execution_results']=[recommend]
+        self.assertEqual(queue.failure_reason(result),'failed_tool_action; inspect before continuing')
+
     def fixture(self,directory):
         run=pathlib.Path(directory)
         for name in ('results','started','logs','task-configs','code','reviewed'):(run/name).mkdir()
