@@ -1,5 +1,6 @@
 """Separate post-freeze judgement; reuse committed scores without repeating paid calls."""
 import argparse, hashlib, json, os, pathlib, subprocess, tempfile
+from formal_queue import load_validation_dispositions, checked_disposition
 
 
 def sha(path):
@@ -40,6 +41,11 @@ def score(run):
     tasks = [json.loads(x) for x in (run / 'tasks.jsonl').read_text().splitlines() if x.strip()]
     if not tasks or len({t['id'] for t in tasks}) != len(tasks):
         raise ValueError('invalid task assignment')
+    dispositions = load_validation_dispositions(run, plan)
+    held = sum(checked_disposition(task, run / 'results' / (task['id'] + '.json'), dispositions) == 'hold'
+               for task in tasks)
+    if held:
+        raise ValueError(f'evaluation_blocked_by_validation_holds: {held}')
     if any(not (run / 'results' / (t['id'] + '.json')).exists() for t in tasks):
         raise ValueError('all predictions must be committed before judging')
     scripts = run / 'code/experiments/agentic-waterfall/clawrec/scripts'

@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from formal_queue import load_validation_dispositions, checked_disposition
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -37,11 +38,16 @@ def candidate_ids(public):
     return environment.get('candidate_ids', [item['id'] for item in environment.get('candidate_pool', [])])
 
 
-def load_completed(run_dir):
+def load_completed(run_dir, plan=None):
     tasks = list(read_rows(run_dir / 'tasks.jsonl'))
     ids = [task['id'] for task in tasks]
     if not tasks or len(ids) != len(set(ids)):
         raise ValueError('empty_or_duplicate_task_assignment')
+    dispositions = load_validation_dispositions(run_dir, plan)
+    held = sum(checked_disposition(task, run_dir / 'results' / (task['id'] + '.json'), dispositions) == 'hold'
+               for task in tasks)
+    if held:
+        raise ValueError(f'evaluation_blocked_by_validation_holds: {held}')
     missing = [task_id for task_id in ids if not (run_dir / 'results' / (task_id + '.json')).is_file()]
     if missing:
         raise ValueError(f'run_incomplete: {len(missing)} assigned results missing')
@@ -165,7 +171,7 @@ def reuse_completed(run_dir, groups):
 def score(run_dir):
     run_dir = run_dir.resolve()
     plan = json.loads((run_dir / 'plan.json').read_text())
-    groups = load_completed(run_dir)
+    groups = load_completed(run_dir, plan)
     if reuse_completed(run_dir, groups):
         return
     sources = plan.get('evaluation_sources', {})
@@ -252,7 +258,7 @@ def self_check():
             raise AssertionError('candidate mismatch accepted')
         write_rows(directory / 'tasks.jsonl', [{'id': 'unfinished', 'dataset': 'mind'}])
         try:
-            load_completed(directory)
+            load_completed(directory, {})
         except ValueError as error:
             assert str(error).startswith('run_incomplete:')
         else:

@@ -1,4 +1,4 @@
-import copy,importlib.util,json,pathlib,signal,sys,tempfile,types,unittest
+import copy,hashlib,importlib.util,json,pathlib,signal,sys,tempfile,types,unittest
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('queue',pathlib.Path(__file__).with_name('formal_queue.py'));queue=importlib.util.module_from_spec(spec);spec.loader.exec_module(queue)
 
@@ -24,11 +24,12 @@ class QueueChecks(unittest.TestCase):
         else:result['continuation_error']=warning
         return result
 
-    def test_proven_delivery_survives_rejected_atomic_state_write_and_local_context_limit(self):
+    def test_delivery_diagnostics_never_turn_failed_state_or_local_cap_into_strict_success(self):
         for warning in ('state_evidence_missing','candidate_or_history_too_large','input_byte_budget_exceeded','batch_model_budget_insufficient'):
             with self.subTest(warning=warning):
                 result=self.delivered_with_warning(warning);original=copy.deepcopy(result)
-                self.assertIsNone(queue.failure_reason(result))
+                self.assertIsNotNone(queue.failure_reason(result))
+                self.assertTrue(queue.committed_delivery(result))
                 self.assertEqual(queue.result_warnings(result),[warning])
                 self.assertEqual(result,original)
         for broken in ('no_delivery_receipt','mismatched_receipt','not_acquired','invalid_pool','invalid_state','missing_state','transport_error','unknown_tool_error'):
@@ -43,12 +44,16 @@ class QueueChecks(unittest.TestCase):
             elif broken=='unknown_tool_error':result['trace'][0]['execution_results'][0]['error']='unknown_error'
             with self.subTest(broken=broken):self.assertIsNotNone(queue.failure_reason(result))
 
-    def test_confirmed_delivery_warning_never_causes_another_paid_attempt(self):
+    def test_held_delivery_warning_never_causes_another_paid_attempt(self):
         with tempfile.TemporaryDirectory() as directory:
             run,tasks=self.fixture(directory);row=self.result(tasks[0]);row['result'].update(self.delivered_with_warning('state_evidence_missing'))
-            calls,sleeps,_,progress=self.execute(run,[row])
-            self.assertEqual(calls,['a']);self.assertEqual(sleeps,[]);self.assertEqual(progress['status'],'preflight_complete')
-            self.assertFalse((run/'attempts').exists())
+            row['result']['decision_id']='a';queue.save(run/'results/a.json',row)
+            original=(run/'results/a.json').read_bytes()
+            self.dispositions(run,{'a':{'task':'a','dataset':'mind','kind':'hold','result_sha256':hashlib.sha256(original).hexdigest()}})
+            calls,sleeps,_,progress=self.execute(run,[None],predictions_only=True)
+            self.assertEqual(calls,['b']);self.assertEqual(sleeps,[])
+            self.assertEqual(progress['status'],'validation_holds_remaining');self.assertEqual(progress['held_count'],1)
+            self.assertEqual((run/'results/a.json').read_bytes(),original);self.assertFalse((run/'attempts').exists())
 
     def test_cancelled_actions_from_known_atomic_rejection_do_not_erase_proven_delivery(self):
         for kind in ('recommend','update_state','acquire','lookup_history','respond','idle'):
@@ -57,7 +62,7 @@ class QueueChecks(unittest.TestCase):
             result['trace'][0]['execution_results'].insert(1,cancelled)
             result['trace'][0]['decision']={'actions':[{'action_id':'cancelled','kind':kind,'depends_on':['rejected']}]}
             with self.subTest(kind=kind):
-                self.assertIsNone(queue.failure_reason(result))
+                self.assertIsNotNone(queue.failure_reason(result))
                 self.assertEqual(queue.result_warnings(result),['dependency_failed','state_evidence_missing'])
                 failed['error']='unknown_error';self.assertIsNotNone(queue.failure_reason(result))
     def test_agent_corrected_ranking_is_valid_but_unresolved_tools_stop(self):
@@ -170,6 +175,101 @@ class QueueChecks(unittest.TestCase):
             self.assertEqual(queue.failure_reason(row['result']),'failed_tool_action; inspect before continuing')
             calls,_,_,progress=self.execute(run,[row,None]);self.assertEqual(calls,['a','a']);self.assertEqual(progress['status'],'preflight_complete')
             self.assertEqual(json.loads((run/'attempts/a/service-attempt-001/result.json').read_text())['result']['status'],'submitted')
+
+    def idle_result(self):
+        return {'status':'idle','ended':True,'ordered_item_ids':[],'error':None,'continuation_error':None,
+            'state_after':{'version':0,'records':[]},
+            'model_calls':[{'status':'success','input':{'environment':{'recommendation_constraints':{'mode':'acquire','require_full_ranking':False}}}}],
+            'trace':[{'decision':{'actions':[{'action_id':'idle','kind':'idle','arguments':{'mode':'wait'}}]},
+                      'execution_results':[{'action_id':'idle','kind':'idle','status':'success','result':{'mode':'wait'}}]}]}
+
+    def test_clean_native_abstention_continues_as_idle_not_submitted(self):
+        result=self.idle_result();self.assertIsNone(queue.failure_reason(result));self.assertFalse(queue.committed_delivery(result))
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);(run/'tasks.jsonl').write_text(json.dumps(tasks[0])+'\n')
+            row=self.result(tasks[0]);row['result'].update(result)
+            calls,sleeps,_,progress=self.execute(run,[row],predictions_only=True)
+            self.assertEqual(calls,['a']);self.assertEqual(sleeps,[]);self.assertEqual(progress['status'],'predictions_complete')
+            self.assertEqual(progress['counts'],{'mind:idle':1})
+            self.assertEqual(json.loads((run/'results/a.json').read_text())['result']['ordered_item_ids'],[])
+
+    def test_abstention_refuses_fixed_ranking_failed_calls_tools_or_unproven_idle(self):
+        changes=[('fixed',lambda r:r['model_calls'][0]['input']['environment']['recommendation_constraints'].update(mode='fixed_candidates')),
+            ('full',lambda r:r['model_calls'][0]['input']['environment']['recommendation_constraints'].update(require_full_ranking=True)),
+            ('model_error',lambda r:r['model_calls'][0].update(error='invalid_batch_ranking')),
+            ('model_failure',lambda r:r['model_calls'][0].update(status='failed')),
+            ('failed_tool',lambda r:r['trace'][0]['execution_results'].append({'kind':'acquire','status':'failed'})),
+            ('no_idle_action',lambda r:r['trace'][0]['decision'].update(actions=[])),
+            ('missing_idle_id',lambda r:(r['trace'][0]['decision']['actions'][0].pop('action_id'),r['trace'][0]['execution_results'][0].pop('action_id'))),
+            ('idle_mismatch',lambda r:r['trace'][0]['execution_results'][0]['result'].update(mode='keep')),
+            ('state',lambda r:r['state_after'].update(version=True)),
+            ('not_ended',lambda r:r.update(ended=False)),('continuation',lambda r:r.update(continuation_error='model_timeout')),
+            ('top_error',lambda r:r.update(error='invalid_decision')),('no_calls',lambda r:r.update(model_calls=[]))]
+        for name,change in changes:
+            with self.subTest(case=name):
+                result=self.idle_result();change(result);self.assertIsNotNone(queue.failure_reason(result))
+        result=self.idle_result();result['trace'][0]['decision']['actions'][0]['arguments']['mode']='end_task'
+        result['trace'][0]['execution_results'][0]['result']['mode']='end_task';self.assertIsNone(queue.failure_reason(result))
+
+    def dispositions(self,run,tasks):
+        queue.save(run/'validation-dispositions.json',{'schema_version':1,'tasks':tasks})
+        plan=json.loads((run/'plan.json').read_text());plan['validation_dispositions_file']='validation-dispositions.json';queue.save(run/'plan.json',plan)
+
+    def test_disposition_hash_identity_and_canonical_failure_are_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);task=tasks[0];output=run/'results/a.json'
+            self.assertEqual(queue.load_validation_dispositions(run),{})
+            self.dispositions(run,{'a':{'task':'a','dataset':'mind','kind':'hold','result_sha256':None}})
+            dispositions=queue.load_validation_dispositions(run);self.assertEqual(queue.checked_disposition(task,output,dispositions),'hold')
+            with self.assertRaises(ValueError):queue.checked_disposition(task,output,{'a':None})
+            queue.save(output,self.result(task,'model_http_403'));digest=hashlib.sha256(output.read_bytes()).hexdigest()
+            with self.assertRaises(ValueError):queue.checked_disposition(task,output,dispositions)
+            entry={'task':'a','dataset':'mind','kind':'failed','result_sha256':digest}
+            self.assertEqual(queue.checked_disposition(task,output,{'a':entry}),'failed')
+            for field,value in [('task','b'),('dataset','clawrec'),('kind','submitted'),('result_sha256','0'*64),('result_sha256',None)]:
+                with self.subTest(field=field,value=value):
+                    with self.assertRaises(ValueError):queue.checked_disposition(task,output,{'a':{**entry,field:value}})
+            queue.save(output,self.result(task));entry['result_sha256']=hashlib.sha256(output.read_bytes()).hexdigest()
+            with self.assertRaises(ValueError):queue.checked_disposition(task,output,{'a':entry})
+            output.unlink()
+            with self.assertRaises(ValueError):queue.checked_disposition(task,output,{'a':entry})
+            for manifest in ({'schema_version':2,'tasks':{}},{'schema_version':1,'tasks':[]},{'schema_version':True,'tasks':{}}):
+                queue.save(run/'validation-dispositions.json',manifest)
+                with self.assertRaises(ValueError):queue.load_validation_dispositions(run)
+
+    def test_missing_output_holds_preserve_interruption_and_block_scoring(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);queue.save(run/'started/a.json',{'attempt':1});(run/'logs/a.log').write_text('original interrupted attempt')
+            self.dispositions(run,{t['id']:{'task':t['id'],'dataset':'mind','kind':'hold','result_sha256':None} for t in tasks})
+            calls,sleeps,updates,progress=self.execute(run,[],predictions_only=True)
+            self.assertEqual(calls,[]);self.assertEqual(sleeps,[]);self.assertEqual(progress['status'],'validation_holds_remaining')
+            self.assertEqual(progress['held_count'],2);self.assertEqual(progress['counts'],{'mind:held':2})
+            self.assertFalse(any(x['status']=='scoring' for x in updates));self.assertEqual(list((run/'results').iterdir()),[])
+            self.assertEqual((run/'logs/a.log').read_text(),'original interrupted attempt');self.assertTrue((run/'started/a.json').exists())
+
+    def test_held_predecessor_requires_descendant_hold_before_any_paid_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);tasks[1]['previous']='a';(run/'tasks.jsonl').write_text(''.join(json.dumps(t)+'\n' for t in tasks))
+            self.dispositions(run,{'a':{'task':'a','dataset':'mind','kind':'hold','result_sha256':None}})
+            calls,_,_,progress=self.execute(run,[])
+            self.assertEqual(calls,[]);self.assertEqual(progress['status'],'needs_attention');self.assertIn('hold_dependency_closure',progress['reason'])
+
+    def test_audited_failed_result_does_not_retry_rewrite_or_count_as_submitted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);queue.save(run/'results/a.json',self.result(tasks[0],'model_http_502'))
+            original=(run/'results/a.json').read_bytes()
+            self.dispositions(run,{'a':{'task':'a','dataset':'mind','kind':'failed','result_sha256':hashlib.sha256(original).hexdigest()}})
+            calls,sleeps,_,progress=self.execute(run,[None],predictions_only=True)
+            self.assertEqual(calls,['b']);self.assertEqual(sleeps,[]);self.assertEqual(progress['status'],'predictions_complete')
+            self.assertEqual(progress['counts'],{'mind:failed':1,'mind:submitted':1});self.assertFalse((run/'attempts').exists())
+            self.assertEqual((run/'results/a.json').read_bytes(),original)
+
+    def test_legacy_review_marker_never_authorizes_acceptance_or_an_api_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);queue.save(run/'results/a.json',self.result(tasks[0],'model_http_403'))
+            queue.save(run/'reviewed/a.json',{'approved':True})
+            calls,_,_,progress=self.execute(run,[])
+            self.assertEqual(calls,[]);self.assertEqual(progress['status'],'needs_attention');self.assertIn('unverified_manual_review',progress['reason'])
 
     def fixture(self,directory):
         run=pathlib.Path(directory)

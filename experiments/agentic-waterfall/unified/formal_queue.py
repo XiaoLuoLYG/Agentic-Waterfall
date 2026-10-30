@@ -31,10 +31,36 @@ def committed_delivery(result):
     last=receipts[-1].get('result',{}) if receipts else {}
     return set(ids)<=pool and last.get('queued_item_ids')==ids and last.get('delivery') in {'append','replace_pending'}
 
+def clean_no_delivery(result):
+    state=result.get('state_after');calls=result.get('model_calls');trace=result.get('trace')
+    if (result.get('status')!='idle' or result.get('ended') is not True or result.get('ordered_item_ids')!=[]
+        or result.get('error') is not None or result.get('continuation_error') is not None
+        or not isinstance(state,dict) or type(state.get('version')) is not int or state['version']<0
+        or not isinstance(state.get('records'),list) or not isinstance(calls,list) or not calls
+        or any(not isinstance(call,dict) or call.get('status')!='success' or call.get('error') is not None for call in calls)
+        or not isinstance(trace,list) or not trace):return False
+    observation=calls[0].get('input');environment=observation.get('environment') if isinstance(observation,dict) else None
+    constraints=environment.get('recommendation_constraints') if isinstance(environment,dict) else None
+    if not isinstance(constraints,dict) or constraints.get('mode')!='acquire' or constraints.get('require_full_ranking') is not False:return False
+    idle=False
+    for step in trace:
+        if not isinstance(step,dict) or not isinstance(step.get('execution_results'),list):return False
+        decision=step.get('decision',{});actions=decision.get('actions',[]) if isinstance(decision,dict) else []
+        if not isinstance(actions,list):return False
+        for receipt in step['execution_results']:
+            if not isinstance(receipt,dict) or receipt.get('status')!='success' or receipt.get('error') is not None or receipt.get('kind')=='recommend':return False
+            if receipt.get('kind')!='idle':continue
+            if not isinstance(receipt.get('action_id'),str) or not receipt['action_id']:return False
+            delivered=receipt.get('result');mode=delivered.get('mode') if isinstance(delivered,dict) else None
+            if mode not in {'wait','end_task'}:return False
+            if not any(isinstance(action,dict) and action.get('action_id')==receipt.get('action_id') and action.get('kind')=='idle'
+                       and isinstance(action.get('arguments'),dict) and action['arguments'].get('mode')==mode for action in actions):return False
+            idle=True
+    return idle
+
 def failure_reason(result):
-    delivered=committed_delivery(result)
+    if clean_no_delivery(result):return None
     failure=infrastructure_failure(result) or result.get('continuation_error')
-    if delivered and failure in LOCAL_CONTEXT_LIMITS:failure=None
     if failure:return failure
     if result.get('status')!='submitted':return result.get('error') or 'no_valid_submission'
     trace=result.get('trace',[])
@@ -50,9 +76,7 @@ def failure_reason(result):
     def recoverable_dependency(action_id,seen):
         if not isinstance(action_id,str) or action_id in seen:return False
         receipt=by_id.get(action_id,{})
-        if delivered and receipt.get('kind')=='update_state' and receipt.get('status')=='failed' and receipt.get('error')=='state_evidence_missing':return True
-        cancelled=delivered and receipt.get('status')=='skipped' and receipt.get('kind') in {'update_state','acquire','lookup_history','respond','idle'}
-        if receipt.get('kind')!='recommend' and not cancelled:return False
+        if receipt.get('kind')!='recommend':return False
         if receipt.get('status')=='failed':return receipt.get('error') in recoverable
         if receipt.get('status')!='skipped' or receipt.get('error')!='dependency_failed':return False
         dependencies=actions.get(action_id,{}).get('depends_on',[])
@@ -61,13 +85,11 @@ def failure_reason(result):
         return bool(blocked) and all(recoverable_dependency(dep,seen|{action_id}) for dep in blocked)
     for i,receipt in enumerate(receipts):
         if receipt.get('status')=='skipped' or receipt.get('error')=='dependency_failed':
-            # Cancelled actions never ran; only known nondestructive ancestor failures can be superseded.
+            # A later valid delivery can supersede cancelled recommendations, not skipped state or source actions.
             corrected=recoverable_dependency(receipt.get('action_id'),set()) and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
             if corrected:continue
             return 'skipped_dependency; inspect before continuing'
         if receipt.get('status')!='failed':continue
-        # Evidence rejection is atomic: the previous state and an independently committed slate remain valid.
-        if delivered and receipt.get('kind')=='update_state' and receipt.get('error')=='state_evidence_missing':continue
         corrected=receipt.get('kind')=='recommend' and receipt.get('error') in recoverable and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
         if receipt.get('kind')=='update_state' and receipt.get('error')=='state_evidence_missing':
             failed_step=next((step.get('call_index') for step in trace if receipt in step.get('execution_results',[])),None)
@@ -82,7 +104,7 @@ def failure_reason(result):
     return None
 
 def result_warnings(result):
-    if not committed_delivery(result) or failure_reason(result):return []
+    if not committed_delivery(result):return []
     warnings=set()
     if any(r.get('kind')=='update_state' and r.get('status')=='failed' and r.get('error')=='state_evidence_missing' for step in result.get('trace',[]) for r in step.get('execution_results',[])):
         warnings.add('state_evidence_missing')
@@ -128,6 +150,33 @@ def read_committed(output,task):
         result.get('status') not in {'submitted','failed','idle'}):raise ValueError('committed_result_identity_or_structure_mismatch')
     return result
 
+def load_validation_dispositions(run,plan=None):
+    run=pathlib.Path(run)
+    if (run/'reviewed').exists() and any((run/'reviewed').iterdir()):raise ValueError('unverified_manual_review')
+    if plan is None:plan=json.loads((run/'plan.json').read_text())
+    location=plan.get('validation_dispositions_file')
+    if location is None:return {}
+    if not isinstance(location,str) or not location:raise ValueError('invalid_validation_dispositions_file')
+    document=json.loads((run/location).read_text())
+    if (not isinstance(document,dict) or type(document.get('schema_version')) is not int or document['schema_version']!=1
+        or not isinstance(document.get('tasks'),dict)):raise ValueError('invalid_validation_dispositions_schema')
+    return document['tasks']
+
+def checked_disposition(task,output,dispositions):
+    if task['id'] not in dispositions:return None
+    entry=dispositions[task['id']]
+    if (not isinstance(entry,dict) or entry.get('task')!=task['id'] or entry.get('dataset')!=task['dataset']
+        or entry.get('kind') not in {'hold','failed'} or 'result_sha256' not in entry):raise ValueError('invalid_validation_disposition_identity_or_kind')
+    output=pathlib.Path(output);expected=entry['result_sha256'];kind=entry['kind']
+    if expected is None:
+        if output.exists() or kind!='hold':raise ValueError('validation_disposition_expected_missing_result')
+    elif (not isinstance(expected,str) or not re.fullmatch('[0-9a-f]{64}',expected) or not output.is_file()
+          or hashlib.sha256(output.read_bytes()).hexdigest()!=expected):raise ValueError('validation_disposition_result_hash_mismatch')
+    if kind=='failed':
+        result=read_committed(output,task)
+        if result['status']!='failed' or not failure_reason(result):raise ValueError('validation_disposition_requires_failed_canonical_result')
+    return kind
+
 def archive_attempt(run,task,number):
     folder=run/'attempts'/task['id']/f'service-attempt-{number:03d}';folder.mkdir(parents=True,exist_ok=True)
     files={'result.json':run/'results'/(task['id']+'.json'),'started.json':run/'started'/(task['id']+'.json'),'log.txt':run/'logs'/(task['id']+'.log')}
@@ -163,14 +212,24 @@ def main():
     def progress(status,**extra):
         save(run/'progress.json',{'status':status,'pid':os.getpid(),'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'total':len(tasks),'counts':dict(counts),'elapsed_seconds':round(time.time()-start),'peak_child_rss_kib':peak_rss,**extra})
     try:
+        dispositions=load_validation_dispositions(run,plan)
+        checked={task['id']:checked_disposition(task,run/'results'/(task['id']+'.json'),dispositions) for task in tasks}
+        for task in tasks:
+            previous=dispositions.get(task.get('previous'),{})
+            if isinstance(previous,dict) and previous.get('kind')=='hold' and checked[task['id']]!='hold':raise ValueError('validation_hold_dependency_closure')
+        held_count=sum(kind=='hold' for kind in checked.values())
         for task in tasks:
             if stop:progress('stopped');return
             output=run/'results'/(task['id']+'.json');started=run/'started'/(task['id']+'.json')
+            disposition=checked[task['id']]
+            if disposition in {'hold','failed'}:
+                checked_disposition(task,output,dispositions)
+                counts[task['dataset']+(':held' if disposition=='hold' else ':failed')]+=1;continue
             state=result_state(output,started)
             attempt=1;retry=None
             if state=='completed':
                 result=read_committed(output,task);failure=failure_reason(result)
-                if not failure or (run/'reviewed'/(task['id']+'.json')).exists():counts[task['dataset']+':'+result['status']]+=1;continue
+                if not failure:counts[task['dataset']+':'+result['status']]+=1;continue
                 attempt=json.loads(started.read_text()).get('attempt',1)
                 retry=retryable_failure(result)
                 if not retry or attempt>=3:progress('needs_attention',task=task['id'],reason=failure,attempt=attempt);return
@@ -223,6 +282,7 @@ def main():
                 archive_attempt(run,task,attempt)
                 attempt+=1
             progress('running',last=task['id'])
+        if held_count:progress('validation_holds_remaining',held_count=held_count);return
         if args.predictions_only:progress('predictions_complete');return
         progress('scoring')
         with (run/'scoring.log').open('a') as log:

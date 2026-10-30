@@ -122,6 +122,7 @@ def validator(path):
 def waterfall(table, run, warnings=None):
     plan = read(run / 'plan.json')
     validation = validator(run / 'code/experiments/agentic-waterfall/unified/formal_queue.py')
+    dispositions = validation.load_validation_dispositions(run, plan)
     errors = Counter()
     for task in jsonlines(run / 'tasks.jsonl'):
         if task['dataset'] == 'mind':
@@ -129,6 +130,18 @@ def waterfall(table, run, warnings=None):
         row = table[group(task['dataset'], task.get('split', ''), task.get('domain', ''), 'Waterfall')]
         row['total'] += 1
         output = run / 'results' / (task['id'] + '.json')
+        disposition = validation.checked_disposition(task, output, dispositions)
+        if disposition in {'hold', 'failed'}:
+            row['held' if disposition == 'hold' else 'failed'] += 1
+            if disposition == 'failed':row['audited_failures'] += 1
+            if output.exists():
+                result = validation.read_committed(output, task)
+                if disposition == 'hold' and isinstance(result.get('ordered_item_ids'),list) and result['ordered_item_ids']:row['held_with_slate'] += 1
+                codes = validation.result_warnings(result)
+                if codes:
+                    row['warning_cases'] += 1
+                    if warnings is not None:warnings.update(codes)
+            continue
         if not output.exists():
             row['uncommitted' if (run / 'started' / output.name).exists() else 'pending'] += 1
             continue
@@ -138,11 +151,12 @@ def waterfall(table, run, warnings=None):
                 if not plan.get('core_sha256') or result.get('runtime_source_sha256') != plan['core_sha256']:
                     return 'failed', 'core_sha256_mismatch', []
                 reason = validation.failure_reason(result)
+                codes = validation.result_warnings(result)
                 if reason:
-                    return 'failed', reason, []
+                    return 'failed', reason, codes
                 if not isinstance(result.get('ordered_item_ids'), list):
                     return 'failed', 'missing_ordered_item_ids', []
-                return ('delivered' if result['ordered_item_ids'] else 'empty'), None, validation.result_warnings(result)
+                return ('delivered' if result['ordered_item_ids'] else 'empty'), None, codes
             except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
                 return 'failed', 'invalid_committed_result: ' + str(exc), []
         # Include validator/protocol versions so changing validation invalidates cached classifications.
@@ -246,7 +260,9 @@ def queue_line(title, state, pid, script, states=(), fatal=None, expected=(), sh
     detail = '；原因: ' + ', '.join(dict.fromkeys(reasons)) if reasons else ''
     label = {'running': '运行中', 'waiting_for_service': '等待重试', 'needs_attention': '已暂停，需检查',
              'predictions_complete': '预测已交付，待评分', 'stopped': '已停止', 'not_running': '未运行',
+             'validation_holds_remaining': '可运行部分已收集，隔离项待审',
              'preflight_running': '复验中', 'complete': '队列已结束'}.get(status, status)
+    if state.get('held_count'):detail += f"；隔离 {state['held_count']}题"
     if short:
         if status in ('running', 'preflight_running', 'waiting_for_service') and not running:
             label = '未运行，状态待检查'
@@ -306,7 +322,7 @@ def progress_text(counts, width=12):
 
 
 def compact_rows(table):
-    rows = [cell('数据 / 划分', 20) + cell('Waterfall', 13, True) + cell('其他方法合计', 15, True) + '  失败/未提交']
+    rows = [cell('数据 / 划分', 20) + cell('Waterfall', 13, True) + cell('其他方法合计', 15, True) + '  失败/隔离/在途']
     groups = [('kuairec', 'test', 'KuaiRec 测试'), ('kuairec', 'dev', 'KuaiRec 开发'),
               ('kuairand', 'test', 'KuaiRand 测试'), ('kuairand', 'dev', 'KuaiRand 旧开发'),
               ('agentrecbench', 'short_term', 'AgentRecBench 短历史'), ('simbench', 'five_events', 'SimBench 五轮')]
@@ -319,7 +335,7 @@ def compact_rows(table):
         def fraction(counts):
             return f"{counts['delivered'] + counts['empty']:,}/{counts['total']:,}" if counts['total'] else '—'
         rows.append(cell(title, 20) + cell(fraction(own), 13, True) + cell(fraction(other), 15, True) +
-                    f"  {all_counts['failed']}/{all_counts['uncommitted']}")
+                    f"  {all_counts['failed']}/{all_counts['held']}/{all_counts['uncommitted']}")
     return rows
 
 
@@ -340,7 +356,7 @@ def screen_lines(lines, height, width):
 
 
 def table_lines(table, dev=False):
-    lines = ['  方法           有效/计划      进度       空 失败 在途 待跑 阻断 不适用']
+    lines = ['  方法           非空通过/计划   进度       空 失败 隔离 在途 待跑 阻断 不适用']
     previous = None
     names = {'generic-agent': '通用Agent', 'fixed': '固定检索', 'i2agent': 'i²Agent',
              'clawrec': 'ClawRec', 'recbot': 'RecBot语义版', 'mars': 'MARS复现'}
@@ -355,7 +371,7 @@ def table_lines(table, dev=False):
         delivered = f"{counts['delivered']:,}/{counts['total']:,}"
         filled = min(8, counts['delivered'] * 8 // counts['total']) if counts['total'] else 0
         bar = '[' + '█' * filled + '░' * (8 - filled) + ']'
-        lines.append(f"  {cell(names.get(method, method), 12)} {delivered:>11} {bar} {counts['empty']:>3} {counts['failed']:>4} {counts['uncommitted']:>4} {counts['pending']:>4} {counts['blocked']:>4} {counts['inapplicable']:>6}")
+        lines.append(f"  {cell(names.get(method, method), 12)} {delivered:>11} {bar} {counts['empty']:>3} {counts['failed']:>4} {counts['held']:>4} {counts['uncommitted']:>4} {counts['pending']:>4} {counts['blocked']:>4} {counts['inapplicable']:>6}")
     return lines
 
 
@@ -381,10 +397,10 @@ def snapshot(root, details=False):
     test = all_counts.copy()
     test.subtract(dev)
     lines = [f'统一实验进度  {datetime.datetime.now():%m-%d %H:%M:%S}  MIND 暂停', resources(root),
-             '总交付    ' + progress_text(all_counts), 'Waterfall ' + progress_text(own),
+             '主表验收  ' + progress_text(all_counts), 'Waterfall ' + progress_text(own),
              '对照方法  ' + progress_text(other),
              f"其中测试 {test['delivered'] + test['empty']:,}/{test['total']:,}；开发 {dev['delivered'] + dev['empty']:,}/{dev['total']:,}；不适用 {all_counts['inapplicable']} 另列",
-             f"交付含空推荐 {all_counts['empty']}；动作告警 {all_counts['warning_cases']}题另列；失败 {all_counts['failed']}、未提交 {all_counts['uncommitted']} 不计交付。",
+             f"合法空交付 {all_counts['empty']}；失败 {all_counts['failed']}；隔离待审 {all_counts['held']}；在途 {all_counts['uncommitted']}；未统一评分。",
              '', *(table_lines(table) if details else compact_rows(table))]
     if details:
         lines += ['', '开发集（单独列示，不并入测试进度）：', *table_lines(table, dev=True), '', '队列状态：']
@@ -413,7 +429,11 @@ def snapshot(root, details=False):
         labels={'state_evidence_missing':'曾有状态更新被拒','input_byte_budget_exceeded':'交付后输入超限',
                 'candidate_or_history_too_large':'交付后上下文超限','batch_model_budget_insufficient':'交付后批处理额度用尽',
                 'dependency_failed':'曾有依赖动作取消'}
-        lines.append('Waterfall 动作告警（含已纠正；原始记录保留）：'+'；'.join(f'{labels.get(reason,reason)} {count}题' for reason,count in warnings.items()))
+        lines.append('Waterfall 动作异常（含已纠正；不代表无影响）：'+'；'.join(f'{labels.get(reason,reason)} {count}题' for reason,count in warnings.items()))
+    if own['held']:
+        lines.append(f"Waterfall 隔离待审 {own['held']}题（已有排名 {own['held_with_slate']}题）；不计主表成功，完整分母保留，正式评分受阻。")
+    if own['audited_failures']:
+        lines.append(f"Waterfall 已审定方法失败 {own['audited_failures']}题：保留失败和完整分母，效果计0，不追加重试。")
     if database_error:
         lines.append('KuaiRand SQLite 无法读取（显示仅含旧队列）：' + database_error)
     lines += [preparation(expansion), '30秒原位刷新；q / Ctrl+C 仅关闭显示。完整明细：加 --details']

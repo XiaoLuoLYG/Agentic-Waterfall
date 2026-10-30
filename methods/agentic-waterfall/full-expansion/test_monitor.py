@@ -9,6 +9,7 @@ import struct
 import termios
 import time
 import json
+import hashlib
 from pathlib import Path
 import shutil
 import sqlite3
@@ -83,9 +84,30 @@ class MonitorTests(unittest.TestCase):
             {'kind':'recommend','status':'success','result':{'queued_item_ids':['item'],'delivery':'replace_pending'}}]}])
         save(path,row);table=defaultdict(Counter);warnings=Counter();errors=monitor.waterfall(table,run,warnings)
         counts=table[('kuairand','test','','Waterfall')]
-        self.assertEqual(counts['delivered'],1);self.assertEqual(counts['warning_cases'],1)
-        self.assertEqual(counts['failed'],3);self.assertEqual(warnings,Counter(state_evidence_missing=1))
-        self.assertNotIn('failed_tool_action; inspect before continuing',errors)
+        self.assertEqual(counts['delivered'],0);self.assertEqual(counts['warning_cases'],1)
+        self.assertEqual(counts['failed'],4);self.assertEqual(warnings,Counter(state_evidence_missing=1))
+        self.assertIn('failed_tool_action; inspect before continuing',errors)
+
+    def test_quarantined_rows_and_descendants_stay_out_of_main_successes(self):
+        run=self.waterfall_fixture();path=run/'results/a.json';audit=run/'validation-dispositions.json'
+        save(audit,{'schema_version':1,'tasks':{
+            'a':{'task':'a','dataset':'kuairand','kind':'hold','result_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'reason':'unresolved protocol'},
+            'g':{'task':'g','dataset':'kuairand','kind':'hold','result_sha256':None,'reason':'depends on held state'}}})
+        save(run/'plan.json',{'core_sha256':'expected','validation_dispositions_file':str(audit)})
+        table=defaultdict(Counter);monitor.waterfall(table,run)
+        counts=table[('kuairand','test','','Waterfall')]
+        self.assertEqual(counts['total'],7);self.assertEqual(counts['delivered'],0)
+        self.assertEqual(counts['held'],2);self.assertEqual(counts['held_with_slate'],1)
+
+    def test_audited_method_failure_remains_failure(self):
+        run=self.waterfall_fixture();path=run/'results/a.json';row=json.loads(path.read_text())
+        row['result'].update(status='failed',error='action_execution_failed',ordered_item_ids=[]);save(path,row)
+        audit=run/'validation-dispositions.json';save(audit,{'schema_version':1,'tasks':{
+            'a':{'task':'a','dataset':'kuairand','kind':'failed','result_sha256':hashlib.sha256(path.read_bytes()).hexdigest()}}})
+        save(run/'plan.json',{'core_sha256':'expected','validation_dispositions_file':str(audit)})
+        table=defaultdict(Counter);monitor.waterfall(table,run);counts=table[('kuairand','test','','Waterfall')]
+        self.assertEqual(counts['delivered'],0);self.assertEqual(counts['failed'],4)
+        self.assertEqual(counts['audited_failures'],1);self.assertEqual(counts['held'],0)
 
     def test_waterfall_cache_rechecks_only_changed_results(self):
         run = self.waterfall_fixture()
