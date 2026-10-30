@@ -261,6 +261,7 @@ def queue_line(title, state, pid, script, states=(), fatal=None, expected=(), sh
     label = {'running': '运行中', 'waiting_for_service': '等待重试', 'needs_attention': '已暂停，需检查',
              'predictions_complete': '预测已交付，待评分', 'stopped': '已停止', 'not_running': '未运行',
              'validation_holds_remaining': '可运行部分已收集，隔离项待审',
+             'method_failures_remaining': '方法失败已保留，依赖后继阻断',
              'preflight_running': '复验中', 'complete': '队列已结束'}.get(status, status)
     if state.get('held_count'):detail += f"；隔离 {state['held_count']}题"
     if short:
@@ -397,13 +398,16 @@ def snapshot(root, details=False):
     test = all_counts.copy()
     test.subtract(dev)
     lines = [f'统一实验进度  {datetime.datetime.now():%m-%d %H:%M:%S}  MIND 暂停', resources(root),
-             '主表验收  ' + progress_text(all_counts), 'Waterfall ' + progress_text(own),
+             '流程验收  ' + progress_text(all_counts), 'Waterfall ' + progress_text(own),
              '对照方法  ' + progress_text(other),
              f"其中测试 {test['delivered'] + test['empty']:,}/{test['total']:,}；开发 {dev['delivered'] + dev['empty']:,}/{dev['total']:,}；不适用 {all_counts['inapplicable']} 另列",
-             f"合法空交付 {all_counts['empty']}；失败 {all_counts['failed']}；隔离待审 {all_counts['held']}；在途 {all_counts['uncommitted']}；未统一评分。",
+             f"合法空交付 {all_counts['empty']}；失败 {all_counts['failed']}；隔离待审 {all_counts['held']}；在途 {all_counts['uncommitted']}；采集进度不是可比成绩。",
              '', *(table_lines(table) if details else compact_rows(table))]
     if details:
         lines += ['', '开发集（单独列示，不并入测试进度）：', *table_lines(table, dev=True), '', '队列状态：']
+    repair = read(root / 'minimal-rerun-control-20261030/bounded-prefix-execution.json')
+    if repair:
+        lines.append(f"版本补齐：{repair.get('finished_jobs', 0)}/{repair.get('total_jobs', 0)}；新增请求 {repair.get('new_api_calls', 0)}/{repair.get('maximum_new_api_calls', 0)}；{repair.get('status')}；不增加原计划题数。")
     shard_names={'kuairec','other'}|{p.parent.name for p in (run/'shards').glob('*/plan.json')}
     for shard in sorted(shard_names):
         folder = run / 'shards' / shard

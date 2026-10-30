@@ -90,6 +90,44 @@ class ShardTests(unittest.TestCase):
     def supervisor(self):
         return json.loads((self.shard / 'supervisor.json').read_text())
 
+    def v2_queue(self):
+        path=SCRIPT.parents[3]/'experiments/agentic-waterfall/unified/formal_queue.py'
+        spec=importlib.util.spec_from_file_location('v2_queue',path);q=importlib.util.module_from_spec(spec);spec.loader.exec_module(q)
+        plan=json.loads((self.root/'plan.json').read_text());plan['method_outcome_policy']='first-complete-episode-v2';save(self.root/'plan.json',plan)
+        save(self.shard/'dispositions.json',{'schema_version':1,'tasks':{}})
+        return q
+
+    def semantic_outcome(self,task):
+        save(self.shard/'results'/(task['id']+'.json'),{'task':task,'input':{'observation':{'decision_id':task['id']}},'result':{
+            'decision_id':task['id'],'status':'failed','error':'action_execution_failed','continuation_error':None,'ordered_item_ids':[],
+            'state_after':{'version':0,'records':[]},'runtime_source_sha256':'core',
+            'model_calls':[{'attempt_id':'retained-call','requested_model':'model','status':'success'}],
+            'trace':[{'execution_results':[{'kind':'update_state','status':'failed','error':'state_evidence_missing'}]}]}})
+
+    def test_v2_preflight_excludes_existing_terminal_failure_and_its_pending_descendant(self):
+        q=self.v2_queue();parent=self.task('parent');child=self.task('child');child['previous']='parent'
+        other=self.task('independent');self.semantic_outcome(parent)
+        before=(self.shard/'results/parent.json').read_bytes();calls=[]
+        def execute(command):
+            calls.append(command);self.result(other)
+            row=json.loads((self.shard/'results/independent.json').read_text());row['input']={'observation':{'decision_id':'independent'}}
+            row['result']['decision_id']='independent';save(self.shard/'results/independent.json',row)
+            save(self.shard/'progress.json',{'status':'method_failures_remaining','blocked_count':1})
+            return types.SimpleNamespace(returncode=0)
+        self.assertEqual(wrapper.run_shard(self.root,'other',q,execute),'method_failures_remaining')
+        self.assertEqual(len(calls),1);self.assertEqual(self.supervisor()['existing'],1)
+        self.assertEqual(self.supervisor()['audited_failed'],1);self.assertEqual(self.supervisor()['blocked'],1)
+        self.assertEqual((self.shard/'results/parent.json').read_bytes(),before);self.assertFalse((self.shard/'results/child.json').exists())
+
+    def test_v2_new_terminal_outcome_settles_preflight_without_becoming_valid_success(self):
+        q=self.v2_queue();task=self.task('only')
+        def execute(_):
+            self.semantic_outcome(task);save(self.shard/'progress.json',{'status':'predictions_complete'})
+            return types.SimpleNamespace(returncode=0)
+        self.assertEqual(wrapper.run_shard(self.root,'other',q,execute),'predictions_complete')
+        self.assertEqual(self.supervisor()['existing'],0);self.assertEqual(self.supervisor()['audited_failed'],1)
+        self.assertEqual(self.supervisor()['preflight_new'],0);self.assertEqual(self.supervisor()['preflight_failed'],1)
+
     def test_only_holds_report_withheld_without_invoking_queue(self):
         held = self.task('held', result=True, error='state_evidence_missing')
         missing = self.task('pending-held')

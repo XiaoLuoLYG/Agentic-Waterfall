@@ -1,5 +1,5 @@
 """Run the remaining isolated agent benchmarks, preserving each user/method state."""
-import hashlib,json,os,signal,subprocess,sys,time
+import hashlib,json,os,re,signal,subprocess,sys,time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];M=ROOT/'methods/agentic-waterfall';B=ROOT/'formal';sys.path.insert(0,str(M))
 from error_policy import operational_failure
@@ -24,9 +24,116 @@ def outcome(folder):
     if link.exists() or link.is_symlink():raise ValueError('unexpected final run path')
     return None
 
+FIRST_COMPLETE='first-complete-episode-v2'
+METHOD_ERRORS={'invalid state','invalid ranking','invalid candidate permutation','invalid candidate permutation after retry','invalid_candidate_permutation','invalid recommendation indices','invalid search source or query','search budget exceeded','truncated response','truncated','state_truncated','plan_truncated','curation_truncated','state_contract_missing','plan_missing','no_acquired_items','curation_invalid_ids','invalid queries','invalid memory','invalid plan','missing search instructions','invalid search count','duplicate search id','unsupported platform','missing query','model response truncated','model returned invalid JSON','model response missing required fields','model response has invalid field type','invalid scores','invalid extraction','invalid preference','invalid profile','invalid parser result','unknown allowed candidate','invalid tool plan','filter without hard constraints','invalid semantic scores'}
+def strict_category(result):
+ if result.get('status') in ('submitted','no_delivery'):return 'attention' if result.get('error') else result['status']
+ if result.get('status')!='failed':return 'attention'
+ error=re.sub(r'^(ValueError|RuntimeError|JSONDecodeError):\s*','',str(result.get('error','')))
+ if re.fullmatch(r'(model_http_(429|502|503|504)|model_timeout|model_transport_error|model_slots_busy)([:\s].*)?',error):return 'operational_failure'
+ if error in METHOD_ERRORS|{'state_missing_user_state_md','state_missing_state_updates_md','state_missing_negative_signals_md'} or error.startswith(('Unexpected token','Unexpected end of JSON input','Expected property name')):return 'method_failure'
+ return 'attention'
+
+def response_files(actual):
+ return sorted(set(actual.rglob('*response*.json'))|set(actual.rglob('*.error.json')))
+
+def checked_category(result,actual):
+ category=strict_category(result)
+ receipts=[json.loads(path.read_text()) for path in response_files(actual)]
+ receipts += [r['receipt'] for r in receipts if isinstance(r.get('receipt'),dict)]
+ if category in ('submitted','no_delivery','method_failure') and not any(r.get('status')=='success' and isinstance(r.get('content'),str) for r in receipts):return 'attention'
+ if category=='operational_failure':
+  if not any(r.get('status')=='failed' and strict_category({'status':'failed','error':r.get('error')})=='operational_failure' for r in receipts):return 'attention'
+  if any(r.get('http_error',{}).get('retryable') is False for r in receipts):return 'attention'
+ return category
+
+def previous_attempts(folder):
+ records=sorted(folder.glob('attempt-*.outcome.json'))
+ if {p.name[:11] for p in folder.glob('attempt-[0-9][0-9][0-9]*')}!={p.name[:11] for p in records}:raise RuntimeError('unresolved_prior_paid_attempt')
+ service=0;terminal=None
+ for path in records:
+  record=json.loads(path.read_text());result_path=Path(record['result_path'])
+  if not result_path.is_file() or sha(result_path)!=record['sha256']:raise ValueError('prior_attempt_artifact_changed')
+  for name,digest in record.get('response_sha256',{}).items():
+   if not Path(name).is_file() or sha(name)!=digest:raise ValueError('prior_response_artifact_changed')
+  result=json.loads(result_path.read_text());category=checked_category(result,result_path.parent)
+  if category=='attention' or record.get('returncode') not in (0,1) or (category in ('submitted','no_delivery') and record['returncode']):raise RuntimeError('unknown_prior_attempt')
+  if terminal is not None:raise RuntimeError('prior_method_outcome_requires_frozen_selection')
+  if category=='operational_failure':service+=1
+  else:terminal=(result_path.parent,result,int(path.name[8:11]),category)
+ return service,terminal
+
+def run_one(folder,kind,make_command,emit,first_complete=False):
+ global STOP
+ folder.mkdir(parents=True,exist_ok=True);existing=outcome(folder)
+ if existing is not None and first_complete:
+  category=checked_category(existing,(folder/'run').resolve())
+  if category not in ('submitted','no_delivery','method_failure'):raise RuntimeError('unknown_existing_outcome')
+  if list(folder.glob('attempt-*.outcome.json')):
+   _,terminal=previous_attempts(folder)
+   if not terminal or terminal[0].resolve()!=(folder/'run').resolve():raise RuntimeError('first_episode_selection_mismatch')
+ if existing is not None:emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'skipped_existing'});return existing
+ infra_failures=0;output_failures=0
+ if first_complete:
+  infra_failures,terminal=previous_attempts(folder)
+  if terminal:
+   actual,result,n,status=terminal
+   os.symlink(os.path.relpath(actual,folder),folder/'run');save(folder/'result.json',result)
+   emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':status,'attempt':n});return result
+  if infra_failures>=3:raise RuntimeError('service_attempt_limit_reached')
+ while True:
+  n=next_attempt(folder);attempt=folder/f'attempt-{n:03d}';command,actual=make_command(attempt,n)
+  if first_complete:
+   if actual.exists():raise RuntimeError('unexpected_attempt_directory')
+   save(folder/f'attempt-{n:03d}.started.json',{'result_path':str((actual/'result.json').resolve()),'started_at':time.time()})
+  proc=subprocess.run(command,cwd=ROOT,capture_output=True,text=True)
+  (folder/f'attempt-{n:03d}.process.log').write_text(proc.stdout+proc.stderr)
+  result_file=actual/'result.json';result=json.loads(result_file.read_text()) if result_file.exists() else {'status':'failed','error':'runner_before_result'};status=classify(result)
+  if first_complete:
+   if not result_file.is_file() or proc.returncode not in (0,1):raise RuntimeError('runner_or_uncommitted_paid_attempt')
+   save(folder/f'attempt-{n:03d}.outcome.json',{'result_path':str(result_file.resolve()),'sha256':sha(result_file),'returncode':proc.returncode,'response_sha256':{str(p.resolve()):sha(p) for p in response_files(actual)}})
+   status=checked_category(result,actual)
+   if status=='attention' or (result.get('status') in ('submitted','no_delivery') and proc.returncode):raise RuntimeError('unknown_runner_or_method_outcome')
+   if status=='method_failure':
+    os.symlink(os.path.relpath(actual,folder),folder/'run');save(folder/'result.json',result)
+    emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'method_failure','attempt':n,'error':str(result.get('error',''))[:300]});return result
+  if status in ('submitted','no_delivery'):
+   os.symlink(os.path.relpath(actual,folder),folder/'run');save(folder/'result.json',result)
+   if kind=='agentrecbench-reca':
+    for receipt in actual.glob('*response.json'):
+     os.link(receipt,folder/f'attempt-{n:03d}.response.json')
+   emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':status,'attempt':n});return result
+  if status=='method_failure':
+   output_failures+=1
+   if output_failures<2 and not STOP:emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'retrying_output','attempt':n,'error':str(result.get('error',''))[:300]});continue
+   STOP=True;emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'method_failure','attempt':n,'error':str(result.get('error',''))[:300]});return result
+  infra_failures+=1
+  if infra_failures<3 and not STOP:time.sleep(5*infra_failures);continue
+  STOP=True;emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'operational_failure','attempt':n,'error':str(result.get('error',''))[:300]});return result
+
+def run_simbench(j,snapshot,snapsha,emit,first_complete=False):
+ method=j['method'];prior=None;blocked=False
+ for e in j['events']:
+  if STOP:return
+  folder=B/'simbench'/method/e['case_id'];public=Path(e['input'])
+  if blocked:
+   folder.mkdir(parents=True,exist_ok=True);save(folder/'blocked.json',{'status':'blocked_by_previous_failure','user_id':j['user_id'],'event':e['event']});emit({'kind':'simbench','case':e['case_id'],'outcome':'blocked_by_prior_failure'});continue
+  for name,h in e['input_hashes'].items():
+   if sha(public/name)!=h:raise ValueError('SimBench public input changed')
+  if sha(snapshot/'catalog.jsonl')!=snapsha:raise ValueError('SimBench snapshot changed')
+  def command(dest,n):
+   cmd=['node',str(M/'simbench/run_round.mjs'),method,str(public),str(snapshot),str(dest)]
+   if prior:cmd.append(str(prior))
+   return cmd,dest
+  result=run_one(folder,'simbench',command,emit,first_complete)
+  if classify(result) in ('submitted','no_delivery'):prior=folder/'run'/'next-state.json'
+  else:blocked=True
+
 def main():
  global STOP
  plan=json.loads((B/'additional-plan.json').read_text());groups=plan['groups'];expected={};models=[]
+ if plan.get('method_outcome_policy') not in (None,FIRST_COMPLETE):raise ValueError('unknown_method_outcome_policy')
+ first_complete=plan.get('method_outcome_policy')==FIRST_COMPLETE
  for domain in ('amazon','yelp','goodreads'):
   for method in ('recagent','i2agent'):
    base=B/'agentrecbench'/domain/method;m=json.loads((base/'manifest.json').read_text());idx=M/f'agentrecbench-data/index/{domain}-short.sqlite'
@@ -55,28 +162,6 @@ def main():
  def emit(row):
   with events.open('a') as f:f.write(json.dumps(row,ensure_ascii=False)+'\n')
   stats[row['outcome']]+=1;save(B/'additional-progress.json',{**stats,'running':not STOP,'training':False,'recommendation_reads_labels':False,'last':row})
- def run_one(folder,kind,make_command,result_path=None):
-  global STOP
-  folder.mkdir(parents=True,exist_ok=True);existing=outcome(folder)
-  if existing is not None:emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'skipped_existing'});return existing
-  infra_failures=0;output_failures=0
-  while True:
-   n=next_attempt(folder);attempt=folder/f'attempt-{n:03d}';command,actual=make_command(attempt,n);proc=subprocess.run(command,cwd=ROOT,capture_output=True,text=True)
-   (folder/f'attempt-{n:03d}.process.log').write_text(proc.stdout+proc.stderr)
-   result_file=actual/'result.json';result=json.loads(result_file.read_text()) if result_file.exists() else {'status':'failed','error':'runner_before_result'};status=classify(result)
-   if status in ('submitted','no_delivery'):
-    os.symlink(os.path.relpath(actual,folder),folder/'run');save(folder/'result.json',result)
-    if kind=='agentrecbench-reca':
-     for receipt in actual.glob('*response.json'):
-      os.link(receipt,folder/f'attempt-{n:03d}.response.json')
-    emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':status,'attempt':n});return result
-   if status=='method_failure':
-    output_failures+=1
-    if output_failures<2 and not STOP:emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'retrying_output','attempt':n,'error':str(result.get('error',''))[:300]});continue
-    STOP=True;emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'method_failure','attempt':n,'error':str(result.get('error',''))[:300]});return result
-   infra_failures+=1
-   if infra_failures<3 and not STOP:time.sleep(5*infra_failures);continue
-   STOP=True;emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'operational_failure','attempt':n,'error':str(result.get('error',''))[:300]});return result
  def agentrecbench(j):
   method=j['method'];domain=j['domain'];tid=j['task_id'];base=B/'agentrecbench'/domain/method;entry=j['entry'];folder=base/f'task-{tid:06d}';index=M/f'agentrecbench-data/index/{domain}-short.sqlite';public=ROOT/f'datasets/agentic-waterfall/agentrecbench/task-full/short_term/{domain}/tasks/task_{tid}.json'
   if sha(public)!=(entry['sha256'] if method=='recagent' else entry['public_task_sha256']):raise ValueError('public task changed')
@@ -88,29 +173,12 @@ def main():
    if sha(data)!=entry['input_sha256']:raise ValueError('i2Agent input changed')
    def command(dest,n):return ([sys.executable,str(M/'i2agent/live_smoke.py'),'--input',str(data),'--output',str(dest),'--rank-max-tokens','4096'],dest)
    kind='agentrecbench-i2'
-  run_one(folder,kind,command)
- def simbench(j):
-  method=j['method'];prior=None;blocked=False
-  for e in j['events']:
-   if STOP:return
-   folder=B/'simbench'/method/e['case_id'];public=Path(e['input'])
-   if blocked:
-    folder.mkdir(parents=True,exist_ok=True);save(folder/'blocked.json',{'status':'blocked_by_previous_failure','user_id':j['user_id'],'event':e['event']});emit({'kind':'simbench','case':e['case_id'],'outcome':'blocked_by_prior_failure'});continue
-   for name,h in e['input_hashes'].items():
-    if sha(public/name)!=h:raise ValueError('SimBench public input changed')
-   if sha(snapshot/'catalog.jsonl')!=snapsha:raise ValueError('SimBench snapshot changed')
-   def command(dest,n):
-    cmd=['node',str(M/'simbench/run_round.mjs'),method,str(public),str(snapshot),str(dest)]
-    if prior:cmd.append(str(prior))
-    return cmd,dest
-   result=run_one(folder,'simbench',command)
-   if classify(result) in ('submitted','no_delivery'):prior=folder/'run'/'next-state.json'
-   else:blocked=True
+  run_one(folder,kind,command,emit,first_complete)
  def kuairec(j):
   method=j['method'];split=j['split'];entry=j['entry'];n=entry['line'];folder=B/'kuairec'/split/method/f'task-{n:06d}';inp=M/f'protocols/kuairec-public-20261029/kuairec-{split}-public-20261029.jsonl'
   def command(dest,k):
    runid=entry['run_id']+f'-a{k:03d}';actual=M/method/'runs'/runid;return ['node',str(M/method/'kuairec_run.mjs'),runid,str(inp),str(n)],actual
-  result=run_one(folder,'kuairec',command)
+  result=run_one(folder,'kuairec',command,emit,first_complete)
   if result.get('status') in ('submitted','no_delivery'):
    state=folder/'run'/('next-state.json' if method=='clawrec' else 'state.json')
    if not state.exists() or str(json.loads(state.read_text()).get('user_id'))!=str(entry['user_id']):raise ValueError('KuaiRec state user mismatch')
@@ -124,7 +192,7 @@ def main():
     if n>=len(g['items']):continue
     verify_unchanged();job=g['items'][n]
     if job['kind']=='agentrecbench':agentrecbench(job)
-    elif job['kind']=='simbench_sequence':simbench(job)
+    elif job['kind']=='simbench_sequence':run_simbench(job,snapshot,snapsha,emit,first_complete)
     elif job['kind']=='kuairec':kuairec(job)
     else:raise ValueError('unknown job')
     stats['jobs_completed']+=1

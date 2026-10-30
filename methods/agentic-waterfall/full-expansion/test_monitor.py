@@ -230,6 +230,16 @@ class MonitorTests(unittest.TestCase):
         self.assertIn('已暂停', text)
         self.assertLessEqual(len(text.splitlines()), 24)
 
+    def test_prefix_completion_is_visible_without_counting_tasks_twice(self):
+        self.waterfall_fixture()
+        save(self.root / 'minimal-rerun-control-20261030/bounded-prefix-execution.json',
+             {'finished_jobs': 26, 'total_jobs': 26, 'new_api_calls': 34,
+              'maximum_new_api_calls': 59, 'status': 'completed'})
+        with mock.patch.object(monitor, 'resources', return_value='资源'), mock.patch.object(monitor, 'live', return_value=False):
+            text = monitor.snapshot(self.root, details=True)
+        self.assertIn('版本补齐：26/26；新增请求 34/59', text)
+        self.assertIn('2/7', text)
+
     def test_details_lists_additional_disjoint_lanes_without_changing_totals(self):
         run=self.waterfall_fixture()
         save(run/'shards/kuairec-2/plan.json',{'total':3})

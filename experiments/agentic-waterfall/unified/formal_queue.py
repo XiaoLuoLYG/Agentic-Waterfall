@@ -6,6 +6,20 @@ REJECTED_RESPONSE_ERRORS={'invalid_decision','action_id_reuse_with_different_pay
 RETRY_DELAYS=(30,90)
 LOCAL_CONTEXT_LIMITS={'input_byte_budget_exceeded','candidate_or_history_too_large','batch_model_budget_insufficient'}
 
+FIRST_EPISODE_POLICY='first-complete-episode-v2'
+METHOD_ERRORS=REJECTED_RESPONSE_ERRORS|LOCAL_CONTEXT_LIMITS|{
+    'model_invalid_json','model_output_truncated','invalid_batch_ranking','invalid_batch_actions',
+    'model_call_budget_exhausted_without_submission','batch_model_budget_exhausted','no_progress',
+    'invalid_actions','invalid_dependency','dependency_cycle','invalid_ranking','invalid_candidate_indices',
+    'unacquired_recommendation','incomplete_ranking','too_many_recommendations','invalid_delivery',
+    'invalid_acquire_limit','source_ids_required','unsupported_source_or_mode','invalid_frozen_search',
+    'tool_budget_exhausted','unique_acquisition_budget_exhausted','acquire_disabled','fixed_candidate_acquire_disabled',
+    'state_evidence_missing','state_version_conflict','state_edits_required','record_id_required',
+    'invalid_record_kind','invalid_record_status','state_record_missing','invalid_state_edit','state_update_disabled',
+    'invalid_history_lookup','history_lookup_disabled','invalid_response','invalid_idle',
+    *('record_'+field+'_required' for field in ('key','value','scope','scope_id','basis','evidence_refs')),
+}
+
 def save(path,value):
     path=pathlib.Path(path);tmp=path.with_suffix(path.suffix+'.tmp')
     tmp.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n');os.replace(tmp,path)
@@ -113,13 +127,45 @@ def result_warnings(result):
         warnings.add('dependency_failed')
     return sorted(warnings)
 
-def retryable_failure(result):
+def terminal_method_failure(result):
+    failure=failure_reason(result)
+    if not failure or infrastructure_failure(result):return None
+    calls=result.get('model_calls');trace=result.get('trace');state=result.get('state_after')
+    if not isinstance(state,dict) or type(state.get('version')) is not int or state['version']<0 or not isinstance(state.get('records'),list):return None
+    if not isinstance(calls,list) or not calls or not isinstance(trace,list):return None
+    if any(not isinstance(call,dict) or call.get('status')!='success' or not isinstance(call.get('attempt_id'),str)
+           or not call['attempt_id'] for call in calls):return None
+    if any(not isinstance(step,dict) or not isinstance(step.get('execution_results'),list) for step in trace):return None
+    receipts=[receipt for step in trace for receipt in step['execution_results']]
+    if any(not isinstance(receipt,dict) or receipt.get('status') not in {'success','failed','skipped'} for receipt in receipts):return None
+    errors=[result.get('error'),result.get('continuation_error')]+[call.get('error') for call in calls]+[r.get('error') for r in receipts]
+    errors=[error for error in errors if error]
+    if any(error not in METHOD_ERRORS|{'action_execution_failed','dependency_failed'} for error in errors):return None
+    if any(r.get('status')=='failed' and r.get('error') not in METHOD_ERRORS for r in receipts):return None
+    if any(r.get('status')=='skipped' and r.get('error')!='dependency_failed' for r in receipts):return None
+    if 'dependency_failed' in errors and not any(r.get('status')=='failed' and r.get('error') in METHOD_ERRORS for r in receipts):return None
+    if not any(error in METHOD_ERRORS for error in errors):
+        if result.get('status')!='idle' or result.get('ended') is not True or result.get('ordered_item_ids')!=[]:return None
+    return failure
+
+def retryable_failure(result,policy=None):
     if (result.get('status')=='failed' and result.get('error')=='input_byte_budget_exceeded'
         and result.get('continuation_error') is None
         and type(result.get('model_request_count')) is int and result['model_request_count']==0
         and type(result.get('tool_calls')) is int and result['tool_calls']==0
         and all(result.get(key)==[] for key in ('trace','model_calls','ordered_item_ids'))):
         return 'input_byte_budget_exceeded'
+    if policy==FIRST_EPISODE_POLICY:
+        errors=[result.get('error'),result.get('continuation_error')]+[call.get('error') for call in result.get('model_calls',[])]
+        errors=[error for error in errors if error]
+        if (result.get('status')!='failed' or result.get('ordered_item_ids') or not errors
+            or any(error not in TRANSIENT_ERRORS for error in errors)):return None
+        calls=result.get('model_calls',[])
+        if not calls or any(call.get('status') not in {'success','failed'} or not call.get('attempt_id') for call in calls):return None
+        if any(call.get('status')=='failed' and call.get('error') not in TRANSIENT_ERRORS for call in calls):return None
+        if any(call.get('error')=='model_http_429' and call.get('http_error',{}).get('retryable') is False for call in calls):return None
+        if any(r.get('status')!='success' or r.get('error') for step in result.get('trace',[]) for r in step.get('execution_results',[])):return None
+        return errors[0]
     if any(call.get('error')=='model_http_429' and call.get('http_error',{}).get('retryable') is False for call in result.get('model_calls',[])):return None
     errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
     errors=[error for error in errors if error]
@@ -208,10 +254,12 @@ def main():
     signal.signal(signal.SIGTERM,stopping);signal.signal(signal.SIGINT,stopping)
     env=dict(os.environ,MODEL_CONFIG_FILE=plan['model_config_file'],WATERFALL_MODEL_TIMEOUT_MS='180000',NODE_OPTIONS='--max-old-space-size=384',OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',VECLIB_MAXIMUM_THREADS='1',TOKENIZERS_PARALLELISM='false',PYTHONDONTWRITEBYTECODE='1')
     if plan.get('model_name'):env['OPENAI_MODEL']=plan['model_name']
-    counts=collections.Counter();start=time.time();peak_rss=0;new_tasks=0
+    counts=collections.Counter();start=time.time();peak_rss=0;new_tasks=0;failed_lineage=set();blocked_count=0
+    policy=plan.get('method_outcome_policy')
     def progress(status,**extra):
         save(run/'progress.json',{'status':status,'pid':os.getpid(),'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'total':len(tasks),'counts':dict(counts),'elapsed_seconds':round(time.time()-start),'peak_child_rss_kib':peak_rss,**extra})
     try:
+        if policy not in {None,FIRST_EPISODE_POLICY}:raise ValueError('invalid_method_outcome_policy')
         dispositions=load_validation_dispositions(run,plan)
         checked={task['id']:checked_disposition(task,run/'results'/(task['id']+'.json'),dispositions) for task in tasks}
         for task in tasks:
@@ -224,14 +272,29 @@ def main():
             disposition=checked[task['id']]
             if disposition in {'hold','failed'}:
                 checked_disposition(task,output,dispositions)
-                counts[task['dataset']+(':held' if disposition=='hold' else ':failed')]+=1;continue
+                counts[task['dataset']+(':held' if disposition=='hold' else ':failed')]+=1
+                if disposition=='failed':failed_lineage.add(task['id'])
+                continue
+            if policy==FIRST_EPISODE_POLICY and task.get('previous'):
+                previous_id=task['previous'];previous=run/'results'/(previous_id+'.json')
+                blocked=previous_id in failed_lineage
+                if not blocked:
+                    if not previous.exists():progress('needs_attention',task=task['id'],reason='missing_previous_state');return
+                    prior=read_committed(previous,{'id':previous_id,'dataset':task['dataset']})
+                    if failure_reason(prior):
+                        if terminal_method_failure(prior):blocked=True
+                        else:progress('needs_attention',task=task['id'],reason='previous_state_unresolved_failure');return
+                if blocked:
+                    failed_lineage.add(task['id']);counts[task['dataset']+':blocked']+=1;blocked_count+=1;continue
             state=result_state(output,started)
             attempt=1;retry=None
             if state=='completed':
                 result=read_committed(output,task);failure=failure_reason(result)
                 if not failure:counts[task['dataset']+':'+result['status']]+=1;continue
+                if policy==FIRST_EPISODE_POLICY and terminal_method_failure(result):
+                    counts[task['dataset']+':failed']+=1;failed_lineage.add(task['id']);continue
                 attempt=json.loads(started.read_text()).get('attempt',1)
-                retry=retryable_failure(result)
+                retry=retryable_failure(result,policy)
                 if not retry or attempt>=3:progress('needs_attention',task=task['id'],reason=failure,attempt=attempt);return
                 archive_attempt(run,task,attempt)
                 attempt+=1
@@ -277,12 +340,15 @@ def main():
                 failure=failure_reason(result)
                 if not failure:
                     counts[task['dataset']+':'+result['status']]+=1;new_tasks+=1;break
-                retry=retryable_failure(result)
+                if policy==FIRST_EPISODE_POLICY and terminal_method_failure(result):
+                    counts[task['dataset']+':failed']+=1;failed_lineage.add(task['id']);new_tasks+=1;break
+                retry=retryable_failure(result,policy)
                 if not retry or attempt>=3:counts[task['dataset']+':'+result['status']]+=1;progress('needs_attention',task=task['id'],reason=failure,attempt=attempt);return
                 archive_attempt(run,task,attempt)
                 attempt+=1
             progress('running',last=task['id'])
         if held_count:progress('validation_holds_remaining',held_count=held_count);return
+        if blocked_count:progress('method_failures_remaining',blocked_count=blocked_count);return
         if args.predictions_only:progress('predictions_complete');return
         progress('scoring')
         with (run/'scoring.log').open('a') as log:

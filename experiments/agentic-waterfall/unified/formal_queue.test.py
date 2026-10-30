@@ -271,6 +271,68 @@ class QueueChecks(unittest.TestCase):
             calls,_,_,progress=self.execute(run,[])
             self.assertEqual(calls,[]);self.assertEqual(progress['status'],'needs_attention');self.assertIn('unverified_manual_review',progress['reason'])
 
+    def v2(self,run):
+        plan=json.loads((run/'plan.json').read_text());plan['method_outcome_policy']='first-complete-episode-v2';queue.save(run/'plan.json',plan)
+
+    def semantic_result(self,task,error='action_execution_failed'):
+        row=self.result(task,error)
+        row['result']['model_calls'][0]['status']='success'
+        if error=='action_execution_failed':
+            row['result']['model_calls'][0].pop('error',None)
+            row['result']['trace']=[{'execution_results':[{'kind':'update_state','status':'failed','error':'state_evidence_missing'},
+                {'kind':'recommend','status':'skipped','error':'dependency_failed'}]}]
+        return row
+
+    def test_v2_keeps_first_semantic_failure_and_collects_next_independent_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);self.v2(run);row=self.semantic_result(tasks[0])
+            calls,sleeps,_,progress=self.execute(run,[row,None],predictions_only=True,max_new_tasks=2)
+            self.assertEqual(calls,['a','b']);self.assertEqual(sleeps,[]);self.assertEqual(progress['status'],'predictions_complete')
+            self.assertEqual(progress['counts'],{'mind:failed':1,'mind:submitted':1});self.assertFalse((run/'attempts').exists())
+            original=(run/'results/a.json').read_bytes();calls,_,_,_=self.execute(run,[],predictions_only=True)
+            self.assertEqual(calls,[]);self.assertEqual((run/'results/a.json').read_bytes(),original)
+
+    def test_v2_failed_sequence_blocks_descendants_without_creating_raw_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);self.v2(run);tasks[1]['previous']='a'
+            tasks.append({'id':'independent','dataset':'mind'});(run/'tasks.jsonl').write_text(''.join(json.dumps(t)+'\n' for t in tasks))
+            calls,sleeps,_,progress=self.execute(run,[self.semantic_result(tasks[0]),None],predictions_only=True,max_new_tasks=3)
+            self.assertEqual(calls,['a','independent']);self.assertEqual(sleeps,[])
+            self.assertEqual(progress['status'],'method_failures_remaining');self.assertEqual(progress['blocked_count'],1)
+            self.assertEqual(progress['counts'],{'mind:failed':1,'mind:blocked':1,'mind:submitted':1})
+            self.assertFalse((run/'results/b.json').exists());self.assertFalse((run/'started/b.json').exists())
+            calls,_,_,_=self.execute(run,[],predictions_only=True);self.assertEqual(calls,[])
+
+    def test_v2_never_retries_known_decision_ranking_or_acquisition_rejections(self):
+        for error in ['invalid_decision','invalid_actions','invalid_ranking','model_invalid_json','invalid_acquire_limit','unsupported_source_or_mode','candidate_or_history_too_large']:
+            with self.subTest(error=error),tempfile.TemporaryDirectory() as directory:
+                run,tasks=self.fixture(directory);self.v2(run)
+                calls,sleeps,_,progress=self.execute(run,[self.semantic_result(tasks[0],error),None],predictions_only=True,max_new_tasks=2)
+                self.assertEqual(calls,['a','b']);self.assertEqual(sleeps,[]);self.assertEqual(progress['counts']['mind:failed'],1)
+                self.assertFalse((run/'attempts').exists())
+
+    def test_v2_unknown_or_incompletely_recorded_paid_outcome_still_pauses(self):
+        for case in ['unknown','missing_receipt','mixed_service','invalid_state_artifact']:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as directory:
+                run,tasks=self.fixture(directory);self.v2(run);row=self.semantic_result(tasks[0])
+                if case=='unknown':row['result']['trace'][0]['execution_results'][0]['error']='unknown_adapter_crash'
+                if case=='missing_receipt':row['result']['model_calls'][0].pop('status')
+                if case=='invalid_state_artifact':row['result']['state_after']=None
+                if case=='mixed_service':row['result']['model_calls'].append({'attempt_id':'uncertain','status':'failed','error':'model_timeout'})
+                calls,sleeps,_,progress=self.execute(run,[row],predictions_only=True,max_new_tasks=2)
+                self.assertEqual(calls,['a']);self.assertEqual(sleeps,[]);self.assertEqual(progress['status'],'needs_attention')
+
+    def test_v2_transport_only_retries_keep_original_cap_and_archive_costs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,_=self.fixture(directory);self.v2(run)
+            outcomes=[]
+            for error in ['model_http_502','model_timeout','model_http_503']:
+                row=self.result({'id':'a','dataset':'mind'},error);row['result']['model_calls'][0]['status']='failed';outcomes.append(row)
+            calls,sleeps,_,progress=self.execute(run,outcomes)
+            self.assertEqual(calls,['a','a','a']);self.assertEqual(sum(sleeps),120)
+            self.assertEqual(progress['status'],'needs_attention');self.assertEqual(progress['attempt'],3)
+            self.assertEqual(len(list((run/'attempts/a').glob('service-attempt-*'))),2)
+
     def fixture(self,directory):
         run=pathlib.Path(directory)
         for name in ('results','started','logs','task-configs','code','reviewed'):(run/name).mkdir()
@@ -287,7 +349,7 @@ class QueueChecks(unittest.TestCase):
                 'model_request_count':1,'duration_ms':1,'state_after':{'version':0,'records':[]},'trace':trace or []}
         return {'task':task,'input':{'observation':{'decision_id':task['id']}},'result':result}
 
-    def execute(self,run,outcomes,stop_in_wait=False,memory=None,env_check=None,predictions_only=False,command_check=None):
+    def execute(self,run,outcomes,stop_in_wait=False,memory=None,env_check=None,predictions_only=False,command_check=None,max_new_tasks=1):
         calls=[];sleeps=[];updates=[];handlers={};original_save=queue.save
         def save(path,value):
             if pathlib.Path(path).name=='progress.json':updates.append(value)
@@ -305,7 +367,7 @@ class QueueChecks(unittest.TestCase):
         def sleep(seconds):
             sleeps.append(seconds)
             if stop_in_wait:handlers[signal.SIGTERM](signal.SIGTERM,None)
-        with patch.object(sys,'argv',['formal_queue.py','--run-dir',str(run),'--max-new-tasks','1']+(['--predictions-only'] if predictions_only else [])),\
+        with patch.object(sys,'argv',['formal_queue.py','--run-dir',str(run),'--max-new-tasks',str(max_new_tasks)]+(['--predictions-only'] if predictions_only else [])),\
              patch.object(queue,'save',side_effect=save),patch.object(queue.subprocess,'Popen',side_effect=popen),\
              patch.object(queue.subprocess,'run',return_value=types.SimpleNamespace(returncode=0)),\
              patch.object(queue.signal,'signal',side_effect=lambda sig,fn:handlers.__setitem__(sig,fn)),\
