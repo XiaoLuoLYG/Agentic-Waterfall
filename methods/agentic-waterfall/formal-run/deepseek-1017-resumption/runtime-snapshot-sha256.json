@@ -1,0 +1,18 @@
+{
+  "files": {
+    "formal/run_fixed.py": "1860b86950d011724b5bf745aa40895a2ac61a7845b578a782cc3b24c0719b57",
+    "formal/run_agents.py": "7e79506f5b5630354400f73ff3e7a7029e6983c2a5fb93ec2db14386e6bbee00",
+    "formal/run_local.py": "d2651ffa4f9eff8785beb88dde0d069e4e445ffa1767189eb3db98c765f6836f",
+    "formal/gpu_lock.py": "ff60da899d9793a0d4653f187faf0431edb54bf7c6248b5ed7a4e7a2b9fa6dfe",
+    "formal/plan_additional.py": "bb498a5b435ed11f9df5ad76e349fbeb344569795228b75046be5e3a4ec04fb7",
+    "formal/additional-plan.json": "1a77929770d21f0a1341ccd6d31f5b581fd3b651fb25398f0439581ee1a47b02",
+    "experiment-plan.json": "31f1a6774bbb066b97a2d7b6d4697577a01c28754512321bdebb26320a5cafd6",
+    "methods/agentic-waterfall/fixed-retrieval/kuairec_batch.py": "e0f15fa64b431fd667d1536eabe1acd96917e0a119289180762c1d6e61227154",
+    "methods/agentic-waterfall/fixed-retrieval/simbench_batch.py": "bbb51be41e3973d3c6bd941e92e73371432f3e5f599b24cb7b8515be56c96e81",
+    "methods/agentic-waterfall/i2agent/live_smoke.py": "6c23a59a44d5b2306b570b63fae31e4efee8192b120e0a44ef8d4fa8c5e1e0c3",
+    "methods/agentic-waterfall/simbench/run_round.mjs": "adcb8282d43041e4bdbce1856d99052b5a7f3e9c5b1514ce9bc2cef6af96b6d2",
+    "methods/agentic-waterfall/clawrec/fixed_candidates.mjs": "1204998fc0a083bfc0ddff84c43a64baef01b2996287e4b6be6845d2fa87dfc9",
+    "methods/agentic-waterfall/simbench/round.mjs": "a0f933518431f1a195136a4bd8fcd9da6fba9995514ec1185340fc6d2e60a7c0"
+  },
+  "note": "Current isolated scheduler and adaptations; earlier versions and rationale are in kuairand-i2-token-amendment.json and git history."
+}
