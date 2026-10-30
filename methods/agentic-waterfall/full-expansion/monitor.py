@@ -10,6 +10,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / 'formal-20261029-224252/formal'
 WATERFALL = ROOT / 'waterfall-full-20261030-actionfix'
+WATERFALL_FOUR = ROOT / 'waterfall-four-parallel-20261030'
 EXPANSION = Path(__file__).resolve().parent
 
 
@@ -61,13 +62,25 @@ def bar(done, total):
 
 def snapshot():
     w = read(WATERFALL / 'progress.json')
-    done = sum(v for k, v in w.get('counts', {}).items() if k.endswith(':submitted') and not k.startswith('mind:'))
     plan = read(WATERFALL / 'plan.json')
     total = sum(v for k, v in plan.get('datasets', {}).items() if k != 'mind')
+    done = sum(v for k, v in w.get('counts', {}).items() if k.endswith(':submitted') and not k.startswith('mind:'))
+    waterfall_lines = ['Waterfall 非 MIND：' + bar(done, total),
+        f"  状态: {w.get('status', '未知')}，进程{'存活' if live(w.get('pid')) else '未运行'}，当前: {w.get('current', '—')}"]
+    four_plan = read(WATERFALL_FOUR / 'plan.json')
+    if four_plan.get('total') and (WATERFALL_FOUR/'tasks.jsonl').exists():
+        with (WATERFALL_FOUR/'tasks.jsonl').open() as f:
+            ids = {json.loads(line)['id'] for line in f}
+        done = sum(p.stem in ids for p in (WATERFALL_FOUR/'results').glob('*.json'))
+        waterfall_lines = ['Waterfall 四数据集结果文件（含待核验项）：' + bar(done, four_plan['total'])]
+        for shard in ('kuairec', 'other'):
+            p = read(WATERFALL_FOUR/'shards'/shard/'progress.json')
+            s = read(WATERFALL_FOUR/'shards'/shard/'supervisor.json')
+            status = s.get('status', p.get('status', '未知'))
+            if status.endswith('_running') and not live(s.get('pid')): status = '进程未运行，待检查'
+            waterfall_lines.append(f"  {shard}: {status}，当前: {p.get('current') or p.get('task') or '—'}" + (f"，原因: {p['reason']}" if p.get('reason') else ''))
     pids = read(BASE / 'processes.json')
-    lines = [f"实验进度  {datetime.datetime.now():%Y-%m-%d %H:%M:%S}", '',
-             'Waterfall 非 MIND：' + bar(done, total),
-             f"  状态: {w.get('status', '未知')}，进程{'存活' if live(w.get('pid')) else '未运行'}，当前: {w.get('current', '—')}", '',
+    lines = [f"实验进度  {datetime.datetime.now():%Y-%m-%d %H:%M:%S}", '', *waterfall_lines, '',
              '既有对照队列（已提交包含空推荐；不是效果得分）：']
     for name, title, total in [('fixed', 'KuaiRand 原队列', 175), ('additional', '其余 Agent 对照', 3762), ('local', '本地固定检索', 1621)]:
         count, empty = events(name)
