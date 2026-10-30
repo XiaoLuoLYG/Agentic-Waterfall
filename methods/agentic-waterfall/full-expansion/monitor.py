@@ -119,7 +119,7 @@ def validator(path):
     return cached(path, load)
 
 
-def waterfall(table, run):
+def waterfall(table, run, warnings=None):
     plan = read(run / 'plan.json')
     validation = validator(run / 'code/experiments/agentic-waterfall/unified/formal_queue.py')
     errors = Counter()
@@ -136,15 +136,15 @@ def waterfall(table, run):
             try:
                 result = validation.read_committed(path, task)
                 if not plan.get('core_sha256') or result.get('runtime_source_sha256') != plan['core_sha256']:
-                    return 'failed', 'core_sha256_mismatch'
+                    return 'failed', 'core_sha256_mismatch', []
                 reason = validation.failure_reason(result)
                 if reason:
-                    return 'failed', reason
+                    return 'failed', reason, []
                 if not isinstance(result.get('ordered_item_ids'), list):
-                    return 'failed', 'missing_ordered_item_ids'
-                return ('delivered' if result['ordered_item_ids'] else 'empty'), None
+                    return 'failed', 'missing_ordered_item_ids', []
+                return ('delivered' if result['ordered_item_ids'] else 'empty'), None, validation.result_warnings(result)
             except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
-                return 'failed', 'invalid_committed_result: ' + str(exc)
+                return 'failed', 'invalid_committed_result: ' + str(exc), []
         # Include validator/protocol versions so changing validation invalidates cached classifications.
         version = (plan.get('core_sha256'), CACHE[run / 'code/experiments/agentic-waterfall/unified/formal_queue.py'][0], task['dataset'])
         key = (output, version)
@@ -156,8 +156,11 @@ def waterfall(table, run):
         stamp = (stat.st_mtime_ns, stat.st_size)
         if key not in CACHE or CACHE[key][0] != stamp:
             CACHE[key] = stamp, check(output)
-        status, reason = CACHE[key][1]
+        status, reason, warning_codes = CACHE[key][1]
         row[status] += 1
+        if warning_codes:
+            row['warning_cases'] += 1
+            if warnings is not None:warnings.update(warning_codes)
         if reason:
             errors[reason] += 1
     return errors
@@ -362,7 +365,8 @@ def snapshot(root, details=False):
     expansion = root / 'full-expansion-20261030'
     run = root / 'waterfall-four-parallel-20261030'
     table = defaultdict(Counter)
-    errors = waterfall(table, run)
+    warnings = Counter()
+    errors = waterfall(table, run, warnings)
     states = baselines(table, base)
     database_error = None
     try:
@@ -380,7 +384,7 @@ def snapshot(root, details=False):
              '总交付    ' + progress_text(all_counts), 'Waterfall ' + progress_text(own),
              '对照方法  ' + progress_text(other),
              f"其中测试 {test['delivered'] + test['empty']:,}/{test['total']:,}；开发 {dev['delivered'] + dev['empty']:,}/{dev['total']:,}；不适用 {all_counts['inapplicable']} 另列",
-             f"交付含空推荐 {all_counts['empty']}；失败 {all_counts['failed']}、未提交 {all_counts['uncommitted']} 不计交付；尚未统一评分。",
+             f"交付含空推荐 {all_counts['empty']}；动作告警 {all_counts['warning_cases']}题另列；失败 {all_counts['failed']}、未提交 {all_counts['uncommitted']} 不计交付。",
              '', *(table_lines(table) if details else compact_rows(table))]
     if details:
         lines += ['', '开发集（单独列示，不并入测试进度）：', *table_lines(table, dev=True), '', '队列状态：']
@@ -405,6 +409,10 @@ def snapshot(root, details=False):
     lines.append(queue_line('KuaiRand对照', k, k.get('pid'), 'run_kuairand.py', short=not details))
     if errors and details:
         lines.append('Waterfall 当前失败：' + '；'.join(f'{reason} ×{count}' for reason, count in errors.items()))
+    if warnings and details:
+        labels={'state_evidence_missing':'曾有状态更新被拒','input_byte_budget_exceeded':'交付后输入超限',
+                'candidate_or_history_too_large':'交付后上下文超限','batch_model_budget_insufficient':'交付后批处理额度用尽'}
+        lines.append('Waterfall 动作告警（含已纠正；原始记录保留）：'+'；'.join(f'{labels.get(reason,reason)} {count}题' for reason,count in warnings.items()))
     if database_error:
         lines.append('KuaiRand SQLite 无法读取（显示仅含旧队列）：' + database_error)
     lines += [preparation(expansion), '30秒原位刷新；q / Ctrl+C 仅关闭显示。完整明细：加 --details']

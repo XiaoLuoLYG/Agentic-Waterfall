@@ -76,6 +76,17 @@ class MonitorTests(unittest.TestCase):
         self.assertFalse(any(key[0] == 'mind' for key in table))
         self.assertFalse(list(run.rglob('__pycache__')))
 
+    def test_confirmed_delivery_and_action_warning_are_counted_separately(self):
+        run=self.waterfall_fixture();path=run/'results/a.json';row=json.loads(path.read_text());result=row['result']
+        result.update(state_after={'version':1,'records':[]},candidate_pool_after=[{'id':'item'}],trace=[{'execution_results':[
+            {'kind':'update_state','status':'failed','error':'state_evidence_missing'},
+            {'kind':'recommend','status':'success','result':{'queued_item_ids':['item'],'delivery':'replace_pending'}}]}])
+        save(path,row);table=defaultdict(Counter);warnings=Counter();errors=monitor.waterfall(table,run,warnings)
+        counts=table[('kuairand','test','','Waterfall')]
+        self.assertEqual(counts['delivered'],1);self.assertEqual(counts['warning_cases'],1)
+        self.assertEqual(counts['failed'],3);self.assertEqual(warnings,Counter(state_evidence_missing=1))
+        self.assertNotIn('failed_tool_action; inspect before continuing',errors)
+
     def test_waterfall_cache_rechecks_only_changed_results(self):
         run = self.waterfall_fixture()
         queue = monitor.validator(run / 'code/experiments/agentic-waterfall/unified/formal_queue.py')

@@ -4,6 +4,7 @@ import argparse,collections,datetime,hashlib,json,os,pathlib,re,shutil,signal,su
 TRANSIENT_ERRORS={'model_http_429','model_http_502','model_http_503','model_http_504','model_timeout','model_transport_error'}
 REJECTED_RESPONSE_ERRORS={'invalid_decision','action_id_reuse_with_different_payload','action_id_already_in_progress'}
 RETRY_DELAYS=(30,90)
+LOCAL_CONTEXT_LIMITS={'input_byte_budget_exceeded','candidate_or_history_too_large','batch_model_budget_insufficient'}
 
 def save(path,value):
     path=pathlib.Path(path);tmp=path.with_suffix(path.suffix+'.tmp')
@@ -18,8 +19,22 @@ def infrastructure_failure(result):
     errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
     return next((e for e in errors if e and (e in {'model_transport_error','model_timeout','model_missing_content','model_slots_busy','ledger_locked_manual_inspection_required','model_calls_not_enabled'} or e.startswith(('model_http_','global_request_','experiment_request_')))),None)
 
+def committed_delivery(result):
+    ids=result.get('ordered_item_ids');state=result.get('state_after',{})
+    pool_rows=result.get('candidate_pool_after',[])
+    if not isinstance(state,dict) or not isinstance(pool_rows,list) or not all(isinstance(item,dict) for item in pool_rows):return False
+    if (result.get('status')!='submitted' or not isinstance(ids,list) or not ids
+        or not all(isinstance(item,str) for item in ids) or len(set(ids))!=len(ids)
+        or type(state.get('version')) is not int or state['version']<0 or not isinstance(state.get('records'),list)):return False
+    pool={item.get('id') for item in pool_rows}
+    receipts=[r for step in result.get('trace',[]) for r in step.get('execution_results',[]) if r.get('kind')=='recommend' and r.get('status')=='success']
+    last=receipts[-1].get('result',{}) if receipts else {}
+    return set(ids)<=pool and last.get('queued_item_ids')==ids and last.get('delivery') in {'append','replace_pending'}
+
 def failure_reason(result):
+    delivered=committed_delivery(result)
     failure=infrastructure_failure(result) or result.get('continuation_error')
+    if delivered and failure in LOCAL_CONTEXT_LIMITS:failure=None
     if failure:return failure
     if result.get('status')!='submitted':return result.get('error') or 'no_valid_submission'
     trace=result.get('trace',[])
@@ -49,6 +64,8 @@ def failure_reason(result):
             if corrected:continue
             return 'skipped_dependency; inspect before continuing'
         if receipt.get('status')!='failed':continue
+        # Evidence rejection is atomic: the previous state and an independently committed slate remain valid.
+        if delivered and receipt.get('kind')=='update_state' and receipt.get('error')=='state_evidence_missing':continue
         corrected=receipt.get('kind')=='recommend' and receipt.get('error') in recoverable and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
         if receipt.get('kind')=='update_state' and receipt.get('error')=='state_evidence_missing':
             failed_step=next((step.get('call_index') for step in trace if receipt in step.get('execution_results',[])),None)
@@ -61,6 +78,14 @@ def failure_reason(result):
                 if corrected:break
         if not corrected:return 'failed_tool_action; inspect before continuing'
     return None
+
+def result_warnings(result):
+    if not committed_delivery(result) or failure_reason(result):return []
+    warnings=set()
+    if any(r.get('kind')=='update_state' and r.get('status')=='failed' and r.get('error')=='state_evidence_missing' for step in result.get('trace',[]) for r in step.get('execution_results',[])):
+        warnings.add('state_evidence_missing')
+    if result.get('continuation_error') in LOCAL_CONTEXT_LIMITS:warnings.add(result['continuation_error'])
+    return sorted(warnings)
 
 def retryable_failure(result):
     if (result.get('status')=='failed' and result.get('error')=='input_byte_budget_exceeded'

@@ -13,6 +13,42 @@ class QueueChecks(unittest.TestCase):
         self.assertEqual(queue.infrastructure_failure({'status':'submitted','continuation_error':'model_timeout'}),'model_timeout')
         self.assertEqual(queue.infrastructure_failure({'model_calls':[{'error':'model_http_429'}]}),'model_http_429')
         self.assertIsNone(queue.infrastructure_failure({'status':'failed','error':'invalid_batch_ranking'}))
+
+    def delivered_with_warning(self,warning):
+        result={'status':'submitted','error':None,'ordered_item_ids':['item'],
+            'state_after':{'version':1,'records':[]},'candidate_pool_after':[{'id':'item'}],
+            'model_calls':[],'trace':[{'execution_results':[
+                {'kind':'recommend','status':'success','result':{'queued_item_ids':['item'],'delivery':'replace_pending'}}]}]}
+        if warning=='state_evidence_missing':
+            result['trace'][0]['execution_results'].insert(0,{'kind':'update_state','status':'failed','error':warning})
+        else:result['continuation_error']=warning
+        return result
+
+    def test_proven_delivery_survives_rejected_atomic_state_write_and_local_context_limit(self):
+        for warning in ('state_evidence_missing','candidate_or_history_too_large','input_byte_budget_exceeded','batch_model_budget_insufficient'):
+            with self.subTest(warning=warning):
+                result=self.delivered_with_warning(warning);original=copy.deepcopy(result)
+                self.assertIsNone(queue.failure_reason(result))
+                self.assertEqual(queue.result_warnings(result),[warning])
+                self.assertEqual(result,original)
+        for broken in ('no_delivery_receipt','mismatched_receipt','not_acquired','invalid_pool','invalid_state','missing_state','transport_error','unknown_tool_error'):
+            result=self.delivered_with_warning('state_evidence_missing')
+            if broken=='no_delivery_receipt':result['trace'][0]['execution_results'].pop()
+            elif broken=='mismatched_receipt':result['trace'][0]['execution_results'][-1]['result']['queued_item_ids']=['other']
+            elif broken=='not_acquired':result['candidate_pool_after']=[]
+            elif broken=='invalid_pool':result['candidate_pool_after']=['item']
+            elif broken=='invalid_state':result['state_after']['version']=None
+            elif broken=='missing_state':result['state_after']=None
+            elif broken=='transport_error':result['continuation_error']='model_transport_error'
+            elif broken=='unknown_tool_error':result['trace'][0]['execution_results'][0]['error']='unknown_error'
+            with self.subTest(broken=broken):self.assertIsNotNone(queue.failure_reason(result))
+
+    def test_confirmed_delivery_warning_never_causes_another_paid_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);row=self.result(tasks[0]);row['result'].update(self.delivered_with_warning('state_evidence_missing'))
+            calls,sleeps,_,progress=self.execute(run,[row])
+            self.assertEqual(calls,['a']);self.assertEqual(sleeps,[]);self.assertEqual(progress['status'],'preflight_complete')
+            self.assertFalse((run/'attempts').exists())
     def test_agent_corrected_ranking_is_valid_but_unresolved_tools_stop(self):
         trace=[{'execution_results':[{'kind':'recommend','status':'failed','error':'invalid_candidate_indices'}]},{'execution_results':[{'kind':'recommend','status':'success'}]}]
         self.assertIsNone(queue.failure_reason({'status':'submitted','trace':trace}))
