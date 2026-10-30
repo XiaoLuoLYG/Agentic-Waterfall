@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {createRuntime,runEpisode} from '../../../demos/agentic-feed/waterfall-core.mjs';
+import {SOURCE_SHA256} from '../../../demos/agentic-feed-site/lib/waterfall/waterfall-version.mjs';
+test('recorded source hash matches the common core',()=>{
+ const source=readFileSync(new URL('../../../demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs',import.meta.url));
+ assert.equal(SOURCE_SHA256,createHash('sha256').update(source).digest('hex'));
+});
 const item=id=>({id,title:id,source_id:'offline',content_type:'article'});
 const input=()=>({observation:{decision_id:'d',observed_at:'2026-10-29T00:00:00Z',dialogue:[{id:'say',role:'user',text:'I like football'}],behavior_events:[{id:'read',type:'save',item_id:'a'}],user_state:{version:0,records:[]},environment:{candidate_pool:[item('a')],sources:[{id:'offline',modes:['search','hot']}]}},catalog:[item('b')],protocol:{top_k:2}});
 const action=(id,kind,args,depends_on=[])=>({action_id:id,kind,arguments:args,depends_on,evidence_refs:[]});
