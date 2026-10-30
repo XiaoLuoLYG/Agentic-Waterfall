@@ -50,6 +50,13 @@ def retryable_failure(result):
     failed=[r for r in receipts if r.get('kind')=='acquire' and r.get('status')=='failed']
     if failed and not infrastructure_failure(result) and not any(r.get('status')=='skipped' for r in receipts):
         return 'acquisition_failed:'+str(failed[0].get('error') or 'unknown')
+    bad=[r for r in receipts if r.get('status') in {'failed','skipped'}]
+    if (result.get('status')=='failed' and result.get('error')=='action_execution_failed' and not result.get('ordered_item_ids')
+        and not infrastructure_failure(result) and not result.get('continuation_error') and bad
+        and any(r.get('status')=='failed' and r.get('kind')=='update_state' and r.get('error')=='state_evidence_missing' for r in bad)
+        and all((r.get('status')=='failed' and r.get('kind')=='update_state' and r.get('error')=='state_evidence_missing')
+                or (r.get('status')=='skipped' and r.get('error')=='dependency_failed') for r in bad)):
+        return 'state_evidence_missing'
     if result.get('status')!='failed' or result.get('ordered_item_ids'):return None
     errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
     errors=[error for error in errors if error]

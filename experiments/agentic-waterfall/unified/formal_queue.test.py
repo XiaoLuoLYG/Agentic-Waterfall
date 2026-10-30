@@ -67,6 +67,16 @@ class QueueChecks(unittest.TestCase):
         result['model_calls']=[{'error':'model_http_403'}]
         self.assertIsNone(queue.retryable_failure(result))
 
+    def test_missing_state_evidence_failure_is_retried_but_infrastructure_is_not(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);row=self.result(tasks[0],'action_execution_failed');result=row['result']
+            result['model_calls']=[]
+            result['trace']=[{'execution_results':[{'kind':'update_state','status':'failed','error':'state_evidence_missing'},{'kind':'recommend','status':'skipped','error':'dependency_failed'}]}]
+            self.assertEqual(queue.retryable_failure(result),'state_evidence_missing')
+            result['model_calls']=[{'error':'model_http_403'}];self.assertIsNone(queue.retryable_failure(result));result['model_calls']=[]
+            calls,_,_,progress=self.execute(run,[row,None]);self.assertEqual(calls,['a','a']);self.assertEqual(progress['status'],'preflight_complete')
+            self.assertEqual(json.loads((run/'attempts/a/service-attempt-001/result.json').read_text())['result']['error'],'action_execution_failed')
+
     def fixture(self,directory):
         run=pathlib.Path(directory)
         for name in ('results','started','logs','task-configs','code','reviewed'):(run/name).mkdir()
