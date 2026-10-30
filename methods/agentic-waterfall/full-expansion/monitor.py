@@ -239,7 +239,10 @@ def queue_line(title, state, pid, script, states=(), fatal=None, expected=()):
         if row.get('outcome') in ('method_failure', 'operational_failure', 'blocked_by_prior_failure'):
             reasons.append(str(row.get('error') or row.get('reason') or row['outcome']))
     detail = '；原因: ' + ', '.join(dict.fromkeys(reasons)) if reasons else ''
-    return f"  {title}: {status}；进程{'存活' if running else '未匹配/未运行'}" + (f'；当前: {current}' if current else '') + detail
+    label = {'running': '运行中', 'waiting_for_service': '等待重试', 'needs_attention': '已暂停，需检查',
+             'predictions_complete': '预测已交付，待评分', 'stopped': '已停止', 'not_running': '未运行',
+             'preflight_running': '复验中', 'complete': '队列已结束'}.get(status, status)
+    return f"  {title}: {label} ({status})；进程{'存活' if running else '未匹配/未运行'}" + (f'；当前: {current}' if current else '') + detail
 
 
 def resources(root):
@@ -265,14 +268,22 @@ def preparation(expansion):
 
 
 def table_lines(table, dev=False):
-    lines = ['dataset / split / domain             method          delivered/total  empty failed uncommitted pending blocked  N/A']
+    lines = ['  方法           有效/计划      进度       空 失败 在途 待跑 阻断 不适用']
+    previous = None
+    names = {'generic-agent': '通用Agent', 'fixed': '固定检索', 'i2agent': 'i²Agent',
+             'clawrec': 'ClawRec', 'recbot': 'RecBot语义版', 'mars': 'MARS复现'}
     for key, counts in sorted(table.items()):
         if (key[1] == 'dev') != dev or key[0] == 'mind':
             continue
         dataset, split, domain, method = key
         name = '/'.join(x for x in (dataset, split, domain) if x)
+        if name != previous:
+            lines.append(name)
+            previous = name
         delivered = f"{counts['delivered']:,}/{counts['total']:,}"
-        lines.append(f"{name:<36} {method:<13} {delivered:>15} {counts['empty']:>6} {counts['failed']:>6} {counts['uncommitted']:>11} {counts['pending']:>7} {counts['blocked']:>7} {counts['inapplicable']:>4}")
+        filled = min(8, counts['delivered'] * 8 // counts['total']) if counts['total'] else 0
+        bar = '[' + '█' * filled + '░' * (8 - filled) + ']'
+        lines.append(f"  {names.get(method, method):<12} {delivered:>11} {bar} {counts['empty']:>3} {counts['failed']:>4} {counts['uncommitted']:>4} {counts['pending']:>4} {counts['blocked']:>4} {counts['inapplicable']:>6}")
     return lines
 
 
@@ -290,7 +301,7 @@ def snapshot(root):
     except sqlite3.Error as exc:
         database_error = str(exc)
     lines = [f'统一实验进度  {datetime.datetime.now():%Y-%m-%d %H:%M:%S}',
-             resources(root), 'delivered 仅有效非空预测；empty 单列；失败和未提交均不计完成。MIND 已排除。', '',
+             resources(root), '有效 = 非空交付；空推荐、失败、在途分别列出，保留完整分母。MIND 已排除。', '',
              *table_lines(table), '', '开发集（单独列示，不并入测试进度）：', *table_lines(table, dev=True), '', '队列状态：']
     for shard in ('kuairec', 'other'):
         folder = run / 'shards' / shard
