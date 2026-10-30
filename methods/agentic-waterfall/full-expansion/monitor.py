@@ -1,121 +1,333 @@
 #!/usr/bin/env python3
-"""Read-only view; closing this display never signals experiment processes."""
+"""Read-only experiment receipts; Ctrl+C never signals experiment processes."""
+import argparse
+from collections import Counter, defaultdict
 import datetime
+import importlib.util
 import json
-import os
 from pathlib import Path
+import re
+import shutil
+import sqlite3
+import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE = ROOT / 'formal-20261029-224252/formal'
-WATERFALL = ROOT / 'waterfall-full-20261030-actionfix'
-WATERFALL_FOUR = ROOT / 'waterfall-four-parallel-20261030'
-EXPANSION = Path(__file__).resolve().parent
+sys.dont_write_bytecode = True
+CACHE = {}
+
+
+def cached(path, loader):
+    path = Path(path)
+    stat = path.stat()
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    if path not in CACHE or CACHE[path][0] != stamp:
+        CACHE[path] = (stamp, loader(path))
+    return CACHE[path][1]
 
 
 def read(path):
     try:
-        return json.loads(path.read_text())
+        return cached(path, lambda p: json.loads(p.read_text()))
     except (OSError, ValueError):
         return {}
 
 
-def live(pid):
-    if not isinstance(pid, int):
-        return False
+def jsonlines(path):
+    def parse(p):
+        rows = []
+        for line in p.read_text().splitlines():
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                pass  # A writer may not have finished its last line yet.
+        return rows
     try:
-        os.kill(pid, 0)
-        return True
-    except (ProcessLookupError, PermissionError):
-        return False
-
-
-def events(name):
-    submitted, empty = set(), set()
-    try:
-        with (BASE / f'{name}-events.jsonl').open() as f:
-            for line in f:
-                try:
-                    row = json.loads(line)
-                except ValueError:
-                    continue
-                if name == 'fixed' and row.get('dataset') != 'kuairand':
-                    continue
-                key = (row.get('dataset'), row.get('method'), row.get('task_id')) if name == 'fixed' else row.get('case')
-                if key and row.get('outcome') in ('submitted', 'no_delivery'):
-                    submitted.add(key)
-                    if row['outcome'] == 'no_delivery':
-                        empty.add(key)
-                elif key and row.get('outcome') == 'superseded':
-                    submitted.discard(key)
-                    empty.discard(key)
+        return cached(path, parse)
     except OSError:
-        pass
-    return len(submitted), len(empty)
+        return []
 
 
-def bar(done, total):
-    filled = min(30, int(30 * done / total)) if total else 0
-    return f"[{'█' * filled}{'░' * (30 - filled)}] {done:,}/{total:,} ({done / total * 100:.2f}%)" if total else f'{done:,} / 待确定'
+def find_root():
+    for start in (Path(__file__).resolve().parent, Path.cwd()):
+        for parent in (start, *start.parents):
+            for candidate in (parent, parent / 'output/agentic-waterfall'):
+                if (candidate / 'waterfall-four-parallel-20261030/tasks.jsonl').is_file():
+                    return candidate
+    raise FileNotFoundError('找不到实验目录；请使用 --root /path/to/output/agentic-waterfall')
 
 
-def snapshot():
-    w = read(WATERFALL / 'progress.json')
-    plan = read(WATERFALL / 'plan.json')
-    total = sum(v for k, v in plan.get('datasets', {}).items() if k != 'mind')
-    done = sum(v for k, v in w.get('counts', {}).items() if k.endswith(':submitted') and not k.startswith('mind:'))
-    waterfall_lines = ['Waterfall 非 MIND：' + bar(done, total),
-        f"  状态: {w.get('status', '未知')}，进程{'存活' if live(w.get('pid')) else '未运行'}，当前: {w.get('current', '—')}"]
-    four_plan = read(WATERFALL_FOUR / 'plan.json')
-    if four_plan.get('total') and (WATERFALL_FOUR/'tasks.jsonl').exists():
-        with (WATERFALL_FOUR/'tasks.jsonl').open() as f:
-            ids = {json.loads(line)['id'] for line in f}
-        done = sum(p.stem in ids for p in (WATERFALL_FOUR/'results').glob('*.json'))
-        waterfall_lines = ['Waterfall 四数据集结果文件（含待核验项）：' + bar(done, four_plan['total'])]
-        for shard in ('kuairec', 'other'):
-            p = read(WATERFALL_FOUR/'shards'/shard/'progress.json')
-            s = read(WATERFALL_FOUR/'shards'/shard/'supervisor.json')
-            status = s.get('status', p.get('status', '未知'))
-            if status.endswith('_running') and not live(s.get('pid')): status = '进程未运行，待检查'
-            waterfall_lines.append(f"  {shard}: {status}，当前: {p.get('current') or p.get('task') or '—'}" + (f"，原因: {p['reason']}" if p.get('reason') else ''))
-    pids = read(BASE / 'processes.json')
-    lines = [f"实验进度  {datetime.datetime.now():%Y-%m-%d %H:%M:%S}", '', *waterfall_lines, '',
-             '既有对照队列（已提交包含空推荐；不是效果得分）：']
-    for name, title, total in [('fixed', 'KuaiRand 原队列', 175), ('additional', '其余 Agent 对照', 3762), ('local', '本地固定检索', 1621)]:
-        count, empty = events(name)
-        state = read(BASE / f'{name}-progress.json')
-        running = state.get('running') and live(pids.get(name))
-        state_label = '运行中' if running else ('预测已提交，待验证' if count >= total else '已停止/待检查')
-        lines.append(f"  {title}: {bar(count, total)}  {state_label}" + (f'，空推荐 {empty}' if empty else ''))
-    e = read(EXPANSION / 'progress.json')
-    k = read(EXPANSION / 'kuairand/progress.json')
-    estate = e.get('status', '准备与核验中')
-    kstate = k.get('status', '准备与核验中')
-    download = read(EXPANSION / 'agentrecbench/download-process.json')
-    directory = EXPANSION / 'agentrecbench/task'
-    files = sum(1 for _ in directory.rglob('*.json')) if directory.exists() else 0
-    verified = len(list((EXPANSION / 'agentrecbench').glob('*.manifest.json')))
-    reviews = EXPANSION / 'agentrecbench/reviews'
-    review_process = read(reviews/'process.json')
-    review_bytes = sum(p.stat().st_size for p in reviews.glob('*-review.json*') if p.is_file()) if reviews.exists() else 0
-    if estate == 'running' and not live(e.get('pid')): estate = '进程未运行，待检查'
-    if kstate == 'running' and not live(k.get('pid')): kstate = '进程未运行，待检查'
-    lines += ['', 'KuaiRand 测试扩展：' + (bar(k.get('submitted', 0), k.get('total', 0)) if k else '准备中，尚未启动'),
-              f"  状态: {kstate}；当前: {k.get('current', '—')}",
-              f"AgentRecBench 补充数据：{files} 个文件，已验证 {verified}/12 个领域场景；" + ('下载中/等待限流' if live(download.get('pid')) else '下载进程未运行'), '',
-              f"AgentRecBench 历史资料：{review_bytes/1e9:.2f}/4.47 GB；" + ('下载中/等待限流' if live(review_process.get('pid')) else '进程未运行或下载结束'), '',
-              f'MIND：{estate}（已按要求暂停）', '',
-              '每 30 秒刷新。Ctrl+C 只关闭本显示，不停止实验。']
+def live(pid, *expected):
+    if type(pid) is not int or pid <= 0 or not expected:
+        return False
+    try:
+        process = subprocess.run(['ps', '-p', str(pid), '-o', 'command='],
+                                 capture_output=True, text=True, timeout=2)
+        return process.returncode == 0 and all(part in process.stdout for part in expected)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def group(dataset, split='', domain='', method=''):
+    if dataset in ('clawrec', 'simbench', 'simbench_sequence'):
+        dataset, split = 'simbench', 'five_events'
+    if dataset == 'agentrecbench':
+        split = split or 'short_term'
+    return dataset, split, domain, method
+
+
+def event_states(rows):
+    """Restarts and retries replace a case state; skipped_existing adds no receipt."""
+    states = {}
+    for row in rows:
+        key = row.get('case') or (row.get('dataset'), row.get('method'), row.get('task_id'))
+        if not row.get('case') and not row.get('task_id'):
+            continue
+        outcome = row.get('outcome')
+        if outcome == 'superseded':
+            states.pop(key, None)
+        elif outcome != 'skipped_existing':
+            states[key] = row
+    return states
+
+
+def add_state(counts, state):
+    outcome = state.get('outcome', state.get('status', 'pending'))
+    field = {'submitted': 'delivered', 'no_delivery': 'empty',
+             'method_failure': 'failed', 'operational_failure': 'failed',
+             'failed': 'failed', 'blocked_by_prior_failure': 'blocked',
+             'running': 'uncommitted'}.get(outcome, 'pending')
+    counts[field] += 1
+
+
+def apply_events(table, mapping, states):
+    for key, rowgroup in mapping.items():
+        if rowgroup[0] == 'mind':
+            continue
+        table[rowgroup]['total'] += 1
+        add_state(table[rowgroup], states.get(key, {}))
+
+
+def validator(path):
+    def load(p):
+        spec = importlib.util.spec_from_file_location('monitor_frozen_queue', p)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    return cached(path, load)
+
+
+def waterfall(table, run):
+    plan = read(run / 'plan.json')
+    validation = validator(run / 'code/experiments/agentic-waterfall/unified/formal_queue.py')
+    errors = Counter()
+    for task in jsonlines(run / 'tasks.jsonl'):
+        if task['dataset'] == 'mind':
+            continue
+        row = table[group(task['dataset'], task.get('split', ''), task.get('domain', ''), 'Waterfall')]
+        row['total'] += 1
+        output = run / 'results' / (task['id'] + '.json')
+        if not output.exists():
+            row['uncommitted' if (run / 'started' / output.name).exists() else 'pending'] += 1
+            continue
+        def check(path):
+            try:
+                result = validation.read_committed(path, task)
+                if not plan.get('core_sha256') or result.get('runtime_source_sha256') != plan['core_sha256']:
+                    return 'failed', 'core_sha256_mismatch'
+                reason = validation.failure_reason(result)
+                if reason:
+                    return 'failed', reason
+                if not isinstance(result.get('ordered_item_ids'), list):
+                    return 'failed', 'missing_ordered_item_ids'
+                return ('delivered' if result['ordered_item_ids'] else 'empty'), None
+            except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+                return 'failed', 'invalid_committed_result: ' + str(exc)
+        # Include validator/protocol versions so changing validation invalidates cached classifications.
+        version = (plan.get('core_sha256'), CACHE[run / 'code/experiments/agentic-waterfall/unified/formal_queue.py'][0], task['dataset'])
+        key = (output, version)
+        try:
+            stat = output.stat()
+        except FileNotFoundError:
+            row['uncommitted'] += 1
+            continue
+        stamp = (stat.st_mtime_ns, stat.st_size)
+        if key not in CACHE or CACHE[key][0] != stamp:
+            CACHE[key] = stamp, check(output)
+        status, reason = CACHE[key][1]
+        row[status] += 1
+        if reason:
+            errors[reason] += 1
+    return errors
+
+
+def baselines(table, base):
+    states = {name: event_states(jsonlines(base / f'{name}-events.jsonl'))
+              for name in ('fixed', 'additional', 'local')}
+    fixed = {}
+    for job in read(base.parent / 'experiment-plan.json').get('jobs', []):
+        if job['dataset'] != 'kuairand':
+            continue
+        folder = base / 'fixed-candidates/kuairand' / job['method']
+        for task in read(folder / 'task-input-hashes.json').get('tasks', []):
+            decision = task['task_id']
+            fixed[('kuairand', job['method'], decision)] = group('kuairand', decision.split(':')[2], '', job['method'])
+    apply_events(table, fixed, states['fixed'])
+    additional = {}
+    for entry in read(base / 'additional-plan.json').get('groups', []):
+        for item in entry['items']:
+            kind, method = item['kind'], item['method']
+            rowgroup = group(kind, item.get('split', ''), item.get('domain', ''), method)
+            if kind == 'simbench_sequence':
+                for event in item['events']:
+                    additional[f"formal/simbench/{method}/{event['case_id']}"] = rowgroup
+            else:
+                index = item.get('task_id', item['entry'].get('line'))
+                additional[f"formal/{entry['name']}/task-{index:06d}"] = rowgroup
+    apply_events(table, additional, states['additional'])
+    local = read(base / 'local-plan.json')
+    mapping = {}
+    for kind, key in [('simbench', 'simbench_cases'), ('kuairec/dev', 'kuairec_dev'), ('kuairec/test', 'kuairec_test')]:
+        parts = kind.split('/')
+        rowgroup = group(parts[0], parts[1] if len(parts) > 1 else '', '', 'fixed')
+        mapping.update({f'formal/{kind}/fixed/task-{n:06d}': rowgroup for n in range(local.get(key, 0))})
+    apply_events(table, mapping, states['local'])
+    for domain in ('amazon', 'yelp', 'goodreads'):
+        manifest = read(base / 'agentrecbench' / domain / 'i2agent/manifest.json')
+        table[group('agentrecbench', '', domain, 'i2agent')]['inapplicable'] = sum(
+            record.get('status') == 'not_applicable' for record in manifest.get('records', []))
+    states['fixed'] = {key: value for key, value in states['fixed'].items() if key in fixed}
+    states['additional'] = {key: value for key, value in states['additional'].items() if key in additional}
+    states['local'] = {key: value for key, value in states['local'].items() if key in mapping}
+    return states
+
+
+def kuairand(table, expansion):
+    path = expansion / 'kuairand/mind-index.sqlite'
+    if not path.exists():
+        return
+    # mode=ro forbids writes and does not create a missing database.
+    with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True, timeout=1) as db:
+        db.execute('PRAGMA query_only=ON')
+        total = db.execute("SELECT count(*) FROM tasks WHERE decision_id LIKE 'kuairand:%:test:%'").fetchone()[0]
+        jobs = db.execute("SELECT method,status,count(*) FROM jobs WHERE decision_id LIKE 'kuairand:%:test:%' GROUP BY method,status").fetchall()
+    methods = set()
+    for method, status, count in jobs:
+        methods.add(method)
+        row = table[group('kuairand', 'test', '', method)]
+        row['total'] += count
+        field = {'submitted': 'delivered', 'failed': 'failed', 'running': 'uncommitted'}.get(status, 'pending')
+        row[field] += count
+    for method in methods:
+        row = table[group('kuairand', 'test', '', method)]
+        row['inapplicable'] = max(0, total - row['total'])
+
+
+def queue_line(title, state, pid, script, states=(), fatal=None, expected=()):
+    running = live(pid, script, *expected)
+    status = state.get('status') or ('running' if state.get('running') else 'stopped' if state.get('stopped') else 'not_running')
+    completed = sum(state.get(key, 0) for key in ('submitted', 'no_delivery', 'skipped_existing'))
+    if not running and not state.get('stopped') and state.get('total_planned') == completed and completed:
+        status = 'predictions_complete'
+    current = state.get('current') or state.get('task') or state.get('last', {}).get('case')
+    reasons = []
+    if state.get('reason'):
+        reasons.append(str(state['reason']))
+    if fatal and fatal.get('error') and state.get('stopped') and not running:
+        reasons.append(str(fatal['error']))
+    for row in states:
+        if row.get('outcome') in ('method_failure', 'operational_failure', 'blocked_by_prior_failure'):
+            reasons.append(str(row.get('error') or row.get('reason') or row['outcome']))
+    detail = '；原因: ' + ', '.join(dict.fromkeys(reasons)) if reasons else ''
+    return f"  {title}: {status}；进程{'存活' if running else '未匹配/未运行'}" + (f'；当前: {current}' if current else '') + detail
+
+
+def resources(root):
+    key = ('resources', root)
+    if key in CACHE and time.monotonic() - CACHE[key][0] < 30:
+        return CACHE[key][1]
+    try:
+        free = shutil.disk_usage(root).free / 1024**3
+        checked = subprocess.run(['memory_pressure', '-Q'], capture_output=True, text=True, timeout=2)
+        memory = re.search(r'memory free percentage:\s*(\d+)%', checked.stdout)
+        value = f"资源：可用内存 {memory[1] + '%' if memory else '未知'}；剩余磁盘 {free:.1f} GiB"
+        CACHE[key] = time.monotonic(), value
+        return value
+    except (OSError, subprocess.TimeoutExpired):
+        return '资源：无法读取系统资源'
+
+
+def preparation(expansion):
+    arb = expansion / 'agentrecbench'
+    manifests = len(list(arb.glob('*.manifest.json')))
+    receipts = list((arb / 'prepared').rglob('*manifest*.json'))
+    return f'AgentRecBench 补充场景：下载回执 {manifests}；准备索引回执 {len(receipts)}；未配对 Waterfall 任务，不计入完成。'
+
+
+def table_lines(table, dev=False):
+    lines = ['dataset / split / domain             method          delivered/total  empty failed uncommitted pending blocked  N/A']
+    for key, counts in sorted(table.items()):
+        if (key[1] == 'dev') != dev or key[0] == 'mind':
+            continue
+        dataset, split, domain, method = key
+        name = '/'.join(x for x in (dataset, split, domain) if x)
+        delivered = f"{counts['delivered']:,}/{counts['total']:,}"
+        lines.append(f"{name:<36} {method:<13} {delivered:>15} {counts['empty']:>6} {counts['failed']:>6} {counts['uncommitted']:>11} {counts['pending']:>7} {counts['blocked']:>7} {counts['inapplicable']:>4}")
+    return lines
+
+
+def snapshot(root):
+    root = Path(root)
+    base = root / 'formal-20261029-224252/formal'
+    expansion = root / 'full-expansion-20261030'
+    run = root / 'waterfall-four-parallel-20261030'
+    table = defaultdict(Counter)
+    errors = waterfall(table, run)
+    states = baselines(table, base)
+    database_error = None
+    try:
+        kuairand(table, expansion)
+    except sqlite3.Error as exc:
+        database_error = str(exc)
+    lines = [f'统一实验进度  {datetime.datetime.now():%Y-%m-%d %H:%M:%S}',
+             resources(root), 'delivered 仅有效非空预测；empty 单列；失败和未提交均不计完成。MIND 已排除。', '',
+             *table_lines(table), '', '开发集（单独列示，不并入测试进度）：', *table_lines(table, dev=True), '', '队列状态：']
+    for shard in ('kuairec', 'other'):
+        folder = run / 'shards' / shard
+        state = read(folder / 'progress.json')
+        supervisor = read(folder / 'supervisor.json')
+        lines.append(queue_line('Waterfall/' + shard, state, state.get('pid'), 'formal_queue.py', expected=(str(folder),)))
+        if supervisor.get('reason') and supervisor['reason'] != state.get('reason'):
+            lines.append('    supervisor: ' + str(supervisor['reason']))
+    pids = read(base / 'processes.json')
+    for name, script in [('fixed', 'run_fixed.py'), ('additional', 'run_agents.py'), ('local', 'run_local.py')]:
+        lines.append(queue_line(name, read(base / f'{name}-progress.json'), pids.get(name), script,
+                                states[name].values(), read(base / f'{name}-fatal.json')))
+    k = read(expansion / 'kuairand/progress.json')
+    lines.append(queue_line('KuaiRand 扩展', k, k.get('pid'), 'run_kuairand.py'))
+    if errors:
+        lines.append('Waterfall 当前失败：' + '；'.join(f'{reason} ×{count}' for reason, count in errors.items()))
+    if database_error:
+        lines.append('KuaiRand SQLite 无法读取（显示仅含旧队列）：' + database_error)
+    lines += ['', preparation(expansion), '', '每 30 秒只读刷新；Ctrl+C 只关闭本显示，不停止实验。']
     return '\n'.join(lines)
 
 
-if __name__ == '__main__':
-    while True:
-        print(('\033[H\033[2J' if sys.stdout.isatty() else '') + snapshot(), flush=True)
-        if '--once' in sys.argv:
-            break
-        try:
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, help='output/agentic-waterfall 路径')
+    parser.add_argument('--once', action='store_true')
+    args = parser.parse_args()
+    root = args.root.resolve() if args.root else find_root()
+    try:
+        while True:
+            print(('\033[H\033[2J' if sys.stdout.isatty() else '') + snapshot(root), flush=True)
+            if args.once:
+                break
             time.sleep(30)
-        except KeyboardInterrupt:
-            break
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == '__main__':
+    main()

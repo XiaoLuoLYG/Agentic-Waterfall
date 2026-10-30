@@ -198,7 +198,7 @@ class QueueChecks(unittest.TestCase):
             self.assertEqual(json.loads((run/'started/a.json').read_text())['attempt'],2)
 
     def test_missing_result_and_nontransient_failures_never_retry(self):
-        for outcome in ('no_result','model_http_401','model_http_403','model_http_429','model_invalid_json','model_output_truncated','invalid_batch_ranking','bad_dataset','action_execution_failed'):
+        for outcome in ('no_result','model_http_401','model_http_403','model_invalid_json','model_output_truncated','invalid_batch_ranking','bad_dataset','action_execution_failed'):
             with self.subTest(outcome=outcome),tempfile.TemporaryDirectory() as directory:
                 run,_=self.fixture(directory)
                 calls,sleeps,_,progress=self.execute(run,[outcome])
@@ -206,6 +206,17 @@ class QueueChecks(unittest.TestCase):
                 if outcome=='no_result':
                     calls,_,_,progress=self.execute(run,[])
                     self.assertEqual(calls,[]);self.assertIn('previous_attempt_without_committed_result',progress['reason'])
+
+    def test_transient_429_retries_but_explicit_quota_refusal_stops(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,_=self.fixture(directory)
+            calls,sleeps,_,progress=self.execute(run,['model_http_429',None])
+            self.assertEqual(calls,['a','a']);self.assertEqual(sum(sleeps),30)
+            self.assertEqual(progress['status'],'preflight_complete')
+            self.assertEqual(json.loads((run/'attempts/a/service-attempt-001/result.json').read_text())['result']['error'],'model_http_429')
+        result=self.result({'id':'a','dataset':'mind'},'model_http_429')['result']
+        result['model_calls']=[{'error':'model_http_429','http_error':{'retryable':False,'code':'insufficient_quota'}}]
+        self.assertIsNone(queue.retryable_failure(result))
 
     def test_partial_valid_submission_and_tool_failure_do_not_retry(self):
         with tempfile.TemporaryDirectory() as directory:

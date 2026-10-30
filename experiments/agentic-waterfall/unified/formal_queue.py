@@ -1,7 +1,7 @@
 """Single-worker Waterfall queue; preserve attempts and bound transient-service retries."""
 import argparse,collections,datetime,hashlib,json,os,pathlib,re,shutil,signal,subprocess,time
 
-TRANSIENT_ERRORS={'model_http_502','model_http_503','model_http_504','model_timeout','model_transport_error'}
+TRANSIENT_ERRORS={'model_http_429','model_http_502','model_http_503','model_http_504','model_timeout','model_transport_error'}
 RETRY_DELAYS=(30,90)
 
 def save(path,value):
@@ -46,6 +46,7 @@ def failure_reason(result):
     return None
 
 def retryable_failure(result):
+    if any(call.get('error')=='model_http_429' and call.get('http_error',{}).get('retryable') is False for call in result.get('model_calls',[])):return None
     receipts=[r for step in result.get('trace',[]) for r in step.get('execution_results',[])]
     failed=[r for r in receipts if r.get('kind')=='acquire' and r.get('status')=='failed']
     if failed and not infrastructure_failure(result) and not any(r.get('status')=='skipped' for r in receipts):
