@@ -1,6 +1,13 @@
 """Read-only aggregation regression tests; fixtures contain no evaluator labels."""
 from collections import Counter, defaultdict
 import importlib.util
+import os
+import pty
+import fcntl
+import select
+import struct
+import termios
+import time
 import json
 from pathlib import Path
 import shutil
@@ -189,6 +196,151 @@ class MonitorTests(unittest.TestCase):
         self.assertIn('接口限流429, 动作编号冲突', text)
         self.assertIn('已暂停', text)
         self.assertLessEqual(len(text.splitlines()), 24)
+
+    def test_details_viewport_clamps_and_keeps_summary_at_two_sizes(self):
+        summary = [f'汇总{n}' for n in range(7)]
+        body = [f'方法{n:02d} ' + '中文' * 40 for n in range(60)]
+        text = summary + body + ['旧页脚']
+        for height, width in [(24, 80), (12, 45)]:
+            with self.subTest(size=(height, width)):
+                frame, offset, page, maximum = monitor.details_viewport(text, height, width, -1)
+                self.assertEqual(offset, 0)
+                self.assertEqual(page, height - 8)
+                self.assertEqual(maximum, len(body) - page)
+                self.assertEqual(frame[:7], summary)
+                self.assertEqual(len(frame), height)
+                self.assertTrue(frame[7].startswith('方法00'))
+                self.assertTrue(all(monitor.display_width(line) <= width - 1 for line in frame))
+                frame, offset, _, _ = monitor.details_viewport(text, height, width, 1000)
+                self.assertEqual(offset, maximum)
+                self.assertTrue(frame[-2].startswith('方法59'))
+                self.assertIn('30秒刷新', monitor.details_viewport(text, 24, 80, 0)[0][-1])
+                self.assertNotIn('省略', '\n'.join(frame))
+        self.assertEqual(monitor.details_viewport(text, 0, 80, 20), ([], 0, 0, 0))
+
+    def test_details_dashboard_retains_scroll_across_refresh_and_resize(self):
+        class Screen:
+            def __init__(self):
+                self.keys = iter([monitor.curses.KEY_NPAGE, -1, monitor.curses.KEY_END,
+                                  monitor.curses.KEY_RESIZE, monitor.curses.KEY_HOME, ord('q')])
+                self.turn = 0
+                self.frames = []
+            def timeout(self, value):
+                pass
+            def getmaxyx(self):
+                return (24, 80) if self.turn < 3 else (12, 60)
+            def erase(self):
+                self.frames.append([])
+            def addstr(self, row, col, text):
+                self.frames[-1].append(text)
+            def refresh(self):
+                pass
+            def getch(self):
+                self.turn += 1
+                return next(self.keys)
+        screen = Screen()
+        body = [f'方法{n:02d}' for n in range(60)]
+        snapshots = ['\n'.join([f'汇总{version}-{n}' for n in range(7)] + body + ['旧页脚']) for version in ('A', 'B')]
+        with mock.patch.object(monitor.curses, 'curs_set'), \
+             mock.patch.object(monitor, 'snapshot', side_effect=snapshots) as snapshot, \
+             mock.patch.object(monitor.time, 'monotonic', side_effect=[0, 0, 1, 31, 31, 32, 33, 34]):
+            monitor.dashboard(screen, self.root, details=True)
+        self.assertEqual(snapshot.call_args_list, [mock.call(self.root, True), mock.call(self.root, True)])
+        self.assertEqual(screen.frames[1][7], '方法16')
+        self.assertEqual(screen.frames[2][7], '方法16')
+        self.assertEqual(screen.frames[2][0], '汇总B-0')
+        self.assertEqual(screen.frames[3][7], '方法44')
+        self.assertEqual(screen.frames[-1][7], '方法00')
+        self.assertEqual(len(screen.frames[-1]), 12)
+
+    def test_details_cli_is_interactive_only_for_tty_without_once(self):
+        for flags, tty, interactive, details in [(['--details'], True, True, True),
+                ([], True, True, False), (['--details', '--once'], True, False, True),
+                (['--details'], False, False, True), (['--once'], True, False, False)]:
+            with self.subTest(flags=flags, tty=tty), \
+                 mock.patch.object(monitor.sys, 'argv', ['monitor.py', '--root', str(self.root), *flags]), \
+                 mock.patch.object(monitor.sys, 'stdout') as stdout, \
+                 mock.patch.object(monitor, 'snapshot', return_value='STATIC') as snapshot, \
+                 mock.patch.object(monitor.curses, 'wrapper') as wrapper:
+                stdout.isatty.return_value = tty
+                monitor.main()
+                if interactive:
+                    wrapper.assert_called_once_with(monitor.dashboard, self.root.resolve(), details)
+                    snapshot.assert_not_called()
+                else:
+                    wrapper.assert_not_called()
+                    snapshot.assert_called_once_with(self.root.resolve(), details)
+                    stdout.write.assert_any_call('STATIC')
+
+    def test_details_pty_stays_live_refreshes_scrolls_resizes_and_quits(self):
+        # A faster clock exercises real curses refreshes without waiting thirty seconds.
+        code = """import importlib.util,sys,time,types
+spec=importlib.util.spec_from_file_location('monitor',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+calls=0
+def snapshot(root,details=False):
+ global calls
+ calls+=1
+ with open(root/'refresh-count.txt','a') as receipt:receipt.write(str(calls)+'\\n')
+ return '\\n'.join([f'REFRESH_{calls} summary {n}' for n in range(7)]+[f'DETAIL_ROW_{n:03d} 方法行' for n in range(60)]+['footer'])
+m.snapshot=snapshot
+clock=time.monotonic;m.time=types.SimpleNamespace(monotonic=lambda:clock()*100)
+sys.argv=['monitor.py','--root',sys.argv[2],'--details'];m.main()
+"""
+        pid, master = pty.fork()
+        if pid == 0:
+            os.environ['TERM'] = 'xterm-256color'
+            os.execv(os.sys.executable, [os.sys.executable, '-B', '-c', code, str(HERE / 'monitor.py'), str(self.root)])
+        collected = bytearray()
+        exited = False
+        def read_until(marker, timeout=5):
+            deadline = time.monotonic() + timeout
+            while marker not in collected and time.monotonic() < deadline:
+                ready, _, _ = select.select([master], [], [], 0.1)
+                if ready:
+                    try:
+                        collected.extend(os.read(master, 65536))
+                    except OSError:
+                        break
+            self.assertIn(marker, collected, collected.decode(errors='replace'))
+        try:
+            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+            read_until(b'1-16/60')
+            deadline = time.monotonic() + 3
+            receipt = self.root / 'refresh-count.txt'
+            while len(receipt.read_text().splitlines()) < 2 and time.monotonic() < deadline:
+                ready, _, _ = select.select([master], [], [], 0.1)
+                if ready:
+                    collected.extend(os.read(master, 65536))
+            self.assertGreaterEqual(len(receipt.read_text().splitlines()), 2)
+            self.assertEqual(os.waitpid(pid, os.WNOHANG), (0, 0))
+            os.write(master, b'\x1bOF')
+            read_until(b'45-60/60')
+            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 12, 60, 0, 0))
+            os.write(master, b'\x1bOH')
+            os.write(master, b'q')
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                waited, status = os.waitpid(pid, os.WNOHANG)
+                if waited:
+                    exited = True
+                    self.assertEqual(status, 0)
+                    break
+                ready, _, _ = select.select([master], [], [], 0.05)
+                if ready:
+                    try:
+                        collected.extend(os.read(master, 65536))
+                    except OSError:
+                        pass
+            self.assertTrue(exited, 'details monitor did not exit on q')
+        finally:
+            if not exited:
+                try:
+                    os.write(master, b'q')
+                except OSError:
+                    pass
+            os.close(master)
+            if not exited:
+                os.waitpid(pid, 0)
 
 
 if __name__ == '__main__':

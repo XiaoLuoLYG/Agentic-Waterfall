@@ -410,41 +410,73 @@ def snapshot(root, details=False):
     return '\n'.join(lines)
 
 
-def dashboard(screen, root):
+def details_viewport(lines, height, width, offset):
+    """Keep the seven summary lines and footer fixed while scrolling the detail body."""
+    if height <= 0 or width <= 1:
+        return [], 0, 0, 0
+    header = lines[:min(7, max(0, height - 2))]
+    body = lines[7:-1]
+    page = max(0, height - len(header) - 1)
+    maximum = max(0, len(body) - page) if page else 0
+    offset = max(0, min(offset, maximum))
+    end = min(offset + page, len(body))
+    footer = f'↑↓/PgUp/PgDn/Home/End 滚动；30秒刷新；q/Ctrl+C退出  {offset + 1 if end else 0}-{end}/{len(body)}'
+    frame = header + body[offset:end] + [footer]
+    return screen_lines(frame, height, width), offset, page, maximum
+
+
+def dashboard(screen, root, details=False):
     try:
         curses.curs_set(0)
     except curses.error:
         pass
     screen.timeout(1000)
-    deadline, lines, size = 0, [], None
+    deadline, lines, size, offset = 0, [], None, 0
     while True:
         if time.monotonic() >= deadline:
-            lines = snapshot(root).splitlines()
+            lines = snapshot(root, details).splitlines()
             deadline = time.monotonic() + 30
             size = None
         current = screen.getmaxyx()
         if current != size:
+            if details:
+                frame, offset, page, maximum = details_viewport(lines, *current, offset)
+            else:
+                frame = screen_lines(lines, *current)
             screen.erase()
-            for row, line in enumerate(screen_lines(lines, *current)):
-                screen.addstr(row, 0, line)
+            for row, line in enumerate(frame):
+                try:
+                    screen.addstr(row, 0, line)
+                except curses.error:
+                    break  # The terminal may shrink between getmaxyx and drawing.
             screen.refresh()
             size = current
-        if screen.getch() in (ord('q'), ord('Q')):
+        key = screen.getch()
+        if key in (ord('q'), ord('Q')):
             return
+        if key == curses.KEY_RESIZE:
+            size = None
+        elif details:
+            target = {curses.KEY_UP: offset - 1, curses.KEY_DOWN: offset + 1,
+                      curses.KEY_PPAGE: offset - page, curses.KEY_NPAGE: offset + page,
+                      curses.KEY_HOME: 0, curses.KEY_END: maximum}.get(key, offset)
+            target = max(0, min(target, maximum))
+            if target != offset:
+                offset, size = target, None
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, help='output/agentic-waterfall 路径')
     parser.add_argument('--once', action='store_true')
-    parser.add_argument('--details', action='store_true', help='显示一次完整方法明细，可滚动阅读')
+    parser.add_argument('--details', action='store_true', help='持续刷新完整明细，方向键/PageUp/PageDown/Home/End 滚动')
     args = parser.parse_args()
     root = args.root.resolve() if args.root else find_root()
     try:
-        if args.once or args.details or not sys.stdout.isatty():
+        if args.once or not sys.stdout.isatty():
             print(snapshot(root, args.details), flush=True)
         else:
-            curses.wrapper(dashboard, root)
+            curses.wrapper(dashboard, root, args.details)
     except KeyboardInterrupt:
         pass
 

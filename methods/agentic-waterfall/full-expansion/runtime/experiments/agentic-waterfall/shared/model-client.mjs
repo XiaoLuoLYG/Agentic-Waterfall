@@ -5,6 +5,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { archiveAttempt } from './archive.mjs';
+import { createRequestGate } from './request-gate.mjs';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const LEDGER = resolve(ROOT, '../../../../formal-20261029-224252/experiments/agentic-waterfall/shared/model-ledger.json');
@@ -64,24 +65,41 @@ async function reserve(experiment, request, model) {
   }
 }
 
+async function httpError(response,key) {
+  let body;
+  try { body=typeof response.text==='function'?await response.text():await response.json(); } catch {}
+  if(typeof body==='string')try { body=JSON.parse(body); } catch { body={message:body}; }
+  const error=body?.error??body;
+  const clean=value=>typeof value==='string'?value.replaceAll(key,'[REDACTED]').replace(/Bearer\s+\S+/gi,'Bearer [REDACTED]').replace(/(\bapi[_ -]?key\s*[:=]\s*)\S+/gi,'$1[REDACTED]').slice(0,1000):null;
+  const code=clean(error?.code),type=clean(error?.type),message=clean(typeof error==='string'?error:error?.message);
+  const retry=response.headers?.get?.('retry-after');
+  const seconds=retry&&/^\d+$/.test(retry)?Number(retry):retry?Math.max(0,Math.ceil((Date.parse(retry)-Date.now())/1000)):null;
+  const quota=/insufficient[_ -]?quota|quota[_ -]?exceeded|credit|balance|billing|payment|预算|余额|额度不足/i.test([code,type,message].join(' '));
+  return {status:response.status,code,type,message,request_id:clean(response.headers?.get?.('x-request-id')),
+    retry_after_seconds:Number.isFinite(seconds)?seconds:null,...(response.status===429?{retryable:!quota}:{})};
+}
+
 export async function callModel(request, {experiment}={}) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
   const config=loadModelConfig();
   const body={model:config.model,messages:request.messages,temperature:request.temperature??0.3,max_tokens:request.max_tokens??4096,...config.parameters,...(request.response_format?{response_format:request.response_format}:{})};
   if (!Number.isInteger(body.max_tokens)||body.max_tokens<1||body.max_tokens>8192) throw new Error('invalid_max_tokens');
+  const gate=createRequestGate(config);
   const attempt=await reserve(experiment,body,config.model);
-  const started=Date.now(); let receipt;
+  const started=Date.now(); let receipt,http,gateWaitMs,httpStartedAt=null;
   try {
+    gateWaitMs=Math.max(0,(await gate.admit())-started);
+    httpStartedAt=new Date().toISOString();
     const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});
-    if (!response.ok) throw new Error(`model_http_${response.status}`);
+    if (!response.ok) { http=await httpError(response,config.key);if(response.status===429)await gate.cooldown(http.retry_after_seconds??60);throw new Error(`model_http_${response.status}`); }
     const result=await response.json();
     const content=result.choices?.[0]?.message?.content;
     if (typeof content!=='string') throw new Error('model_missing_content');
-    receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters},duration_ms:Date.now()-started};
+    receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters},request_gate_wait_ms:gateWaitMs,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
     return receipt;
   } catch(e) {
-    const code=/^model_http_\d+$/.test(e.message)||e.message==='model_missing_content'?e.message:e.name==='TimeoutError'?'model_timeout':'model_transport_error';
-    receipt={attempt_id:attempt.id,status:'failed',error:code,duration_ms:Date.now()-started};
+    const code=/^model_http_\d+$/.test(e.message)||e.message==='model_missing_content'||e.message?.startsWith('request_gate_')?e.message:e.name==='TimeoutError'?'model_timeout':'model_transport_error';
+    receipt={attempt_id:attempt.id,status:'failed',requested_model:config.model,error:code,...(http?{http_error:http}:{}),request_gate_wait_ms:gateWaitMs??Date.now()-started,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
     const error=new Error(code); error.receipt=receipt; throw error;
   } finally {
     await withLedger(ledger=>{

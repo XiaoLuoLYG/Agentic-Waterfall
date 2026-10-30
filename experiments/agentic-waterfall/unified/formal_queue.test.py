@@ -218,6 +218,33 @@ class QueueChecks(unittest.TestCase):
         result['model_calls']=[{'error':'model_http_429','http_error':{'retryable':False,'code':'insufficient_quota'}}]
         self.assertIsNone(queue.retryable_failure(result))
 
+    def test_rejected_response_then_throttle_replays_only_failed_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);row=self.result(tasks[0],'model_http_429')
+            row['result']['model_calls']=[{'status':'success','error':'action_id_reuse_with_different_payload'},
+                                         {'status':'failed','error':'model_http_429','http_error':{'retryable':True}}]
+            row['result']['trace']=[{'execution_results':[{'kind':'acquire','status':'success'}]}]
+            calls,sleeps,_,progress=self.execute(run,[row,None])
+            self.assertEqual(calls,['a','a']);self.assertEqual(sum(sleeps),30)
+            self.assertEqual(progress['status'],'preflight_complete')
+            old=json.loads((run/'attempts/a/service-attempt-001/result.json').read_text())
+            self.assertEqual(old['result']['model_calls'][0]['error'],'action_id_reuse_with_different_payload')
+
+    def test_wrong_decision_id_can_retry_without_accepting_or_filling_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);row=self.result(tasks[0],'invalid_decision')
+            row['result']['model_calls']=[{'status':'success','error':'action_id_reuse_with_different_payload'},
+                                         {'status':'success','parsed_output':{'decision_id':'wrong','actions':[]}}]
+            self.assertEqual(queue.retryable_failure(row['result']),'invalid_decision')
+            calls,_,_,progress=self.execute(run,[row,None])
+            self.assertEqual(calls,['a','a']);self.assertEqual(progress['status'],'preflight_complete')
+        for forbidden in ('model_http_403','unknown_error'):
+            row['result']['model_calls'].append({'error':forbidden})
+            self.assertIsNone(queue.retryable_failure(row['result']))
+            row['result']['model_calls'].pop()
+        row['result']['trace']=[{'execution_results':[{'kind':'update_state','status':'failed','error':'unknown_error'}]}]
+        self.assertIsNone(queue.retryable_failure(row['result']))
+
     def test_partial_valid_submission_and_tool_failure_do_not_retry(self):
         with tempfile.TemporaryDirectory() as directory:
             run,tasks=self.fixture(directory)

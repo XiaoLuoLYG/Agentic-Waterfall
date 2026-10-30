@@ -86,7 +86,8 @@ def main():
                 with resp.open('x') as f:json.dump(receipt,f,ensure_ascii=False,indent=2)
                 replayed.append(i)
                 return value
-        proc=subprocess.run(['node',str(CLIENT),'--experiment','method-deployment','--request',str(req),'--output',str(resp)],capture_output=True,text=True,timeout=100)
+        # Cover the slot wait, shared gate, 60-second baseline HTTP call, and final accounting.
+        proc=subprocess.run(['node',str(CLIENT),'--experiment','method-deployment','--request',str(req),'--output',str(resp)],capture_output=True,text=True,timeout=300)
         (out/f'process-{i:02}.log').write_text(proc.stdout+proc.stderr)
         if not resp.exists(): raise RuntimeError('model receipt missing')
         receipt=json.loads(resp.read_text())

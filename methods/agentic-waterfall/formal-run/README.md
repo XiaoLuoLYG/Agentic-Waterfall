@@ -11,6 +11,6 @@ The scheduler preserves each attempt and resumes completed cases without recompu
 
 For KuaiRand i²Agent the fixed-candidate runner passes the task protocol’s 8192-token output limit. The 2026-10-29 run initially used 4096, then retained all earlier attempts and reran the entire affected method cohort under 8192 before any score inspection. The runner expects the isolated ClawRec and generic-agent `runs/` directories to exist.
 
-Local fixed retrieval pauses 20 seconds between completed cases to reduce sustained computer load; the scheduler can be run at reduced OS CPU priority. This does not change ranking or inputs.
+Local fixed retrieval pauses 15 seconds between completed cases (reduced from20seconds on2026-10-30 at the user's request). It keeps the shared single-inference lock and reduced OS CPU priority. This changes scheduling only, not ranking or inputs.
 
 Output reliability amendment: KuaiRand i²Agent requests one compact explanation while preserving its complete ranking. Both SimBench agent methods use a concise-state request and an 8192-token state limit. The run archive records the amended sources and reruns all previously produced outputs for the affected methods.

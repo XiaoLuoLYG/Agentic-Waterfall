@@ -60,7 +60,7 @@ def main():
     result=json.loads((actual/'result.json').read_text())
     if result['status'] not in ('submitted','no_delivery'):raise ValueError('unexpected local result')
     os.symlink(os.path.relpath(actual,folder),final);event({'case':str(folder.relative_to(ROOT)),'outcome':result['status']})
-    if not STOP:time.sleep(20)
+    if not STOP:time.sleep(15)
    if STOP:break
  except Exception as e:
   STOP=True;save(B/'local-fatal.json',{'error':str(e),'training':False,'labels_read':False});raise

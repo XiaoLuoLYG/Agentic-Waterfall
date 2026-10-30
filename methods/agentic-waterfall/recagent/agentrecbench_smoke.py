@@ -40,7 +40,8 @@ def main():
     def call(messages,temperature=0.1,max_tokens=1000,**_):
         req=out/'request.json';resp=out/'response.json'
         with req.open('x') as f:json.dump({'messages':messages,'temperature':temperature,'max_tokens':max_tokens},f,ensure_ascii=False,indent=2)
-        proc=subprocess.run(['node',str(CLIENT),'--experiment','method-deployment','--request',str(req),'--output',str(resp)],capture_output=True,text=True,timeout=100)
+        # Cover the slot wait, shared gate, 60-second baseline HTTP call, and final accounting.
+        proc=subprocess.run(['node',str(CLIENT),'--experiment','method-deployment','--request',str(req),'--output',str(resp)],capture_output=True,text=True,timeout=300)
         (out/'process.log').write_text(proc.stdout+proc.stderr)
         if not resp.exists():raise RuntimeError('missing receipt')
         receipt=json.loads(resp.read_text())

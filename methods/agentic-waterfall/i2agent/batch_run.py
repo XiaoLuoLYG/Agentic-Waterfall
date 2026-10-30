@@ -26,7 +26,7 @@ def main():
         proc=subprocess.run([sys.executable,str(prepare),'--input',str(Path(a.input).resolve()),'--line',str(a.line),'--output',str(task.resolve())],capture_output=True,text=True,env=env,timeout=120)
         (out/'prepare.log').write_text(proc.stdout+proc.stderr)
         if proc.returncode:raise RuntimeError('public task preparation failed')
-        run=out/'runtime';proc=subprocess.run([sys.executable,str(ROOT/'live_smoke.py'),'--input',str(task.resolve()),'--output',str(run.resolve()),'--rank-max-tokens',str(a.rank_max_tokens)],capture_output=True,text=True,env=env,timeout=420)
+        run=out/'runtime';proc=subprocess.run([sys.executable,str(ROOT/'live_smoke.py'),'--input',str(task.resolve()),'--output',str(run.resolve()),'--rank-max-tokens',str(a.rank_max_tokens)],capture_output=True,text=True,env=env,timeout=2400)
         (out/'process.log').write_text(proc.stdout+proc.stderr)
         if not (run/'result.json').exists():raise RuntimeError('runtime result missing')
         response=json.loads((run/'result.json').read_text());

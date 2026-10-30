@@ -2,6 +2,7 @@
 import argparse,collections,datetime,hashlib,json,os,pathlib,re,shutil,signal,subprocess,time
 
 TRANSIENT_ERRORS={'model_http_429','model_http_502','model_http_503','model_http_504','model_timeout','model_transport_error'}
+REJECTED_RESPONSE_ERRORS={'invalid_decision','action_id_reuse_with_different_payload','action_id_already_in_progress'}
 RETRY_DELAYS=(30,90)
 
 def save(path,value):
@@ -61,9 +62,11 @@ def retryable_failure(result):
     if result.get('status')!='failed' or result.get('ordered_item_ids'):return None
     errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
     errors=[error for error in errors if error]
-    if not errors or any(error not in TRANSIENT_ERRORS for error in errors):return None
+    rejected=REJECTED_RESPONSE_ERRORS|{'model_invalid_json','model_output_truncated','invalid_batch_ranking'}
+    if not errors or any(error not in TRANSIENT_ERRORS|rejected for error in errors):return None
+    if not any(error in TRANSIENT_ERRORS or error in REJECTED_RESPONSE_ERRORS for error in errors):return None
     if any(r.get('status') in {'failed','skipped'} or r.get('error') for step in result.get('trace',[]) for r in step.get('execution_results',[])):return None
-    return errors[0]
+    return next((error for error in errors if error in TRANSIENT_ERRORS),errors[0])
 
 def read_committed(output,task):
     row=json.loads(output.read_text());result=row['result']
