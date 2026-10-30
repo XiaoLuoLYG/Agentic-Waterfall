@@ -9,3 +9,5 @@ MIND 已按用户要求暂停。MIND 专用 i²Agent 适配位于上一级 `i2ag
 当前 KuaiRand 617 条测试输入与 Waterfall 共用，原队列的 14 条测试样本不重复运行；旧输入与 Waterfall 的字幕状态字段不同，历史和候选内容核对一致。其他 AgentRecBench 场景的数据与 Waterfall 同题对比仍需准备，不能当作已完成。
 
 `kuairec_crosswalk.py` 在不读取标签时核对两侧按 split 和 user_id 匹配的公开观察；已发现对照测试输入的 decision_id 前缀误写为 dev，不能按该前缀合并结果。匹配关系必须在最终评分中使用，并验证用户、split、输入及预测的唯一对应。
+
+`fetch_agentrecbench_reviews.py` 以限速和断点续传获取官方长历史和全部历史文件，校验固定版本的完整 SHA-256；这些原始数据在本地保存，不进入 Git。下载完成不等于领域索引、任务适配或同题运行已完成。
