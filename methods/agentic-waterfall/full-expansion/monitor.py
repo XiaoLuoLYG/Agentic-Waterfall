@@ -79,10 +79,15 @@ def snapshot():
     k = read(EXPANSION / 'kuairand/progress.json')
     estate = e.get('status', '准备与核验中')
     kstate = k.get('status', '准备与核验中')
+    download = read(EXPANSION / 'agentrecbench/download-process.json')
+    directory = EXPANSION / 'agentrecbench/task'
+    files = sum(1 for _ in directory.rglob('*.json')) if directory.exists() else 0
+    verified = len(list((EXPANSION / 'agentrecbench').glob('*.manifest.json')))
     if estate == 'running' and not live(e.get('pid')): estate = '进程未运行，待检查'
     if kstate == 'running' and not live(k.get('pid')): kstate = '进程未运行，待检查'
     lines += ['', 'KuaiRand 测试扩展：' + (bar(k.get('submitted', 0), k.get('total', 0)) if k else '准备中，尚未启动'),
-              f"  状态: {kstate}；当前: {k.get('current', '—')}", '',
+              f"  状态: {kstate}；当前: {k.get('current', '—')}",
+              f"AgentRecBench 补充数据：{files} 个文件，已验证 {verified}/12 个领域场景；" + ('下载中/等待限流' if live(download.get('pid')) else '下载进程未运行'), '',
               f'MIND：{estate}（已按要求暂停）', '',
               '每 30 秒刷新。Ctrl+C 只关闭本显示，不停止实验。']
     return '\n'.join(lines)
