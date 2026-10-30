@@ -54,10 +54,12 @@ async function reserve(experiment, request, model) {
       const control=JSON.parse(readFileSync(controlPath,'utf8'));
       if (control.model_calls_enabled === false) throw new Error('model_calls_not_enabled');
       if (!Number.isSafeInteger(ledger.limit) || ledger.limit < 1) throw new Error('invalid_global_request_limit');
+      const maxConcurrent=ledger.max_concurrent===undefined?2:ledger.max_concurrent;
+      if (!Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 4) throw new Error('invalid_max_concurrent');
       if (ledger.attempts.length >= ledger.limit) throw new Error('global_request_budget_exhausted');
       if (ledger.attempts.filter(x=>x.experiment===experiment).length >= (control.model_request_limit || 0)) throw new Error('experiment_request_budget_exhausted');
       // A stale reservation is never silently recycled: its actual outcome must be audited.
-      if (ledger.attempts.filter(x=>x.status==='in_progress').length >= 2) return null;
+      if (ledger.attempts.filter(x=>x.status==='in_progress').length >= maxConcurrent) return null;
       const attempt={id:randomUUID(),experiment,model,request_sha256:digest(request),started_at:new Date().toISOString(),pid:process.pid,status:'in_progress'};
       ledger.attempts.push(attempt); return attempt;
     });

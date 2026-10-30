@@ -197,6 +197,17 @@ class MonitorTests(unittest.TestCase):
         self.assertIn('已暂停', text)
         self.assertLessEqual(len(text.splitlines()), 24)
 
+    def test_details_lists_additional_disjoint_lanes_without_changing_totals(self):
+        run=self.waterfall_fixture()
+        save(run/'shards/kuairec-2/plan.json',{'total':3})
+        save(run/'shards/kuairec-2/progress.json',{'status':'running','current':'g','pid':123})
+        save(run/'shards/other-2/plan.json',{'total':2})
+        save(run/'shards/other-2/progress.json',{'status':'running','current':'f','pid':124})
+        with mock.patch.object(monitor,'resources',return_value='资源'),mock.patch.object(monitor,'live',return_value=True):
+            text=monitor.snapshot(self.root,details=True)
+        self.assertIn('WF/kuairec-2:',text);self.assertIn('WF/other-2:',text)
+        self.assertIn('2/7',text)
+
     def test_details_viewport_clamps_and_keeps_summary_at_two_sizes(self):
         summary = [f'汇总{n}' for n in range(7)]
         body = [f'方法{n:02d} ' + '中文' * 40 for n in range(60)]

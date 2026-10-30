@@ -245,6 +245,33 @@ class QueueChecks(unittest.TestCase):
                     calls,_,_,progress=self.execute(run,[])
                     self.assertEqual(calls,[]);self.assertIn('previous_attempt_without_committed_result',progress['reason'])
 
+    def test_committed_initial_byte_overflow_retries_with_existing_three_attempt_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);row=self.result(tasks[0],'input_byte_budget_exceeded')
+            row['result'].update(model_request_count=0,tool_calls=0,model_calls=[])
+            self.assertEqual(queue.retryable_failure(row['result']),'input_byte_budget_exceeded')
+            calls,sleeps,_,progress=self.execute(run,[row,row,row])
+            self.assertEqual(calls,['a','a','a']);self.assertEqual(sum(sleeps),120)
+            self.assertEqual(progress['status'],'needs_attention');self.assertEqual(progress['attempt'],3)
+            self.assertEqual(json.loads((run/'attempts/a/service-attempt-001/result.json').read_text()),row)
+            calls,_,_,progress=self.execute(run,[])
+            self.assertEqual(calls,[]);self.assertEqual(progress['attempt'],3)
+
+    def test_byte_overflow_never_retries_paid_side_effectful_or_incomplete_results(self):
+        result=self.result({'id':'a','dataset':'mind'},'input_byte_budget_exceeded')['result']
+        result.update(model_request_count=0,tool_calls=0,model_calls=[])
+        for key,value in [('model_request_count',1),('tool_calls',1),('model_calls',[{'attempt_id':'paid'}]),
+                          ('trace',[{'execution_results':[{'kind':'acquire','status':'success'}]}]),
+                          ('ordered_item_ids',['x']),('continuation_error','model_timeout'),('status','submitted'),
+                          ('model_request_count',False),('tool_calls',False)]:
+            with self.subTest(key=key,value=value):
+                unsafe=copy.deepcopy(result);unsafe[key]=value
+                self.assertIsNone(queue.retryable_failure(unsafe))
+        for key in ('model_request_count','tool_calls','model_calls','trace','ordered_item_ids'):
+            with self.subTest(missing=key):
+                incomplete=copy.deepcopy(result);del incomplete[key]
+                self.assertIsNone(queue.retryable_failure(incomplete))
+
     def test_transient_429_retries_but_explicit_quota_refusal_stops(self):
         with tempfile.TemporaryDirectory() as directory:
             run,_=self.fixture(directory)

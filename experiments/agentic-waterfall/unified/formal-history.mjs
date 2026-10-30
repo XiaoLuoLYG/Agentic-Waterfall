@@ -1,13 +1,13 @@
 import {SYSTEM_PROMPT} from '../../../demos/agentic-feed/waterfall-core.mjs';
 
-const INITIAL = 60, BYTE_LIMIT = 85000;
+const INITIAL = 60, BYTE_LIMIT = 85000, INITIAL_BYTE_TARGET = 45000;
 const compactFields = ['id', 'candidate_index', 'title', 'category', 'source_id', 'content_type'];
 const messageBytes = (observation, context, extra) => Buffer.byteLength(JSON.stringify([
   {role: 'system', content: SYSTEM_PROMPT + extra},
   {role: 'user', content: JSON.stringify({observation, context})},
 ]));
 
-function fitsHistory(observation) {
+function fitsHistory(observation, byteLimit = BYTE_LIMIT) {
   const candidates = observation.environment.candidate_pool || [];
   const context = {variant: 'full', call_index: 19, remaining_model_calls: 1};
   const compact = candidates.map(item => Object.fromEntries(compactFields.filter(key => item[key] !== undefined).map(key => [key, item[key]])));
@@ -19,7 +19,7 @@ function fitsHistory(observation) {
     recommendation_constraints: {...observation.environment.recommendation_constraints, mode: 'fixed_candidates', require_full_ranking: true, top_k: 1, acquire_enabled: false}}};
   const singleBytes = messageBytes(single, {...context, batch_stage: 'rank', batch_index: 9999},
     ' Rank every candidate in this batch exactly once. Return one recommend action and no other actions.');
-  return Math.max(mergeBytes, singleBytes) <= BYTE_LIMIT;
+  return Math.max(mergeBytes, singleBytes) <= byteLimit;
 }
 
 export function prepareHistory(source) {
@@ -42,11 +42,27 @@ export function prepareHistory(source) {
     original_events: history.length, initial_events: observation.behavior_events.length, lookup_message_byte_limit: BYTE_LIMIT,
     original_history_retained: true, state_unchanged: true}};
 
+  if (!fitsHistory(observation)) {
+    const archive = observation.environment.sources.at(-1);
+    archive.description = archive.description.replace('Initially only the latest 60 visible events are supplied.',
+      'Initially a byte-bounded suffix of the latest 60 visible events is supplied; initial_count gives its size, which may be zero.');
+    const empty = {...observation, behavior_events: []};
+    if (!fitsHistory(empty)) throw Error('history_context_byte_budget_exceeded');
+    for (const row of available) {
+      if (!fitsHistory({...empty, behavior_events: [row]})) throw Error('history_event_byte_budget_exceeded');
+    }
+    while (observation.behavior_events.length && !fitsHistory(observation, INITIAL_BYTE_TARGET)) observation.behavior_events.shift();
+    archive.initial_count = observation.behavior_events.length;
+    Object.assign(input.run_meta.history_protocol, {version: 'recent60-byte-bounded-with-original-history-lookup-v2',
+      initial_events: observation.behavior_events.length, initial_message_byte_target: INITIAL_BYTE_TARGET});
+  }
+  const initialCount = observation.behavior_events.length;
+
   const lookupHistory = (args, {observation: current}) => {
     if (current.user_id !== owner) throw Error('history_owner_mismatch');
     const {query = '', offset = 0, limit = 30} = args;
     if (typeof query !== 'string' || !Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100) throw Error('invalid_history_lookup');
-    const matches = history.filter(visible).slice(0, -INITIAL).reverse()
+    const matches = history.filter(visible).slice(0, available.length - initialCount).reverse()
       .filter(row => !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()));
     const seen = new Set((current.behavior_events || []).map(row => row.id)), additions = [];
     let cursor = offset;

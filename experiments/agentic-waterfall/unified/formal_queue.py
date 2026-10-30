@@ -63,6 +63,12 @@ def failure_reason(result):
     return None
 
 def retryable_failure(result):
+    if (result.get('status')=='failed' and result.get('error')=='input_byte_budget_exceeded'
+        and result.get('continuation_error') is None
+        and type(result.get('model_request_count')) is int and result['model_request_count']==0
+        and type(result.get('tool_calls')) is int and result['tool_calls']==0
+        and all(result.get(key)==[] for key in ('trace','model_calls','ordered_item_ids'))):
+        return 'input_byte_budget_exceeded'
     if any(call.get('error')=='model_http_429' and call.get('http_error',{}).get('retryable') is False for call in result.get('model_calls',[])):return None
     errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
     errors=[error for error in errors if error]

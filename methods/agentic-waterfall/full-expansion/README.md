@@ -10,6 +10,8 @@
 
 2026-10-30恢复修订：Waterfall、旧对照JSON客户端和扩展SQLite客户端均接同一API-key级请求闸门，统一`WATERFALL_REQUEST_GATE_DIR`，合计最多45次/滚动60秒且间隔至少1334ms。429的`Retry-After`形成共享冷却，闸门等待单次不超过90秒；不把本地等待记成新的HTTP请求。成功路径、提示、候选与核心版本不变，原失败与全部调用保留。当前只恢复四数据集既有队列，MIND继续暂停。
 
+性能修订：`partition_waterfall.partition`将既有任务分成两条互斥工作队列，并把完整previous依赖链放在同一条；KuaiRec与其余数据各用两条，共四条Waterfall队列。面板发现所有`shards/*/plan.json`，总分母仍从根任务表读取，避免重复计数。Waterfall账本并发4、对照并发2，合计仍受共享45次/分钟控制。本地空等5秒，单GPU锁不变；重开面板一次可显示新增队列。
+
 MIND 已按用户要求暂停。MIND 专用 i²Agent 适配位于上一级 `i2agent-mind/`：其输入、输出上限及最多两次模型纠错属于单独的 MIND 修订，受影响旧结果须留档并统一重跑；未将该修订扩散到其他数据集。作者 `model.py` 未随仓库分发，需按 `i2agent-mind/fetch_author.py` 固定版本及哈希单独取得。
 
 当前 KuaiRand 617 条测试输入与 Waterfall 共用，原队列的 14 条测试样本不重复运行；旧输入与 Waterfall 的字幕状态字段不同，历史和候选内容核对一致。其他 AgentRecBench 场景的数据与 Waterfall 同题对比仍需准备，不能当作已完成。

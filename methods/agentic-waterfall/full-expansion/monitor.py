@@ -384,7 +384,8 @@ def snapshot(root, details=False):
              '', *(table_lines(table) if details else compact_rows(table))]
     if details:
         lines += ['', '开发集（单独列示，不并入测试进度）：', *table_lines(table, dev=True), '', '队列状态：']
-    for shard in ('kuairec', 'other'):
+    shard_names={'kuairec','other'}|{p.parent.name for p in (run/'shards').glob('*/plan.json')}
+    for shard in sorted(shard_names):
         folder = run / 'shards' / shard
         state = dict(read(folder / 'progress.json'))
         if state.get('status') == 'needs_attention' and state.get('task'):
