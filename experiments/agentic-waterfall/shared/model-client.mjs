@@ -9,9 +9,9 @@ const LEDGER = resolve(ROOT, 'shared/model-ledger.json');
 const LOCK = `${LEDGER}.lock`;
 const CONFIG = resolve(ROOT, '../../HyperAgent/.worktrees/xuanji-device-latest-20261021/entry/src/main/resources/rawfile/hyperagent_config.local.json');
 export const digest = data => createHash('sha256').update(typeof data === 'string' ? data : JSON.stringify(data)).digest('hex');
-export function modelTimeoutMs(model) {
+export function modelTimeoutMs() {
   const value=Number(process.env.WATERFALL_MODEL_TIMEOUT_MS || 60000);
-  if(!Number.isSafeInteger(value)||value<1000||value>(model==='GLM-5.3-Flash'?600000:180000))throw new Error('invalid_model_timeout');
+  if(!Number.isSafeInteger(value)||value<1000||value>180000)throw new Error('invalid_model_timeout');
   return value;
 }
 
@@ -24,40 +24,7 @@ export function loadModelConfig() {
   if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !key || !model) throw new Error('invalid_model_config');
   endpoint.pathname = endpoint.pathname.replace(/\/+$/, '');
   if (!endpoint.pathname.endsWith('/chat/completions')) endpoint.pathname += '/chat/completions';
-  const parameters = model === 'GLM-5.3-Flash'
-    ? {thinking:{type:'enabled'},reasoning_effort:'low',stream:true,stream_options:{include_usage:true}}
-    : file.recommendationModelName ? {enable_thinking:false,thinking:{type:'disabled'},extra_body:{thinking:{type:'disabled'}}} : {};
-  return {key, model, endpoint: endpoint.href, parameters};
-}
-
-export async function readModelResponse(response) {
-  if(!response.headers?.get('content-type')?.includes('text/event-stream'))return response.json();
-  const result={model:null,choices:[{message:{content:''},finish_reason:null}],usage:null};
-  const decoder=new TextDecoder();let buffer='',data=[],done=false;
-  try {
-    for await(const bytes of response.body){
-      buffer+=decoder.decode(bytes,{stream:true});let end;
-      while((end=buffer.indexOf('\n'))!==-1){
-        const line=buffer.slice(0,end).replace(/\r$/,'');buffer=buffer.slice(end+1);
-        if(line.startsWith('data:'))data.push(line.slice(5).trimStart());
-        else if(!line&&data.length){
-          const value=data.join('\n');data=[];
-          if(value==='[DONE]'){done=true;break;}
-          let event;
-          try{event=JSON.parse(value);}catch{throw Error('model_stream_invalid');}
-          if(event.error){const status=event.error.status_code??event.error.code;throw Error(/^[45]\d\d$/.test(String(status))?`model_http_${status}`:'model_stream_error');}
-          if(event.model)result.model=event.model;
-          if(event.usage)result.usage=event.usage;
-          const choice=event.choices?.find(x=>x.index===0);
-          if(typeof choice?.delta?.content==='string')result.choices[0].message.content+=choice.delta.content;
-          if(choice?.finish_reason)result.choices[0].finish_reason=choice.finish_reason;
-        }
-      }
-      if(done)break;
-    }
-    if(!done||!result.choices[0].finish_reason)throw Error('model_stream_incomplete');
-    return result;
-  }catch(error){error.model_response=result;throw error;}
+  return {key, model, endpoint: endpoint.href, parameters: file.recommendationModelName ? {enable_thinking:false,thinking:{type:'disabled'},extra_body:{thinking:{type:'disabled'}}} : {}};
 }
 
 async function withLedger(fn) {
@@ -101,22 +68,22 @@ async function reserve(experiment, request, model) {
 
 export async function callModel(request, {experiment}={}) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
-  const config=loadModelConfig(),timeoutMs=modelTimeoutMs(config.model);
+  const config=loadModelConfig(),timeoutMs=modelTimeoutMs();
   const body={model:config.model,messages:request.messages,temperature:request.temperature??0.3,max_tokens:request.max_tokens??4096,...config.parameters,...(request.response_format?{response_format:request.response_format}:{})};
-  if (!Number.isInteger(body.max_tokens)||body.max_tokens<1||body.max_tokens>(config.model==='GLM-5.3-Flash'?32768:8192)) throw new Error('invalid_max_tokens');
+  if (!Number.isInteger(body.max_tokens)||body.max_tokens<1||body.max_tokens>8192) throw new Error('invalid_max_tokens');
   const attempt=await reserve(experiment,body,config.model);
   const started=Date.now(); let receipt;
   try {
     const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
     if (!response.ok) throw new Error(`model_http_${response.status}`);
-    const result=await readModelResponse(response);
+    const result=await response.json();
     const content=result.choices?.[0]?.message?.content;
     if (typeof content!=='string') throw new Error('model_missing_content');
     receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters},duration_ms:Date.now()-started};
     return receipt;
   } catch(e) {
-    const code=/^model_http_\d+$/.test(e.message)||e.message==='model_missing_content'||e.message.startsWith('model_stream_')?e.message:e.name==='TimeoutError'?'model_timeout':'model_transport_error';
-    receipt={attempt_id:attempt.id,status:'failed',error:code,duration_ms:Date.now()-started,...(e.model_response?{partial_response:e.model_response,usage:e.model_response.usage,provider_response_model:e.model_response.model}:{})};
+    const code=/^model_http_\d+$/.test(e.message)||e.message==='model_missing_content'?e.message:e.name==='TimeoutError'?'model_timeout':'model_transport_error';
+    receipt={attempt_id:attempt.id,status:'failed',error:code,duration_ms:Date.now()-started};
     const error=new Error(code); error.receipt=receipt; throw error;
   } finally {
     await withLedger(ledger=>{

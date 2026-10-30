@@ -13,10 +13,6 @@ class QueueChecks(unittest.TestCase):
         self.assertEqual(queue.infrastructure_failure({'status':'submitted','continuation_error':'model_timeout'}),'model_timeout')
         self.assertEqual(queue.infrastructure_failure({'model_calls':[{'error':'model_http_429'}]}),'model_http_429')
         self.assertIsNone(queue.infrastructure_failure({'status':'failed','error':'invalid_batch_ranking'}))
-    def test_incomplete_or_invalid_stream_is_not_accepted_or_automatically_retried(self):
-        for error in ('model_stream_incomplete','model_stream_invalid','model_stream_error'):
-            self.assertEqual(queue.failure_reason({'status':'submitted','model_calls':[{'error':error}]}),error)
-            self.assertIsNone(queue.retryable_failure({'status':'failed','error':error}))
     def test_agent_corrected_ranking_is_valid_but_unresolved_tools_stop(self):
         trace=[{'execution_results':[{'kind':'recommend','status':'failed','error':'invalid_candidate_indices'}]},{'execution_results':[{'kind':'recommend','status':'success'}]}]
         self.assertIsNone(queue.failure_reason({'status':'submitted','trace':trace}))
@@ -85,12 +81,11 @@ class QueueChecks(unittest.TestCase):
     def test_frozen_model_selection_overrides_inherited_model(self):
         with tempfile.TemporaryDirectory() as directory:
             run,_=self.fixture(directory)
-            queue.save(run/'plan.json',{'model_config_file':'unused-synthetic-config','model_name':'GLM-5.3-Flash','protocol':{'max_output_tokens':32768,'model_timeout_ms':600000}})
+            queue.save(run/'plan.json',{'model_config_file':'unused-synthetic-config','model_name':'DeepSeek-V4.1-Flash-1017'})
             def check_environment(env):
-                self.assertEqual(env['OPENAI_MODEL'],'GLM-5.3-Flash')
-                self.assertEqual(env['WATERFALL_MAX_OUTPUT_TOKENS'],'32768')
-                self.assertEqual(env['WATERFALL_MODEL_TIMEOUT_MS'],'600000')
-            with patch.dict(queue.os.environ,{'OPENAI_MODEL':'DeepSeek-V4.1-Flash'}):
+                self.assertEqual(env['OPENAI_MODEL'],'DeepSeek-V4.1-Flash-1017')
+                self.assertEqual(env['WATERFALL_MODEL_TIMEOUT_MS'],'180000')
+            with patch.dict(queue.os.environ,{'OPENAI_MODEL':'Other-Model'}):
                 calls,_,_,progress=self.execute(run,[None],env_check=check_environment)
             self.assertEqual(calls,['a']);self.assertEqual(progress['status'],'preflight_complete')
 

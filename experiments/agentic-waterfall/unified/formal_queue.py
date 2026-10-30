@@ -15,7 +15,7 @@ def result_state(output,started):
 
 def infrastructure_failure(result):
     errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
-    return next((e for e in errors if e and (e in {'model_transport_error','model_timeout','model_missing_content','model_slots_busy','ledger_locked_manual_inspection_required','model_calls_not_enabled'} or e.startswith(('model_http_','model_stream_','global_request_','experiment_request_')))),None)
+    return next((e for e in errors if e and (e in {'model_transport_error','model_timeout','model_missing_content','model_slots_busy','ledger_locked_manual_inspection_required','model_calls_not_enabled'} or e.startswith(('model_http_','global_request_','experiment_request_')))),None)
 
 def failure_reason(result):
     failure=infrastructure_failure(result) or result.get('continuation_error')
@@ -82,10 +82,8 @@ def main():
         nonlocal stop
         stop=True
     signal.signal(signal.SIGTERM,stopping);signal.signal(signal.SIGINT,stopping)
-    env=dict(os.environ,MODEL_CONFIG_FILE=plan['model_config_file'],NODE_OPTIONS='--max-old-space-size=384',OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',VECLIB_MAXIMUM_THREADS='1',TOKENIZERS_PARALLELISM='false',PYTHONDONTWRITEBYTECODE='1')
+    env=dict(os.environ,MODEL_CONFIG_FILE=plan['model_config_file'],WATERFALL_MODEL_TIMEOUT_MS='180000',NODE_OPTIONS='--max-old-space-size=384',OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',VECLIB_MAXIMUM_THREADS='1',TOKENIZERS_PARALLELISM='false',PYTHONDONTWRITEBYTECODE='1')
     if plan.get('model_name'):env['OPENAI_MODEL']=plan['model_name']
-    env['WATERFALL_MAX_OUTPUT_TOKENS']=str(plan.get('protocol',{}).get('max_output_tokens',8192))
-    env['WATERFALL_MODEL_TIMEOUT_MS']=str(plan.get('protocol',{}).get('model_timeout_ms',180000))
     counts=collections.Counter();start=time.time();peak_rss=0;new_tasks=0
     def progress(status,**extra):
         save(run/'progress.json',{'status':status,'pid':os.getpid(),'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'total':len(tasks),'counts':dict(counts),'elapsed_seconds':round(time.time()-start),'peak_child_rss_kib':peak_rss,**extra})
