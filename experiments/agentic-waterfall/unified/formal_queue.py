@@ -30,8 +30,24 @@ def failure_reason(result):
         if not corrected:return call['error']
     receipts=[receipt for step in trace for receipt in step.get('execution_results',[])]
     recoverable={'unacquired_recommendation','invalid_candidate_indices','invalid_ranking','incomplete_ranking','too_many_recommendations','invalid_delivery'}
+    by_id={r['action_id']:r for r in receipts if isinstance(r.get('action_id'),str)}
+    actions={a['action_id']:a for step in trace for a in step.get('decision',{}).get('actions',[]) if isinstance(a.get('action_id'),str)}
+    def recoverable_dependency(action_id,seen):
+        if not isinstance(action_id,str) or action_id in seen:return False
+        receipt=by_id.get(action_id,{})
+        if receipt.get('kind')!='recommend':return False
+        if receipt.get('status')=='failed':return receipt.get('error') in recoverable
+        if receipt.get('status')!='skipped' or receipt.get('error')!='dependency_failed':return False
+        dependencies=actions.get(action_id,{}).get('depends_on',[])
+        if not isinstance(dependencies,list) or not all(isinstance(dep,str) for dep in dependencies):return False
+        blocked=[dep for dep in dependencies if by_id.get(dep,{}).get('status')!='success']
+        return bool(blocked) and all(recoverable_dependency(dep,seen|{action_id}) for dep in blocked)
     for i,receipt in enumerate(receipts):
-        if receipt.get('status')=='skipped' or receipt.get('error')=='dependency_failed':return 'skipped_dependency; inspect before continuing'
+        if receipt.get('status')=='skipped' or receipt.get('error')=='dependency_failed':
+            # A later valid delivery can supersede cancelled recommendations, not skipped state or source actions.
+            corrected=recoverable_dependency(receipt.get('action_id'),set()) and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
+            if corrected:continue
+            return 'skipped_dependency; inspect before continuing'
         if receipt.get('status')!='failed':continue
         corrected=receipt.get('kind')=='recommend' and receipt.get('error') in recoverable and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in receipts[i+1:])
         if receipt.get('kind')=='update_state' and receipt.get('error')=='state_evidence_missing':

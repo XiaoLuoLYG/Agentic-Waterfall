@@ -1,4 +1,4 @@
-import importlib.util,json,pathlib,signal,sys,tempfile,types,unittest
+import copy,importlib.util,json,pathlib,signal,sys,tempfile,types,unittest
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('queue',pathlib.Path(__file__).with_name('formal_queue.py'));queue=importlib.util.module_from_spec(spec);spec.loader.exec_module(queue)
 
@@ -34,6 +34,44 @@ class QueueChecks(unittest.TestCase):
             {'kind':'update_state','status':'skipped','error':'dependency_failed'}]},
             {'call_index':1,'execution_results':[{'kind':'recommend','status':'success'}]}]}
         self.assertIn('skipped_dependency',queue.failure_reason(result))
+
+    def corrected_dependency_trace(self):
+        return [
+            {'call_index':0,'decision':{'actions':[{'action_id':'state','kind':'update_state','depends_on':[]}]},
+             'execution_results':[{'action_id':'state','kind':'update_state','status':'success'}]},
+            {'call_index':2,'decision':{'actions':[{'action_id':'bad','kind':'recommend','depends_on':['state']}]},
+             'execution_results':[{'action_id':'bad','kind':'recommend','status':'failed','error':'too_many_recommendations'}]},
+            {'call_index':3,'decision':{'actions':[{'action_id':'blocked','kind':'recommend','depends_on':['state','bad']}]},
+             'execution_results':[{'action_id':'blocked','kind':'recommend','status':'skipped','error':'dependency_failed'}]},
+            {'call_index':4,'decision':{'actions':[{'action_id':'final','kind':'recommend','depends_on':['state']}]},
+             'execution_results':[{'action_id':'final','kind':'recommend','status':'success'}]}]
+
+    def test_corrected_recommendation_dependency_reuses_committed_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);row=self.result(tasks[0],trace=self.corrected_dependency_trace())
+            row['result']['model_calls']=[{'context':{'call_index':1},'error':'action_id_reuse_with_different_payload'}]
+            self.assertIsNone(queue.failure_reason(row['result']))
+            queue.save(run/'results/a.json',row);queue.save(run/'started/a.json',{'task':'a','attempt':1})
+            (run/'logs/a.log').write_text('already paid and corrected\n');original=(run/'results/a.json').read_bytes()
+            calls,sleeps,_,progress=self.execute(run,[None],predictions_only=True)
+            self.assertEqual(calls,['b']);self.assertEqual(sleeps,[]);self.assertEqual(progress['status'],'predictions_complete')
+            self.assertEqual((run/'results/a.json').read_bytes(),original);self.assertFalse((run/'attempts').exists())
+
+    def test_dependency_recovery_requires_known_recommendation_ancestors_and_later_success(self):
+        result={'status':'submitted','trace':self.corrected_dependency_trace()}
+        for mutation in ('no_later_success','unknown_dependency','cyclic_dependency','skipped_state','source_failure','unknown_failure'):
+            broken=copy.deepcopy(result)
+            if mutation=='no_later_success':broken['trace'].pop()
+            elif mutation=='unknown_dependency':broken['trace'][2]['decision']['actions'][0]['depends_on']=['missing']
+            elif mutation=='cyclic_dependency':broken['trace'][2]['decision']['actions'][0]['depends_on']=['blocked']
+            elif mutation=='skipped_state':broken['trace'][2]['execution_results'][0]['kind']='update_state'
+            elif mutation=='source_failure':broken['trace'][1]['execution_results'][0]['kind']='acquire'
+            elif mutation=='unknown_failure':broken['trace'][1]['execution_results'][0]['error']='unknown_error'
+            with self.subTest(mutation=mutation):self.assertIsNotNone(queue.failure_reason(broken))
+        blocked=copy.deepcopy(result['trace'][2]);blocked['call_index']=4
+        blocked['decision']['actions'][0].update(action_id='blocked-again',depends_on=['blocked'])
+        blocked['execution_results'][0]['action_id']='blocked-again';result['trace'].insert(3,blocked)
+        self.assertIsNone(queue.failure_reason(result))
 
     def test_state_evidence_failure_requires_seen_error_and_later_successful_update(self):
         failed={'action_id':'bad-state','kind':'update_state','status':'failed','error':'state_evidence_missing'}
