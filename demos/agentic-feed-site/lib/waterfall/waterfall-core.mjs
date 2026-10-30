@@ -209,6 +209,11 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
     check(ids.size===actions.length&&actions.every(a=>typeof a.action_id==='string'&&a.action_id&&['acquire','lookup_history','recommend','update_state','respond','idle'].includes(a.kind)&&a.arguments&&Array.isArray(a.depends_on)&&Array.isArray(a.evidence_refs)),'invalid_actions');
     if(phase)check(actions.some(a=>a.kind===phase),'fixed_workflow_required_action_missing');
     for(const a of actions)check(a.depends_on.every(id=>id!==a.action_id&&(ids.has(id)||receipts.has(id))),'invalid_dependency');
+    for(const a of actions)if(actionHashes.has(a.action_id)){
+      check(actionHashes.get(a.action_id)===digest(a),'action_id_reuse_with_different_payload');
+      check(receipts.has(a.action_id),'action_id_already_in_progress');
+    }
+    for(const a of actions)if(!actionHashes.has(a.action_id))actionHashes.set(a.action_id,digest(a));
     const pending=[...actions],groups=[];let newActions=0;
     while(pending.length) {
       const ready=pending.filter(a=>a.depends_on.every(id=>receipts.has(id)));
@@ -336,7 +341,14 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       }catch(e){if(!e.recoverableModelFormat||phase)throw e;return {model_format_error:e.message,new_actions:0,execution_results:[]};}
     }
     const normalized=normalizeDecision(decision,observation.environment.candidate_pool);normalizations.push(...normalized.repairs.map(r=>({...r,call_index:executionIndex})));
-    const step=await runtime.execute(normalized.decision,{phase});step.call_index=executionIndex;step.normalizations=normalized.repairs;
+    let step;
+    try{step=await runtime.execute(normalized.decision,{phase});}catch(e){
+      if(!['action_id_reuse_with_different_payload','action_id_already_in_progress'].includes(e.message))throw e;
+      const call=modelCalls.findLast(x=>x.context?.call_index===executionIndex);if(call)call.error=e.message;
+      formatFeedback={error:e.message,call_index:executionIndex,message:'No actions from this response were executed. Use new action IDs and regenerate the decision.'};
+      return {model_format_error:e.message,new_actions:0,execution_results:[]};
+    }
+    step.call_index=executionIndex;step.normalizations=normalized.repairs;
     if(step.execution_results.some(r=>r.status==='failed')&&!step.execution_results.some(r=>r.status==='success')&&!step.execution_results.every(recoverableRankingFailure))throw new Error('action_execution_failed');
     if(phase)check(step.execution_results.some(r=>r.kind===phase&&r.status==='success'),'fixed_workflow_required_action_failed');
     return step;
@@ -348,12 +360,13 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       partialAttempted=false;partialTask=null;
       const step=await perform(phases?.[i]);
       if(partialTask)await partialTask;
-      if(step.model_format_error)continue;
+      if(step.model_format_error||formatFeedback)continue;
       const result=runtime.result,afterHistory=runtime.snapshot().dialogue.length+runtime.snapshot().behavior_events.length;if(result.ended||(result.ordered_item_ids.length&&result.acquired_items===beforeAcquired&&afterHistory===beforeHistory&&!step.execution_results.some(recoverableRankingFailure)))break;
       if(!step.new_actions){error='no_progress';break;}
     }
   }catch(e){error=e.message;}
   const result=runtime.result;
+  if(!error&&['action_id_reuse_with_different_payload','action_id_already_in_progress'].includes(formatFeedback?.error))error=formatFeedback.error;
   const continuationError=error&&result.ordered_item_ids.length?error:null;if(continuationError)error=null;
   if(!error&&!result.ordered_item_ids.length&&!result.ended)error='model_call_budget_exhausted_without_submission';
   return {runtime_version:VERSION,runtime_source_sha256:SOURCE_SHA256,variant,decision_id:input.observation.decision_id,status:error?'failed':result.ordered_item_ids.length?'submitted':'idle',error,continuation_error:continuationError,...result,normalizations,model_calls:modelCalls,model_request_count:decide?0:modelCalls.filter(x=>x.attempt_id).length,origin:decide?'synthetic_scripted_contract_test':'llm',input_sha256:digest(input),duration_ms:Date.now()-start};

@@ -20,7 +20,7 @@ class QueueChecks(unittest.TestCase):
         self.assertIsNotNone(queue.failure_reason({'status':'submitted','trace':trace}))
 
     def test_model_format_failure_requires_a_later_successful_recommendation(self):
-        for error in ('model_invalid_json','model_output_truncated','invalid_batch_ranking'):
+        for error in ('model_invalid_json','model_output_truncated','invalid_batch_ranking','action_id_reuse_with_different_payload','action_id_already_in_progress'):
             for index in (None,0,1,2):
                 result={'status':'submitted','model_calls':[{'context':{'call_index':1},'error':error}],
                         'trace':[{'call_index':index,'execution_results':[{'kind':'recommend','status':'success'}]}]}

@@ -6,6 +6,26 @@ const input=()=>({observation:{decision_id:'d',observed_at:'2026-10-29T00:00:00Z
 const action=(id,kind,args,depends_on=[])=>({action_id:id,kind,arguments:args,depends_on,evidence_refs:[]});
 const decision=actions=>({decision_id:'d',actions});
 const record={id:'preference',kind:'preference',key:'interest',value:'football',scope:'long_term',scope_id:null,status:'active',basis:'explicit',evidence_refs:['say']};
+test('a reused action id rejects the entire response before any other action changes state',async()=>{
+ const r=createRuntime(input());
+ await r.execute(decision([action('existing','respond',{kind:'answer',text:'first'})]));
+ await assert.rejects(r.execute(decision([action('existing','respond',{kind:'answer',text:'changed'}),action('new','update_state',{base_version:0,edits:[]})])),/action_id_reuse_with_different_payload/);
+ assert.equal(r.result.state_after.version,0);
+});
+test('an interim id collision is reported for a fresh model decision within the same budget',async()=>{
+ let release;const gate=new Promise(resolve=>{release=resolve});let reported=false;
+ const pending=runEpisode(input(),{acquire:async args=>{if(args.query==='slow')await gate;return {items:[item(args.query)],actual_requests:1};},modelCall:async request=>{
+  const {context}=JSON.parse(request.messages[1].content);
+  if(context.call_index===0)return {attempt_id:'first',content:JSON.stringify(decision([action('fast','acquire',{source_ids:['offline'],mode:'search',query:'fast',limit:1}),action('slow','acquire',{source_ids:['offline'],mode:'search',query:'slow',limit:1})]))};
+  if(context.other_acquisitions_pending)return {attempt_id:'partial',content:JSON.stringify(decision([action('slow','update_state',{base_version:0,edits:[]}),action('other','update_state',{base_version:0,edits:[]})]))};
+  assert.equal(context.previous_output_error.error,'action_id_reuse_with_different_payload');reported=true;
+  return {attempt_id:'corrected',content:JSON.stringify(decision([action('rank','recommend',{ordered_item_ids:['slow'],delivery:'append'})]))};
+ }});
+ await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));release();
+ const result=await pending;
+ assert(reported);assert.equal(result.status,'submitted');assert.equal(result.state_after.version,0);assert.equal(result.model_request_count,3);
+ assert.equal(result.model_calls[1].error,'action_id_reuse_with_different_payload');
+});
 test('independent acquisitions start concurrently while dependent actions wait',async()=>{
  const started=[];let release;const gate=new Promise(resolve=>{release=resolve});
  const r=createRuntime(input(),{acquire:async args=>{started.push(args.query);await gate;return {items:[],actual_requests:1};}});
