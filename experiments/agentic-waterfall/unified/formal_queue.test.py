@@ -245,6 +245,35 @@ class QueueChecks(unittest.TestCase):
         row['result']['trace']=[{'execution_results':[{'kind':'update_state','status':'failed','error':'unknown_error'}]}]
         self.assertIsNone(queue.retryable_failure(row['result']))
 
+    def test_mixed_state_and_response_rejections_preserve_the_failed_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run,tasks=self.fixture(directory);row=self.result(tasks[0],'invalid_decision')
+            row['result']['model_calls']=[{'status':'success'},
+                {'status':'success','error':'action_id_reuse_with_different_payload'}, {'status':'success'}]
+            row['result']['trace']=[{'execution_results':[
+                {'kind':'update_state','status':'failed','error':'state_evidence_missing'},
+                {'kind':'acquire','status':'success'}]}]
+            self.assertEqual(queue.retryable_failure(row['result']),'state_evidence_missing')
+            calls,_,_,progress=self.execute(run,[row,None])
+            self.assertEqual(calls,['a','a']);self.assertEqual(progress['status'],'preflight_complete')
+            saved=json.loads((run/'attempts/a/service-attempt-001/result.json').read_text())
+            self.assertEqual(saved,row)
+        for error in ('model_http_401','model_http_403','unknown_error'):
+            row['result']['model_calls'].append({'error':error})
+            self.assertIsNone(queue.retryable_failure(row['result']))
+            row['result']['model_calls'].pop()
+        row['result']['trace'][0]['execution_results'].append({'kind':'respond','status':'failed','error':'unknown_error'})
+        self.assertIsNone(queue.retryable_failure(row['result']))
+
+    def test_mixed_state_and_transient_errors_still_refuse_explicit_quota_rejection(self):
+        result=self.result({'id':'a','dataset':'synthetic'},'model_http_429',trace=[{'execution_results':[
+            {'kind':'update_state','status':'failed','error':'state_evidence_missing'},
+            {'kind':'recommend','status':'skipped','error':'dependency_failed'}]}])['result']
+        result['model_calls'][0]['http_error']={'retryable':True}
+        self.assertEqual(queue.retryable_failure(result),'model_http_429')
+        result['model_calls'][0]['http_error']['retryable']=False
+        self.assertIsNone(queue.retryable_failure(result))
+
     def test_partial_valid_submission_and_tool_failure_do_not_retry(self):
         with tempfile.TemporaryDirectory() as directory:
             run,tasks=self.fixture(directory)

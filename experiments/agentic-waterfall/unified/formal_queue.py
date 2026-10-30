@@ -1,4 +1,4 @@
-"""Single-worker Waterfall queue; preserve attempts and bound transient-service retries."""
+"""Single-worker Waterfall queue; preserve attempts and bound known recoverable retries."""
 import argparse,collections,datetime,hashlib,json,os,pathlib,re,shutil,signal,subprocess,time
 
 TRANSIENT_ERRORS={'model_http_429','model_http_502','model_http_503','model_http_504','model_timeout','model_transport_error'}
@@ -48,21 +48,21 @@ def failure_reason(result):
 
 def retryable_failure(result):
     if any(call.get('error')=='model_http_429' and call.get('http_error',{}).get('retryable') is False for call in result.get('model_calls',[])):return None
+    errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
+    errors=[error for error in errors if error]
+    rejected=REJECTED_RESPONSE_ERRORS|{'model_invalid_json','model_output_truncated','invalid_batch_ranking'}
     receipts=[r for step in result.get('trace',[]) for r in step.get('execution_results',[])]
     failed=[r for r in receipts if r.get('kind')=='acquire' and r.get('status')=='failed']
     if failed and not infrastructure_failure(result) and not any(r.get('status')=='skipped' for r in receipts):
         return 'acquisition_failed:'+str(failed[0].get('error') or 'unknown')
-    bad=[r for r in receipts if r.get('status') in {'failed','skipped'}]
-    if (result.get('status') in {'failed','submitted'} and result.get('error') in {None,'action_execution_failed'}
-        and not infrastructure_failure(result) and not result.get('continuation_error') and bad
+    bad=[r for r in receipts if r.get('status') in {'failed','skipped'} or r.get('error')]
+    if (result.get('status') in {'failed','submitted'} and bad
+        and all(error in TRANSIENT_ERRORS|rejected|{'action_execution_failed'} for error in errors)
         and any(r.get('status')=='failed' and r.get('kind')=='update_state' and r.get('error')=='state_evidence_missing' for r in bad)
         and all((r.get('status')=='failed' and r.get('kind')=='update_state' and r.get('error')=='state_evidence_missing')
                 or (r.get('status')=='skipped' and r.get('error')=='dependency_failed') for r in bad)):
-        return 'state_evidence_missing'
+        return next((error for error in errors if error in TRANSIENT_ERRORS),'state_evidence_missing')
     if result.get('status')!='failed' or result.get('ordered_item_ids'):return None
-    errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
-    errors=[error for error in errors if error]
-    rejected=REJECTED_RESPONSE_ERRORS|{'model_invalid_json','model_output_truncated','invalid_batch_ranking'}
     if not errors or any(error not in TRANSIENT_ERRORS|rejected for error in errors):return None
     if not any(error in TRANSIENT_ERRORS or error in REJECTED_RESPONSE_ERRORS for error in errors):return None
     if any(r.get('status') in {'failed','skipped'} or r.get('error') for step in result.get('trace',[]) for r in step.get('execution_results',[])):return None
