@@ -1,4 +1,7 @@
 """Run non-overlapping KuaiRand baselines against the frozen test input."""
+import argparse
+from concurrent.futures import ThreadPoolExecutor,wait,FIRST_COMPLETED
+import threading
 import fcntl
 import hashlib
 import json
@@ -73,17 +76,20 @@ def previous_attempts(folder):
     return service,terminal
 
 
-def claim_next(db, policy=None):
+def claim_next(db, policy=None, owned_running=None, exclude_methods=()):
     if policy not in (None,FIRST_COMPLETE):raise ValueError('unknown_method_outcome_policy')
     db.execute('BEGIN IMMEDIATE')
-    if db.execute("SELECT 1 FROM jobs WHERE status='running' LIMIT 1").fetchone():
+    running=set(db.execute("SELECT task,method FROM jobs WHERE status='running'").fetchall())
+    if running-set(owned_running or ()):
         db.rollback()
         raise RuntimeError('unresolved running task; inspect attempts and ledger before recovery')
     failed="status='failed'" if policy==FIRST_COMPLETE else "status IN ('failed','method_failure')"
     if db.execute('SELECT 1 FROM jobs WHERE '+failed+' LIMIT 1').fetchone():
         db.rollback()
         raise RuntimeError('failed task requires investigation before recovery')
-    row = db.execute("SELECT task,decision_id,method,attempt FROM jobs WHERE status='pending' ORDER BY task,method LIMIT 1").fetchone()
+    excluded=sorted(exclude_methods)
+    predicate=" AND method NOT IN ("+",".join("?" for _ in excluded)+")" if excluded else ""
+    row = db.execute("SELECT task,decision_id,method,attempt FROM jobs WHERE status='pending'"+predicate+" ORDER BY task,method LIMIT 1",excluded).fetchone()
     if not row:
         db.commit()
         return None
@@ -102,13 +108,13 @@ def finish_job(db, job, status):
     db.commit()
 
 
-def save_progress(db, status, current=None, reason=None):
+def save_progress(db, status, current=None, reason=None, active_jobs=None):
     counts = dict(db.execute('SELECT status, count(*) FROM jobs GROUP BY status').fetchall())
     data = {'status': status, 'pid': os.getpid(), 'current': current, 'reason': reason,
             'total': sum(counts.values()), 'submitted': counts.get('submitted', 0),
             'failed': counts.get('failed', 0)+counts.get('method_failure',0), 'running': counts.get('running', 0), 'pending': counts.get('pending', 0),
-            'legacy_14_tracked_separately': True, 'labels_read': False, 'training': False}
-    tmp = HERE/'progress.json.tmp'
+            'legacy_14_tracked_separately': True, 'labels_read': False, 'training': False, 'active_jobs':active_jobs or []}
+    tmp = HERE/('progress.json.'+str(threading.get_ident())+'.tmp')
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2)+'\n')
     os.replace(tmp, HERE/'progress.json')
 
@@ -205,7 +211,58 @@ def run_job(db, job, source, policy=None):
     raise RuntimeError('stopped during task; inspect unfinished attempt')
 
 
+def resource_problem():
+    if shutil.disk_usage(HERE).free < 20*1024**3:return 'less than 20 GiB free'
+    check=subprocess.run(['memory_pressure','-Q'],capture_output=True,text=True,timeout=3)
+    match=re.search(r'memory free percentage:\s*(\d+)%',check.stdout)
+    if not match:return 'cannot confirm available memory'
+    if int(match[1])<20:return 'available memory below 20%'
+    return None
+
+
+def run_claimed(job,policy):
+    with sqlite3.connect(HERE/'mind-index.sqlite',timeout=30) as db,SOURCE.open('rb') as source:
+        return run_job(db,job,source,policy)
+
+
+def run_parallel(db,policy,workers):
+    global STOP
+    if type(workers) is not int or not 1<=workers<=10:raise ValueError('invalid_worker_count')
+    active={};errors=[];resource=None
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while active or not STOP:
+            try:
+                resource=resource_problem()
+                while not STOP and not resource and len(active)<workers:
+                    owned={(j['task'],j['method']) for j in active.values()}
+                    excluded={'recbot'} if any(j['method']=='recbot' for j in active.values()) else set()
+                    job=claim_next(db,policy,owned_running=owned,exclude_methods=excluded)
+                    if job is None:break
+                    active[pool.submit(run_claimed,job,policy)]=job
+            except Exception as exc:
+                errors.append(str(exc));STOP=True
+            if not active:
+                if resource and not STOP:
+                    save_progress(db,'waiting_for_resources',reason=resource);time.sleep(2);continue
+                break
+            jobs=list(active.values())
+            save_progress(db,'needs_attention' if errors else 'waiting_for_resources' if resource else 'running',
+                          f'{len(jobs)} tasks in parallel',reason='; '.join(errors) if errors else resource,active_jobs=jobs)
+            done,_=wait(active,timeout=1,return_when=FIRST_COMPLETED)
+            for future in done:
+                job=active.pop(future)
+                try:
+                    if not future.result():raise RuntimeError(f"{job['decision_id']} / {job['method']}: inspect retained attempt")
+                except Exception as exc:
+                    errors.append(str(exc));STOP=True
+    status='needs_attention' if errors else 'stopped' if STOP else 'complete'
+    save_progress(db,status,reason='; '.join(errors) or None)
+    return status
+
+
 def main():
+    parser=argparse.ArgumentParser();parser.add_argument('--workers',type=int,default=1);args=parser.parse_args()
+    if not 1<=args.workers<=10:raise ValueError('invalid_worker_count')
     signal.signal(signal.SIGINT, handle_signal); signal.signal(signal.SIGTERM, handle_signal)
     manifest = json.loads((HERE/'mind-index-manifest.json').read_text())
     policy=manifest.get('method_outcome_policy')
@@ -222,8 +279,10 @@ def main():
         raise ValueError('full input hash mismatch')
     with (HERE/'queue.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        with sqlite3.connect(HERE/'mind-index.sqlite') as db, SOURCE.open('rb') as source:
+        with sqlite3.connect(HERE/'mind-index.sqlite',timeout=30) as db, SOURCE.open('rb') as source:
             try:
+                if args.workers>1:
+                    run_parallel(db,policy,args.workers);return
                 save_progress(db, 'running')
                 while not STOP:
                     if shutil.disk_usage(HERE).free < 20*1024**3:

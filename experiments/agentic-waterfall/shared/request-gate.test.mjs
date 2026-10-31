@@ -35,6 +35,19 @@ test('independent copies and model names share 45 admissions per rolling minute 
  assert(!files[0].includes(config.key));assert(!readFileSync(join(options.directory,files[0]),'utf8').includes(config.key));
 });
 
+test('live rate changes are shared and preserve the current rolling history',async t=>{
+ const {options,modules}=await copies(t);
+ const a=modules[0].createRequestGate(config,options),b=modules[1].createRequestGate(config,options);
+ await a.setRateLimit(90);
+ const starts=[];for(let i=0;i<91;i++)starts.push(await b.admit());
+ assert(starts[1]-starts[0]>=667);assert(starts[90]-starts[0]>=60000);
+ const file=join(options.directory,readdirSync(options.directory).find(x=>x.endsWith('.json')));
+ const before=JSON.parse(readFileSync(file,'utf8')).starts;
+ await a.setRateLimit(45);assert.deepEqual(JSON.parse(readFileSync(file,'utf8')).starts,before);
+ const next=await b.admit();assert(starts.filter(x=>x>next-60000).length<45);
+ for(const limit of [0,121,null,'90',1.5])await assert.rejects(a.setRateLimit(limit),/request_gate_invalid_rate/);
+});
+
 test('full rolling window waits even if old admissions were a burst',async t=>{
  const options=fixture(t);const {createRequestGate}=await import('./request-gate.mjs');
  const gate=createRequestGate(config,options);await gate.admit();

@@ -4,7 +4,8 @@ import {homedir} from 'node:os';
 import {createHash,randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 
-const WINDOW_MS=60000,LIMIT=45,SPACING_MS=Math.ceil(WINDOW_MS/LIMIT);
+const WINDOW_MS=60000,MAX_LIMIT=120;
+const validRate=value=>Number.isSafeInteger(value)&&value>=1&&value<=MAX_LIMIT;
 
 export function createRequestGate({endpoint,key},{directory=process.env.WATERFALL_REQUEST_GATE_DIR||join(homedir(),'.cache','agentic-waterfall','request-gates'),now=Date.now,wait=delay}={}){
  if(typeof key!=='string'||!key||!isAbsolute(directory))throw Error('request_gate_invalid_config');
@@ -21,7 +22,7 @@ export function createRequestGate({endpoint,key},{directory=process.env.WATERFAL
    try{state=JSON.parse(readFileSync(file,'utf8'));}
    catch(error){if(error.code==='ENOENT')state={version:1,starts:[],cooldown_until:0};else throw Error('request_gate_state_invalid');}
    const timestamp=x=>Number.isSafeInteger(x)&&x>=0;
-   if(state?.version!==1||!Array.isArray(state.starts)||state.starts.length>LIMIT||!state.starts.every((x,i)=>timestamp(x)&&(i===0||x>=state.starts[i-1]))||!timestamp(state.cooldown_until))throw Error('request_gate_state_invalid');
+   if(state?.version!==1||!Array.isArray(state.starts)||state.starts.length>MAX_LIMIT||!state.starts.every((x,i)=>timestamp(x)&&(i===0||x>=state.starts[i-1]))||!timestamp(state.cooldown_until)||(state.requests_per_minute!==undefined&&!validRate(state.requests_per_minute)))throw Error('request_gate_state_invalid');
    const result=change(state);
    if(result.save){
     const temporary=file+'.'+randomUUID()+'.tmp',fd=openSync(temporary,'wx',0o600);
@@ -39,7 +40,8 @@ export function createRequestGate({endpoint,key},{directory=process.env.WATERFAL
     const result=await withState(state=>{
      const time=now();if(!Number.isSafeInteger(time)||time<0)throw Error('request_gate_clock_invalid');
      state.starts=state.starts.filter(x=>x>time-WINDOW_MS);
-     const ready=Math.max(state.cooldown_until,state.starts.length?state.starts.at(-1)+SPACING_MS:0,state.starts.length>=LIMIT?state.starts[0]+WINDOW_MS:0);
+     const limit=state.requests_per_minute??45,spacing=Math.ceil(WINDOW_MS/limit);
+     const ready=Math.max(state.cooldown_until,state.starts.length?state.starts.at(-1)+spacing:0,state.starts.length>=limit?state.starts[state.starts.length-limit]+WINDOW_MS:0);
      if(time>deadline||ready>deadline)throw Error('request_gate_wait_exceeds_90s');
      if(ready>time)return {delay:ready-time};
      // Persist before fetch: a crashed caller may consume a slot, never erase its peers' admissions.
@@ -48,6 +50,10 @@ export function createRequestGate({endpoint,key},{directory=process.env.WATERFAL
     if(result.save)return result.time;
     await wait(Math.min(result.delay,1000));
    }
+  },
+  async setRateLimit(limit){
+   if(!validRate(limit))throw Error('request_gate_invalid_rate');
+   await withState(state=>{state.requests_per_minute=limit;return {save:true};});
   },
   async cooldown(seconds=60){
    const until=now()+Math.ceil(Math.max(60,seconds)*1000);

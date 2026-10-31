@@ -271,7 +271,7 @@ def queue_line(title, state, pid, script, states=(), fatal=None, expected=(), sh
         if row.get('outcome') in ('method_failure', 'operational_failure', 'blocked_by_prior_failure'):
             reasons.append(str(row.get('error') or row.get('reason') or row['outcome']))
     detail = '；原因: ' + ', '.join(dict.fromkeys(reasons)) if reasons else ''
-    label = {'running': '运行中', 'waiting_for_service': '等待重试', 'needs_attention': '已暂停，需检查',
+    label = {'running': '运行中', 'waiting_for_resources':'等待本机资源', 'waiting_for_service': '等待重试', 'needs_attention': '已暂停，需检查',
              'predictions_complete': '预测已交付，待评分', 'stopped': '已停止', 'not_running': '未运行',
              'validation_holds_remaining': '可运行部分已收集，隔离项待审',
              'method_failures_remaining': '方法失败已保留，依赖后继阻断',
@@ -439,12 +439,19 @@ def snapshot(root, details=False):
         if details and supervisor.get('reason') and supervisor['reason'] != state.get('reason'):
             lines.append('    supervisor: ' + str(supervisor['reason']))
     pids = read(base / 'processes.json')
+    workers=read(base/'additional-workers.json').get('workers',[])
     for name, script in [('fixed', 'run_fixed.py'), ('additional', 'run_agents.py'), ('local', 'run_local.py')]:
+        if name=='additional' and workers:
+            for worker in workers:
+                lines.append(queue_line('Agent/'+worker['name'],read(base/worker['progress']),worker['pid'],script,short=not details))
+            continue
         title = {'fixed': '旧候选', 'additional': 'Agent对照', 'local': '本地检索'}[name]
         lines.append(queue_line(title, read(base / f'{name}-progress.json'), pids.get(name), script,
                                 states[name].values(), read(base / f'{name}-fatal.json'), short=not details))
     k = read(expansion / 'kuairand/progress.json')
     lines.append(queue_line('KuaiRand对照', k, k.get('pid'), 'run_kuairand.py', short=not details))
+    if details:
+        for job in k.get('active_jobs',[]):lines.append(f"    {job['decision_id']} / {job['method']}")
     if errors and details:
         lines.append('Waterfall 当前失败：' + '；'.join(f'{reason} ×{count}' for reason, count in errors.items()))
     if warnings and details:

@@ -2,7 +2,7 @@ export function archiveAttempt(db, ledger, id, receipt, completedAt, durationMs)
   const index = ledger.attempts.findIndex(x => x.id === id);
   if (index < 0 || ledger.attempts[index].status !== 'in_progress') throw new Error('reservation_missing');
   const entry = {...ledger.attempts[index], status: receipt?.status || 'failed', completed_at: completedAt,
-    duration_ms: durationMs, usage: receipt?.usage || null,
+    duration_ms: durationMs, usage: receipt?.usage || null, rate_limit_headers:receipt?.rate_limit_headers||receipt?.http_error?.rate_limit_headers||{},
     provider_response_model: receipt?.provider_response_model || null, request_gate_wait_ms:receipt?.request_gate_wait_ms??null,
     http_request_started_at:receipt?.http_request_started_at??null,
     ...(receipt?.error ? {error: receipt.error} : {}),...(receipt?.http_error?{http_error:receipt.http_error}:{})};

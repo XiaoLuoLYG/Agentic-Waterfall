@@ -23,10 +23,11 @@ for(const variant of ['json','sqlite'])test(`${variant}: retry the identical thr
  const {callModel}=await import(pathToFileURL(join(root,'shared/model-client.mjs')));
  const request={messages:[{role:'user',content:'unchanged previous decisions and correction feedback'}],max_tokens:4096};
  const throttle=()=>new Response(JSON.stringify({error:{code:'429',type:'throttling_error',message:'Limit type: max_parallel_requests. Current limit: 10, Remaining: 0.'}}),{status:429,headers:{'retry-after':'60'}});
- const success=content=>new Response(JSON.stringify({model:'frozen-model',choices:[{message:{content},finish_reason:'stop'}]}),{status:200});
+ const success=content=>new Response(JSON.stringify({model:'frozen-model',choices:[{message:{content},finish_reason:'stop'}]}),{status:200,headers:{'x-ratelimit-limit-requests':'120','x-api-key':'synthetic'}});
  const bodies=[];globalThis.fetch=async(_,options)=>{bodies.push(options.body);process.env.OPENAI_MODEL='changed-while-waiting';return bodies.length===1?throttle():success('{"bad_method_output":true}');};
  const result=await callModel(request,{experiment:'method-deployment'});
  assert.equal(bodies.length,2);assert.equal(bodies[0],bodies[1]);assert.equal(result.requested_model,'frozen-model');
+ assert.deepEqual(result.rate_limit_headers,{'x-ratelimit-limit-requests':'120'});
  assert.equal(result.content,'{"bad_method_output":true}');assert.equal(result.service_attempts.length,1);assert.equal(result.service_attempts[0].error,'model_http_429');
  assert.notEqual(result.attempt_id,result.service_attempts[0].attempt_id);assert.deepEqual(globalThis.stageRetryCooldowns,[60]);
  let sent=0;globalThis.fetch=async()=>{sent++;return throttle();};
@@ -36,5 +37,6 @@ for(const variant of ['json','sqlite'])test(`${variant}: retry the identical thr
  await assert.rejects(callModel(request,{experiment:'method-deployment'}),e=>{assert.equal(e.receipt.http_error.retryable,false);return true;});assert.equal(sent,1);
  let records=JSON.parse(readFileSync(join(root,'shared/model-ledger.json'),'utf8')).attempts;
  if(variant==='sqlite'){const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(join(root,'shared/expansion-ledger.sqlite'));records=db.prepare('SELECT record FROM attempts').all().map(x=>JSON.parse(x.record));db.close();}
+ assert.deepEqual(records.find(x=>x.status==='success').rate_limit_headers,{'x-ratelimit-limit-requests':'120'});
  assert.equal(records.length,6);assert.equal(records.filter(x=>x.status==='success').length,1);assert.equal(new Set(records.map(x=>x.id)).size,6);
 });

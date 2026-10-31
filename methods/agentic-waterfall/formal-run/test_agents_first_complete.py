@@ -1,4 +1,5 @@
 import importlib.util
+import fcntl
 import json
 from pathlib import Path
 import subprocess
@@ -15,6 +16,20 @@ spec.loader.exec_module(agents)
 
 
 class FirstEpisodeTests(unittest.TestCase):
+    def test_duplicate_case_owner_is_rejected_before_model_dispatch(self):
+        folder=self.root/'case';folder.mkdir()
+        with (folder/'task.lock').open('a') as held:
+            fcntl.flock(held,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            with patch.object(agents.subprocess,'run',side_effect=AssertionError('duplicate paid request')):
+                with self.assertRaises(BlockingIOError):self.run_case()
+
+    def test_group_partition_keeps_original_jobs_and_rejects_unknown_group(self):
+        plan={'groups':[{'name':'kuairec/test/clawrec','items':[1,2]}, {'name':'kuairec/test/generic-agent','items':[3]}]}
+        self.assertEqual(agents.select_groups(plan,None),plan['groups'])
+        self.assertEqual(agents.select_groups(plan,'kuairec/test/clawrec'),[plan['groups'][0]])
+        with self.assertRaisesRegex(ValueError,'unknown_group'):
+            agents.select_groups(plan,'other')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

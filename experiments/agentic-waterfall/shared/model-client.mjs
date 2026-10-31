@@ -55,7 +55,7 @@ async function reserve(experiment, request, model) {
       if (control.model_calls_enabled === false) throw new Error('model_calls_not_enabled');
       if (!Number.isSafeInteger(ledger.limit) || ledger.limit < 1) throw new Error('invalid_global_request_limit');
       const maxConcurrent=ledger.max_concurrent===undefined?2:ledger.max_concurrent;
-      if (!Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 4) throw new Error('invalid_max_concurrent');
+      if (!Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 10) throw new Error('invalid_max_concurrent');
       if (ledger.attempts.length >= ledger.limit) throw new Error('global_request_budget_exhausted');
       if (ledger.attempts.filter(x=>x.experiment===experiment).length >= (control.model_request_limit || 0)) throw new Error('experiment_request_budget_exhausted');
       // A stale reservation is never silently recycled: its actual outcome must be audited.
@@ -69,6 +69,10 @@ async function reserve(experiment, request, model) {
   }
 }
 
+function rateLimitHeaders(response){
+ return Object.fromEntries([...(response.headers?.entries?.()||[])].filter(([key,value])=>/^(x-)?ratelimit-(limit|remaining|reset)(-(requests|tokens))?$/.test(key)&&/^[0-9:.TZ+ -]+$/.test(value)).map(([key,value])=>[key,value.slice(0,100)]));
+}
+
 async function httpError(response,key) {
   let body;
   try { body=typeof response.text==='function'?await response.text():await response.json(); } catch {}
@@ -79,7 +83,7 @@ async function httpError(response,key) {
   const retry=response.headers?.get?.('retry-after');
   const seconds=retry&&/^\d+$/.test(retry)?Number(retry):retry?Math.max(0,Math.ceil((Date.parse(retry)-Date.now())/1000)):null;
   const quota=/insufficient[_ -]?quota|quota[_ -]?exceeded|budget[_ -]?exceeded|budget has been exceeded|credit|balance|billing|payment|预算|余额|额度不足/i.test([code,type,message].join(' '));
-  return {status:response.status,code,type,message,request_id:clean(response.headers?.get?.('x-request-id')),
+  return {status:response.status,code,type,message,rate_limit_headers:rateLimitHeaders(response),request_id:clean(response.headers?.get?.('x-request-id')),
     retry_after_seconds:Number.isFinite(seconds)?seconds:null,...(response.status===429?{retryable:!quota}:{})};
 }
 
@@ -99,7 +103,7 @@ async function callOnce(request, {experiment}={}, config) {
     const result=await response.json();
     const content=result.choices?.[0]?.message?.content;
     if (typeof content!=='string') throw new Error('model_missing_content');
-    receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters},request_gate_wait_ms:gateWaitMs,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
+    receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters},rate_limit_headers:rateLimitHeaders(response),request_gate_wait_ms:gateWaitMs,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
     return receipt;
   } catch(e) {
     const code=/^model_http_\d+$/.test(e.message)||e.message==='model_missing_content'||e.message?.startsWith('request_gate_')?e.message:e.name==='TimeoutError'?'model_timeout':'model_transport_error';
@@ -108,7 +112,7 @@ async function callOnce(request, {experiment}={}, config) {
   } finally {
     await withLedger(ledger=>{
       const entry=ledger.attempts.find(x=>x.id===attempt.id);
-      Object.assign(entry,{status:receipt?.status||'failed',completed_at:new Date().toISOString(),duration_ms:Date.now()-started,usage:receipt?.usage||null,provider_response_model:receipt?.provider_response_model||null,request_gate_wait_ms:receipt?.request_gate_wait_ms??null,http_request_started_at:receipt?.http_request_started_at??null,...(receipt?.error?{error:receipt.error}:{}),...(http?{http_error:http}:{})});
+      Object.assign(entry,{status:receipt?.status||'failed',completed_at:new Date().toISOString(),duration_ms:Date.now()-started,usage:receipt?.usage||null,rate_limit_headers:receipt?.rate_limit_headers||http?.rate_limit_headers||{},provider_response_model:receipt?.provider_response_model||null,request_gate_wait_ms:receipt?.request_gate_wait_ms??null,http_request_started_at:receipt?.http_request_started_at??null,...(receipt?.error?{error:receipt.error}:{}),...(http?{http_error:http}:{})});
     });
   }
 }

@@ -1,5 +1,5 @@
 """Run the remaining isolated agent benchmarks, preserving each user/method state."""
-import hashlib,json,os,re,signal,subprocess,sys,time
+import argparse,fcntl,hashlib,json,os,re,signal,subprocess,sys,time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];M=ROOT/'methods/agentic-waterfall';B=ROOT/'formal';sys.path.insert(0,str(M))
 from error_policy import operational_failure
@@ -63,7 +63,7 @@ def previous_attempts(folder):
   else:terminal=(result_path.parent,result,int(path.name[8:11]),category)
  return service,terminal
 
-def run_one(folder,kind,make_command,emit,first_complete=False):
+def _run_one(folder,kind,make_command,emit,first_complete=False):
  global STOP
  folder.mkdir(parents=True,exist_ok=True);existing=outcome(folder)
  if existing is not None and first_complete:
@@ -111,6 +111,13 @@ def run_one(folder,kind,make_command,emit,first_complete=False):
   if infra_failures<3 and not STOP:time.sleep(5*infra_failures);continue
   STOP=True;emit({'kind':kind,'case':str(folder.relative_to(ROOT)),'outcome':'operational_failure','attempt':n,'error':str(result.get('error',''))[:300]});return result
 
+def run_one(folder,kind,make_command,emit,first_complete=False):
+ folder.mkdir(parents=True,exist_ok=True)
+ with (folder/'task.lock').open('a') as lock:
+  fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+  return _run_one(folder,kind,make_command,emit,first_complete)
+
+
 def run_simbench(j,snapshot,snapsha,emit,first_complete=False):
  method=j['method'];prior=None;blocked=False
  for e in j['events']:
@@ -129,9 +136,17 @@ def run_simbench(j,snapshot,snapsha,emit,first_complete=False):
   if classify(result) in ('submitted','no_delivery'):prior=folder/'run'/'next-state.json'
   else:blocked=True
 
-def main():
+def select_groups(plan,name):
+ groups=plan['groups']
+ if name is None:return groups
+ selected=[g for g in groups if g['name']==name]
+ if len(selected)!=1:raise ValueError('unknown_group')
+ return selected
+
+def run_plan(group_name=None):
  global STOP
- plan=json.loads((B/'additional-plan.json').read_text());groups=plan['groups'];expected={};models=[]
+ plan=json.loads((B/'additional-plan.json').read_text());groups=select_groups(plan,group_name);expected={};models=[]
+ stem='additional'+('-'+group_name.replace('/','-') if group_name else '')
  if plan.get('method_outcome_policy') not in (None,FIRST_COMPLETE):raise ValueError('unknown_method_outcome_policy')
  first_complete=plan.get('method_outcome_policy')==FIRST_COMPLETE
  for domain in ('amazon','yelp','goodreads'):
@@ -161,7 +176,7 @@ def main():
  stats={'submitted':0,'no_delivery':0,'method_failure':0,'retrying_output':0,'operational_failure':0,'skipped_existing':0,'blocked_by_prior_failure':0,'jobs_completed':0};events=B/'additional-events.jsonl'
  def emit(row):
   with events.open('a') as f:f.write(json.dumps(row,ensure_ascii=False)+'\n')
-  stats[row['outcome']]+=1;save(B/'additional-progress.json',{**stats,'running':not STOP,'training':False,'recommendation_reads_labels':False,'last':row})
+  stats[row['outcome']]+=1;save(B/(stem+'-progress.json'),{**stats,'running':not STOP,'training':False,'recommendation_reads_labels':False,'last':row})
  def agentrecbench(j):
   method=j['method'];domain=j['domain'];tid=j['task_id'];base=B/'agentrecbench'/domain/method;entry=j['entry'];folder=base/f'task-{tid:06d}';index=M/f'agentrecbench-data/index/{domain}-short.sqlite';public=ROOT/f'datasets/agentic-waterfall/agentrecbench/task-full/short_term/{domain}/tasks/task_{tid}.json'
   if sha(public)!=(entry['sha256'] if method=='recagent' else entry['public_task_sha256']):raise ValueError('public task changed')
@@ -198,6 +213,15 @@ def main():
     stats['jobs_completed']+=1
    if STOP:break
  except Exception as e:
-  STOP=True;save(B/'additional-fatal.json',{'error':str(e),'training':False,'labels_read':False});raise
- finally:save(B/'additional-progress.json',{**stats,'running':False,'stopped':STOP,'training':False,'recommendation_reads_labels':False})
+  STOP=True;save(B/(stem+'-fatal.json'),{'error':str(e),'training':False,'labels_read':False});raise
+ finally:save(B/(stem+'-progress.json'),{**stats,'running':False,'stopped':STOP,'training':False,'recommendation_reads_labels':False})
+def main():
+ parser=argparse.ArgumentParser();parser.add_argument('--group');args=parser.parse_args()
+ select_groups(json.loads((B/'additional-plan.json').read_text()),args.group)
+ stem='additional'+('-'+args.group.replace('/','-') if args.group else '')
+ if not re.fullmatch('[a-z0-9-]+',stem):raise ValueError('invalid_group_name')
+ with (B/(stem+'.lock')).open('a') as lock:
+  fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+  run_plan(args.group)
+
 if __name__=='__main__':main()
