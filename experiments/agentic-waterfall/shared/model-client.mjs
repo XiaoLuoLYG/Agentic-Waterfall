@@ -83,9 +83,9 @@ async function httpError(response,key) {
     retry_after_seconds:Number.isFinite(seconds)?seconds:null,...(response.status===429?{retryable:!quota}:{})};
 }
 
-export async function callModel(request, {experiment}={}) {
+async function callOnce(request, {experiment}={}, config) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
-  const config=loadModelConfig(),timeoutMs=modelTimeoutMs();
+  const timeoutMs=modelTimeoutMs();
   const body={model:config.model,messages:request.messages,temperature:request.temperature??0.3,max_tokens:request.max_tokens??4096,...config.parameters,...(request.response_format?{response_format:request.response_format}:{})};
   if (!Number.isInteger(body.max_tokens)||body.max_tokens<1||body.max_tokens>8192) throw new Error('invalid_max_tokens');
   const gate=createRequestGate(config);
@@ -110,5 +110,26 @@ export async function callModel(request, {experiment}={}) {
       const entry=ledger.attempts.find(x=>x.id===attempt.id);
       Object.assign(entry,{status:receipt?.status||'failed',completed_at:new Date().toISOString(),duration_ms:Date.now()-started,usage:receipt?.usage||null,provider_response_model:receipt?.provider_response_model||null,request_gate_wait_ms:receipt?.request_gate_wait_ms??null,http_request_started_at:receipt?.http_request_started_at??null,...(receipt?.error?{error:receipt.error}:{}),...(http?{http_error:http}:{})});
     });
+  }
+}
+
+export async function callModel(request, options={}) {
+  if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
+  const config=loadModelConfig(),frozen=structuredClone(request),failures=[];
+  for(let index=0;index<3;index++) {
+    try {
+      const receipt=await callOnce(frozen,options,config);
+      if(failures.length)receipt.service_attempts=failures;
+      return receipt;
+    } catch(error) {
+      const receipt=error.receipt;
+      const throttled=receipt?.error==='model_http_429'&&receipt.http_error?.retryable===true&&receipt.http_error.type==='throttling_error';
+      if(!throttled||index===2) {
+        if(receipt&&failures.length)receipt.service_attempts=failures;
+        if(throttled)receipt.service_retry_exhausted=true;
+        throw error;
+      }
+      failures.push(structuredClone(receipt));
+    }
   }
 }

@@ -149,6 +149,7 @@ def terminal_method_failure(result):
     return failure
 
 def retryable_failure(result,policy=None):
+    if any(call.get('service_retry_exhausted') is True for call in result.get('model_calls',[])):return None
     if (result.get('status')=='failed' and result.get('error')=='input_byte_budget_exceeded'
         and result.get('continuation_error') is None
         and type(result.get('model_request_count')) is int and result['model_request_count']==0
@@ -325,7 +326,7 @@ def main():
                 with logfile.open('x') as log:
                     child=subprocess.Popen(cmd,cwd=run/'code',env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True);deadline=time.time()+1800
                     while child.poll() is None:
-                        time.sleep(3)
+                        time.sleep(0.5)
                         if time.time()>deadline:
                             os.killpg(child.pid,signal.SIGTERM)
                             try:child.wait(timeout=30)

@@ -130,6 +130,8 @@ class FirstEpisodeTests(unittest.TestCase):
         (folder / 'response.json').write_text(json.dumps({'status': 'failed', 'error': 'model_http_429',
             'receipt': {'status': 'failed', 'error': 'model_http_429', 'http_error': {'retryable': False}}}))
         self.assertEqual(agents.checked_category({'status': 'failed', 'error': 'model_http_429'}, folder), 'attention')
+        (folder / 'response.json').write_text(json.dumps({'status':'failed','error':'model_http_429','service_retry_exhausted':True,'http_error':{'retryable':True}}))
+        self.assertEqual(agents.checked_category({'status':'failed','error':'model_http_429'}, folder), 'attention')
 
     def test_submitted_and_no_delivery_require_successful_response_proof(self):
         folder = self.root / 'response-proof'

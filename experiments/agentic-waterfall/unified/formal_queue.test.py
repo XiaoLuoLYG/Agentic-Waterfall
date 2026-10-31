@@ -485,6 +485,11 @@ class QueueChecks(unittest.TestCase):
                 incomplete=copy.deepcopy(result);del incomplete[key]
                 self.assertIsNone(queue.retryable_failure(incomplete))
 
+    def test_exhausted_stage_retries_never_resample_an_episode(self):
+        result={'status':'failed','error':'model_http_429','model_calls':[{'status':'failed','attempt_id':'failed-stage','error':'model_http_429','http_error':{'retryable':True},'service_retry_exhausted':True}]}
+        self.assertIsNone(queue.retryable_failure(result,queue.FIRST_EPISODE_POLICY))
+        self.assertIsNone(queue.retryable_failure(result))
+
     def test_transient_429_retries_but_explicit_quota_refusal_stops(self):
         with tempfile.TemporaryDirectory() as directory:
             run,_=self.fixture(directory)

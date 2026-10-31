@@ -44,7 +44,7 @@ def checked_category(result,actual):
  if category in ('submitted','no_delivery','method_failure') and not any(r.get('status')=='success' and isinstance(r.get('content'),str) for r in receipts):return 'attention'
  if category=='operational_failure':
   if not any(r.get('status')=='failed' and strict_category({'status':'failed','error':r.get('error')})=='operational_failure' for r in receipts):return 'attention'
-  if any(r.get('http_error',{}).get('retryable') is False for r in receipts):return 'attention'
+  if any(r.get('http_error',{}).get('retryable') is False or r.get('service_retry_exhausted') is True for r in receipts):return 'attention'
  return category
 
 def previous_attempts(folder):
