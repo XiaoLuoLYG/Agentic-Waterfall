@@ -263,7 +263,7 @@ def kuairand(table, expansion):
         methods.add(method)
         row = table[group('kuairand', 'test', '', method)]
         row['total'] += count
-        field = {'submitted': 'delivered', 'failed': 'failed', 'running': 'uncommitted'}.get(status, 'pending')
+        field = {'submitted': 'delivered', 'failed': 'failed', 'method_failure': 'failed', 'running': 'uncommitted'}.get(status, 'pending')
         row[field] += count
     for method in methods:
         row = table[group('kuairand', 'test', '', method)]
@@ -499,7 +499,7 @@ def snapshot(root, details=False):
     evaluation=read(root/'evaluation-status.json')
     if evaluation.get('status')=='partial_scored':
         lines.append(f"评分：AgentRecBench {len(evaluation.get('completed_dataset_groups',[]))}个领域、{evaluation.get('completed_metric_groups',0)}组离线评分已完成；新增模型请求 {evaluation.get('new_model_calls',0)}。")
-        lines.append('其余评分：KuaiRec/KuaiRand待对应批次齐全；SimBench统一评委评分未执行；完整分数见阶段报告。')
+        lines.append('其余评分：KuaiRec/KuaiRand统一评分、SimBench统一评委评分尚未执行；完整分数见阶段报告。')
     lines += [preparation(expansion), '30秒原位刷新；q / Ctrl+C 仅关闭显示。完整明细：加 --details']
     return '\n'.join(lines)
 

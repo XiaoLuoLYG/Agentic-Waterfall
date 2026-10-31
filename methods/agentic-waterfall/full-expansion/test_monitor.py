@@ -219,7 +219,8 @@ class MonitorTests(unittest.TestCase):
                                                           ('kuairand:3:test:r',), ('kuairand:4:dev:r',)])
             db.executemany('INSERT INTO jobs VALUES(?,?,?)', [('kuairand:2:test:r', 'i2agent', 'submitted'),
                          ('kuairand:3:test:r', 'clawrec', 'failed'), ('kuairand:4:dev:r', 'i2agent', 'submitted'),
-                         ('mind:test:1', 'i2agent', 'submitted')])
+                         ('mind:test:1', 'i2agent', 'submitted'),
+                         ('kuairand:3:test:r', 'mars', 'method_failure')])
         before = path.read_bytes()
         table = defaultdict(Counter)
         key = ('kuairand', 'test', '', 'i2agent')
@@ -227,6 +228,11 @@ class MonitorTests(unittest.TestCase):
         monitor.kuairand(table, self.root)
         self.assertEqual(table[key], Counter(total=2, delivered=2, inapplicable=1))
         self.assertEqual(table[('kuairand', 'test', '', 'clawrec')]['failed'], 1)
+        failed = table[('kuairand', 'test', '', 'mars')]
+        self.assertEqual(failed['failed'], 1)
+        self.assertEqual(failed['delivered'], 0)
+        self.assertEqual(failed['pending'], 0)
+        self.assertIn('1/1', monitor.progress_text(failed, include_terminal=True))
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual({p.name for p in path.parent.iterdir()}, {'mind-index.sqlite'})
 
