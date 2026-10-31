@@ -258,6 +258,8 @@ def kuairand(table, expansion):
 def queue_line(title, state, pid, script, states=(), fatal=None, expected=(), short=False):
     running = live(pid, script, *expected)
     status = state.get('status') or ('running' if state.get('running') else 'stopped' if state.get('stopped') else 'not_running')
+    if not state.get('status') and not running and state.get('running') is False and state.get('stopped') is False and state.get('jobs_completed',0)>0:
+        status = 'complete'
     completed = sum(state.get(key, 0) for key in ('submitted', 'no_delivery', 'skipped_existing'))
     if not running and not state.get('stopped') and state.get('total_planned') == completed and completed:
         status = 'predictions_complete'

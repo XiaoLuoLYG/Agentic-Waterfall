@@ -57,6 +57,14 @@ class MonitorTests(unittest.TestCase):
             text=monitor.queue_line('WF/kuairec', {'status':'running'}, 123, 'formal_queue.py')
             self.assertIn('未匹配/未运行', text)
 
+    def test_normally_finished_group_is_complete_but_stopped_or_attention_is_not(self):
+        state={'running':False,'stopped':False,'jobs_completed':1129}
+        with mock.patch.object(monitor,'live',return_value=False):
+            text=monitor.queue_line('Agent/KuaiRec/generic-agent',state,123,'run_agents.py')
+            self.assertIn('队列已结束',text);self.assertIn('已结束（无需常驻）',text)
+            self.assertNotIn('队列已结束',monitor.queue_line('group',{**state,'stopped':True},123,'run_agents.py'))
+            self.assertIn('已暂停',monitor.queue_line('group',{**state,'status':'needs_attention'},123,'run_agents.py'))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
