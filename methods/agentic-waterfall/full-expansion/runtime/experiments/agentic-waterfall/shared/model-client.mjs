@@ -74,7 +74,7 @@ async function httpError(response,key) {
   const code=clean(error?.code),type=clean(error?.type),message=clean(typeof error==='string'?error:error?.message);
   const retry=response.headers?.get?.('retry-after');
   const seconds=retry&&/^\d+$/.test(retry)?Number(retry):retry?Math.max(0,Math.ceil((Date.parse(retry)-Date.now())/1000)):null;
-  const quota=/insufficient[_ -]?quota|quota[_ -]?exceeded|credit|balance|billing|payment|预算|余额|额度不足/i.test([code,type,message].join(' '));
+  const quota=/insufficient[_ -]?quota|quota[_ -]?exceeded|budget[_ -]?exceeded|budget has been exceeded|credit|balance|billing|payment|预算|余额|额度不足/i.test([code,type,message].join(' '));
   return {status:response.status,code,type,message,request_id:clean(response.headers?.get?.('x-request-id')),
     retry_after_seconds:Number.isFinite(seconds)?seconds:null,...(response.status===429?{retryable:!quota}:{})};
 }
@@ -91,7 +91,7 @@ export async function callModel(request, {experiment}={}) {
     gateWaitMs=Math.max(0,(await gate.admit())-started);
     httpStartedAt=new Date().toISOString();
     const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});
-    if (!response.ok) { http=await httpError(response,config.key);if(response.status===429)await gate.cooldown(http.retry_after_seconds??60);throw new Error(`model_http_${response.status}`); }
+    if (!response.ok) { http=await httpError(response,config.key);if(response.status===429&&http.retryable)await gate.cooldown(http.retry_after_seconds??60);throw new Error(`model_http_${response.status}`); }
     const result=await response.json();
     const content=result.choices?.[0]?.message?.content;
     if (typeof content!=='string') throw new Error('model_missing_content');

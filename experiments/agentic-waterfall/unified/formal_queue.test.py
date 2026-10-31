@@ -13,6 +13,10 @@ class QueueChecks(unittest.TestCase):
         self.assertEqual(queue.infrastructure_failure({'status':'submitted','continuation_error':'model_timeout'}),'model_timeout')
         self.assertEqual(queue.infrastructure_failure({'model_calls':[{'error':'model_http_429'}]}),'model_http_429')
         self.assertIsNone(queue.infrastructure_failure({'status':'failed','error':'invalid_batch_ranking'}))
+        result={'status':'failed','error':'request_gate_wait_exceeds_90s','model_calls':[{'status':'failed','attempt_id':'unsent','error':'request_gate_wait_exceeds_90s','http_request_started_at':None}]}
+        self.assertEqual(queue.infrastructure_failure(result),'request_gate_wait_exceeds_90s')
+        self.assertIsNone(queue.terminal_method_failure(result))
+        self.assertIsNone(queue.retryable_failure(result,queue.FIRST_EPISODE_POLICY))
 
     def delivered_with_warning(self,warning):
         result={'status':'submitted','error':None,'ordered_item_ids':['item'],

@@ -31,7 +31,7 @@ def result_state(output,started):
 
 def infrastructure_failure(result):
     errors=[result.get('error'),result.get('continuation_error')]+[x.get('error') for x in result.get('model_calls',[])]
-    return next((e for e in errors if e and (e in {'model_transport_error','model_timeout','model_missing_content','model_slots_busy','ledger_locked_manual_inspection_required','model_calls_not_enabled'} or e.startswith(('model_http_','global_request_','experiment_request_')))),None)
+    return next((e for e in errors if e and (e in {'model_transport_error','model_timeout','model_missing_content','model_slots_busy','ledger_locked_manual_inspection_required','model_calls_not_enabled'} or e.startswith(('model_http_','global_request_','experiment_request_','request_gate_')))),None)
 
 def committed_delivery(result):
     ids=result.get('ordered_item_ids');state=result.get('state_after',{})
