@@ -439,7 +439,8 @@ def snapshot(root, details=False):
         if details and supervisor.get('reason') and supervisor['reason'] != state.get('reason'):
             lines.append('    supervisor: ' + str(supervisor['reason']))
     pids = read(base / 'processes.json')
-    workers=read(base/'additional-workers.json').get('workers',[])
+    worker_manifest=read(base/'additional-workers.json')
+    workers=worker_manifest.get('workers',[])
     for name, script in [('fixed', 'run_fixed.py'), ('additional', 'run_agents.py'), ('local', 'run_local.py')]:
         if name=='additional' and workers:
             for worker in workers:
@@ -452,6 +453,12 @@ def snapshot(root, details=False):
     lines.append(queue_line('KuaiRand对照', k, k.get('pid'), 'run_kuairand.py', short=not details))
     if details:
         for job in k.get('active_jobs',[]):lines.append(f"    {job['decision_id']} / {job['method']}")
+    gate_file=worker_manifest.get('request_gate_state_file')
+    if gate_file and (gate:=read(Path(gate_file))):
+        ledger=read(base.parent/'experiments/agentic-waterfall/shared/model-ledger.json')
+        occupied=sum(row.get('status')=='in_progress' for row in ledger.get('attempts',[]))
+        remaining=max(0,round((gate.get('cooldown_until',0)-time.time()*1000)/1000))
+        lines.append(f"共享API：请求名额 {occupied}/{ledger.get('max_concurrent',2)}（含排队）；本地 {gate.get('requests_per_minute',45)}次/分钟；服务端退避剩余 {remaining}秒")
     if errors and details:
         lines.append('Waterfall 当前失败：' + '；'.join(f'{reason} ×{count}' for reason, count in errors.items()))
     if warnings and details:

@@ -38,11 +38,15 @@ class MonitorTests(unittest.TestCase):
     def test_partitioned_baselines_and_parallel_jobs_are_visible(self):
         self.waterfall_fixture();base=self.root/'formal-20261029-224252/formal'
         save(base/'additional-workers.json',{'workers':[{'name':'KuaiRec/ClawRec','pid':321,'progress':'additional-kuairec-test-clawrec-progress.json'}]})
+        save(self.root/'gate.json',{'requests_per_minute':90,'cooldown_until':(time.time()+60)*1000})
+        document=json.loads((base/'additional-workers.json').read_text());document['request_gate_state_file']=str(self.root/'gate.json');save(base/'additional-workers.json',document)
+        save(base.parent/'experiments/agentic-waterfall/shared/model-ledger.json',{'max_concurrent':10,'attempts':[{'status':'in_progress'}]})
         save(base/'additional-kuairec-test-clawrec-progress.json',{'running':True,'last':{'case':'task-42'}})
         save(self.root/'full-expansion-20261030/kuairand/progress.json',{'status':'running','pid':322,'active_jobs':[{'decision_id':'case-a','method':'mars'}]})
         with mock.patch.object(monitor,'resources',return_value='资源'),mock.patch.object(monitor,'live',return_value=True):
             text=monitor.snapshot(self.root,details=True)
         self.assertIn('Agent/KuaiRec/ClawRec',text);self.assertIn('case-a / mars',text)
+        self.assertIn('1/10',text);self.assertIn('90次/分钟',text);self.assertIn('服务端退避剩余',text)
 
     def test_finished_hold_queue_does_not_look_like_a_missing_live_process(self):
         with mock.patch.object(monitor, 'live', return_value=False):
