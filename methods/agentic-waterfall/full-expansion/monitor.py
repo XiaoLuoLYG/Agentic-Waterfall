@@ -193,6 +193,21 @@ def waterfall(table, run, warnings=None):
     return errors
 
 
+def reviewed_holds(run):
+    document=read(run/'evaluation-resolution.json')
+    if not isinstance(document,dict) or document.get('schema_version')!=1 or document.get('status')!='review_complete_for_strict_evaluation_projection':return None
+    entries=document.get('tasks')
+    if not isinstance(entries,dict):return None
+    validation=validator(run/'code/experiments/agentic-waterfall/unified/formal_queue.py')
+    held={key:value for key,value in validation.load_validation_dispositions(run).items() if value.get('kind')=='hold'}
+    if not held or set(held)!=set(entries):return None
+    for task,original in held.items():
+        entry=entries[task]
+        if (not isinstance(entry,dict) or entry.get('task')!=task or entry.get('dataset')!=original['dataset']
+            or entry.get('raw_result_sha256')!=original['result_sha256'] or entry.get('evaluation_status') not in {'failed','blocked'}):return None
+    return Counter(entry['evaluation_status'] for entry in entries.values())
+
+
 def baselines(table, base):
     states = {name: event_states(jsonlines(base / f'{name}-events.jsonl'))
               for name in ('fixed', 'additional', 'local')}
@@ -276,6 +291,7 @@ def queue_line(title, state, pid, script, states=(), fatal=None, expected=(), sh
     label = {'running': '运行中', 'waiting_for_resources':'等待本机资源', 'waiting_for_service': '等待重试', 'needs_attention': '已暂停，需检查',
              'predictions_complete': '预测已交付，待评分', 'stopped': '已停止', 'not_running': '未运行',
              'validation_holds_remaining': '可运行部分已收集，隔离项待审',
+             'reviewed_quarantine': '收集结束，隔离审核已结案',
              'method_failures_remaining': '方法失败已保留，依赖后继阻断',
              'preflight_running': '复验中', 'complete': '队列已结束'}.get(status, status)
     if state.get('held_count'):detail += f"；隔离 {state['held_count']}题"
@@ -289,7 +305,7 @@ def queue_line(title, state, pid, script, states=(), fatal=None, expected=(), sh
             detail = detail.replace(code, meaning)
         return f'  {title}: {label}' + detail + (f'；{current}' if current else '')
     process = '存活' if running else '未匹配/未运行'
-    if not running and status in {'predictions_complete', 'validation_holds_remaining', 'method_failures_remaining', 'complete'}:
+    if not running and status in {'predictions_complete', 'validation_holds_remaining', 'reviewed_quarantine', 'method_failures_remaining', 'complete'}:
         process = '已结束（无需常驻）'
     return f"  {title}: {label} ({status})；进程{process}" + (f'；当前: {current}' if current else '') + detail
 
@@ -412,6 +428,7 @@ def snapshot(root, details=False):
         database_error = str(exc)
     all_counts = totals(table)
     own = totals(table, method='Waterfall')
+    review=reviewed_holds(run)
     other = all_counts.copy()
     other.subtract(own)
     dev = totals(table, split='dev')
@@ -432,6 +449,8 @@ def snapshot(root, details=False):
     for shard in sorted(shard_names):
         folder = run / 'shards' / shard
         state = dict(read(folder / 'progress.json'))
+        if state.get('status')=='validation_holds_remaining' and review:
+            state['status']='reviewed_quarantine'
         if state.get('status') == 'needs_attention' and state.get('task'):
             result = read(run / 'results' / (state['task'] + '.json')).get('result', {})
             codes = [call['error'] for call in result.get('model_calls', []) if call.get('error')]
@@ -469,11 +488,18 @@ def snapshot(root, details=False):
                 'dependency_failed':'曾有依赖动作取消'}
         lines.append('Waterfall 动作异常（含已纠正；不代表无影响）：'+'；'.join(f'{labels.get(reason,reason)} {count}题' for reason,count in warnings.items()))
     if own['held']:
-        lines.append(f"Waterfall 隔离待审 {own['held']}题（已有排名 {own['held_with_slate']}题）；不计主表成功，完整分母保留，正式评分受阻。")
+        if review:
+            lines.append(f"Waterfall 隔离审核已结案：原始隔离 {own['held']}题保留；严格评估计失败 {review['failed']}、阻断 {review['blocked']}，完整分母不变。")
+        else:
+            lines.append(f"Waterfall 隔离待审 {own['held']}题（已有排名 {own['held_with_slate']}题）；不计主表成功，完整分母保留，正式评分受阻。")
     if own['audited_failures']:
         lines.append(f"Waterfall 已审定方法失败 {own['audited_failures']}题：保留失败和完整分母，效果计0，不追加重试。")
     if database_error:
         lines.append('KuaiRand SQLite 无法读取（显示仅含旧队列）：' + database_error)
+    evaluation=read(root/'evaluation-status.json')
+    if evaluation.get('status')=='partial_scored':
+        lines.append(f"评分：AgentRecBench {len(evaluation.get('completed_dataset_groups',[]))}个领域、{evaluation.get('completed_metric_groups',0)}组离线评分已完成；新增模型请求 {evaluation.get('new_model_calls',0)}。")
+        lines.append('其余评分：KuaiRec/KuaiRand待对应批次齐全；SimBench统一评委评分未执行；完整分数见阶段报告。')
     lines += [preparation(expansion), '30秒原位刷新；q / Ctrl+C 仅关闭显示。完整明细：加 --details']
     return '\n'.join(lines)
 

@@ -139,6 +139,23 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(counts['delivered'],0);self.assertEqual(counts['failed'],4)
         self.assertEqual(counts['audited_failures'],1);self.assertEqual(counts['held'],0)
 
+    def test_reviewed_holds_stay_quarantined_and_partial_scores_are_visible(self):
+        run=self.waterfall_fixture();digest=hashlib.sha256((run/'results/a.json').read_bytes()).hexdigest()
+        save(run/'validation-dispositions.json',{'schema_version':1,'tasks':{
+            'a':{'task':'a','dataset':'kuairand','kind':'hold','result_sha256':digest},
+            'g':{'task':'g','dataset':'kuairand','kind':'hold','result_sha256':None}}})
+        save(run/'plan.json',{'core_sha256':'expected','validation_dispositions_file':'validation-dispositions.json'})
+        document={'schema_version':1,'status':'review_complete_for_strict_evaluation_projection','tasks':{
+            'a':{'task':'a','dataset':'kuairand','raw_result_sha256':digest,'evaluation_status':'failed'},
+            'g':{'task':'g','dataset':'kuairand','raw_result_sha256':None,'evaluation_status':'blocked'}}}
+        save(run/'evaluation-resolution.json',document)
+        save(self.root/'evaluation-status.json',{'status':'partial_scored','completed_dataset_groups':['AgentRecBench/short_term/amazon'],'completed_metric_groups':5,'new_model_calls':0,'report':'report.md'})
+        with mock.patch.object(monitor,'resources',return_value='资源'):
+            text=monitor.snapshot(self.root,details=True)
+            self.assertIn('隔离审核已结案',text);self.assertIn('原始隔离 2题',text);self.assertIn('离线评分已完成',text)
+            document['tasks']['a']['raw_result_sha256']='0'*64;save(run/'evaluation-resolution.json',document)
+            self.assertIn('隔离待审 2题',monitor.snapshot(self.root,details=True))
+
     def test_waterfall_cache_rechecks_only_changed_results(self):
         run = self.waterfall_fixture()
         queue = monitor.validator(run / 'code/experiments/agentic-waterfall/unified/formal_queue.py')
