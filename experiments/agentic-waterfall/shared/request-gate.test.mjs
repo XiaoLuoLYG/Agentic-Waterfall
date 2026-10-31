@@ -78,11 +78,29 @@ test('corrupt state is preserved and fails closed; stale lock is never cleared',
  assert(existsSync(file+'.lock'));assert.equal(readFileSync(file,'utf8'),'{"version":1,"starts":["bad"],"cooldown_until":0}');
 });
 
-test('a provider cooldown beyond the admission deadline stops visibly without waiting',async t=>{
+test('repeated provider cooldown preserves the local queue wait budget across roots',async t=>{
+ const {options,modules}=await copies(t);const advance=options.wait;let extended=false,b;
+ options.wait=async ms=>{await advance(ms);if(!extended&&options.now()>=150000){extended=true;await b.cooldown(60);}};
+ const a=modules[0].createRequestGate(config,options);b=modules[1].createRequestGate(config,options);
+ await a.admit();await b.cooldown(60);
+ assert.equal(await a.admit(),210000);
+ const file=join(options.directory,readdirSync(options.directory).find(x=>x.endsWith('.json')));
+ assert.deepEqual(JSON.parse(readFileSync(file,'utf8')).starts,[210000]);
+});
+
+test('a provider cooldown beyond the absolute five-minute guard stops visibly without waiting',async t=>{
  const options=fixture(t);const {createRequestGate}=await import('./request-gate.mjs');const gate=createRequestGate(config,options);
- await gate.cooldown(120);
- await assert.rejects(gate.admit(),/request_gate_wait_exceeds_90s/);
+ await gate.cooldown(301);
+ await assert.rejects(gate.admit(),/request_gate_wait_exceeds_300s/);
  assert.equal(options.waits.length,0);
+});
+
+test('queue contention still has a ninety-second budget without provider cooldown',async t=>{
+ const {options,modules}=await copies(t);const advance=options.wait;let competed=false,b;
+ options.wait=async ms=>{await advance(ms);if(!competed&&options.now()>=160000){competed=true;await b.admit();}};
+ const a=modules[0].createRequestGate(config,options);b=modules[1].createRequestGate(config,options);
+ await a.setRateLimit(1);await a.admit();
+ await assert.rejects(a.admit(),/request_gate_wait_exceeds_90s/);
 });
 
 test('separate processes and copied roots coordinate actual admission times',async t=>{

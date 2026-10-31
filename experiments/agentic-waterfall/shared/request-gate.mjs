@@ -35,13 +35,20 @@ export function createRequestGate({endpoint,key},{directory=process.env.WATERFAL
  }
  return {
   async admit(){
-   const deadline=now()+90000;
+   const started=now(),hardDeadline=started+300000;
+   let deadline=started+90000,observedCooldown=started;
    for(;;){
     const result=await withState(state=>{
      const time=now();if(!Number.isSafeInteger(time)||time<0)throw Error('request_gate_clock_invalid');
      state.starts=state.starts.filter(x=>x>time-WINDOW_MS);
      const limit=state.requests_per_minute??45,spacing=Math.ceil(WINDOW_MS/limit);
      const ready=Math.max(state.cooldown_until,state.starts.length?state.starts.at(-1)+spacing:0,state.starts.length>=limit?state.starts[state.starts.length-limit]+WINDOW_MS:0);
+     // Provider-requested backoff is separate from local queue contention.
+     if(state.cooldown_until>observedCooldown){
+      deadline+=Math.max(0,state.cooldown_until-Math.max(time,observedCooldown));
+      observedCooldown=state.cooldown_until;
+     }
+     if(time>hardDeadline||ready>hardDeadline)throw Error('request_gate_wait_exceeds_300s');
      if(time>deadline||ready>deadline)throw Error('request_gate_wait_exceeds_90s');
      if(ready>time)return {delay:ready-time};
      // Persist before fetch: a crashed caller may consume a slot, never erase its peers' admissions.
