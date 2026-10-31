@@ -95,6 +95,15 @@ test('a provider cooldown beyond the absolute five-minute guard stops visibly wi
  assert.equal(options.waits.length,0);
 });
 
+test('caller deadline reserves time for HTTP and accounting without changing the shared cooldown',async t=>{
+ const options=fixture(t);const {createRequestGate}=await import('./request-gate.mjs');const gate=createRequestGate(config,options);
+ await gate.cooldown(90);
+ await assert.rejects(gate.admit({deadline:options.now()+80000}),/request_gate_call_deadline_exceeded/);
+ assert.equal(options.waits.length,0);
+ assert.equal(await gate.admit({deadline:options.now()+90000}),190000);
+ for(const deadline of [NaN,null,'200000',-1])await assert.rejects(gate.admit({deadline}),/request_gate_invalid_deadline/);
+});
+
 test('queue contention still has a ninety-second budget without provider cooldown',async t=>{
  const {options,modules}=await copies(t);const advance=options.wait;let competed=false,b;
  options.wait=async ms=>{await advance(ms);if(!competed&&options.now()>=160000){competed=true;await b.admit();}};

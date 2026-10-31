@@ -34,7 +34,8 @@ export function createRequestGate({endpoint,key},{directory=process.env.WATERFAL
   }finally{rmdirSync(lock);}
  }
  return {
-  async admit(){
+  async admit({deadline:callDeadline=Infinity}={}){
+   if(callDeadline!==Infinity&&(!Number.isSafeInteger(callDeadline)||callDeadline<0))throw Error('request_gate_invalid_deadline');
    const started=now(),hardDeadline=started+300000;
    let deadline=started+90000,observedCooldown=started;
    for(;;){
@@ -48,6 +49,7 @@ export function createRequestGate({endpoint,key},{directory=process.env.WATERFAL
       deadline+=Math.max(0,state.cooldown_until-Math.max(time,observedCooldown));
       observedCooldown=state.cooldown_until;
      }
+     if(time>callDeadline||ready>callDeadline)throw Error('request_gate_call_deadline_exceeded');
      if(time>hardDeadline||ready>hardDeadline)throw Error('request_gate_wait_exceeds_300s');
      if(time>deadline||ready>deadline)throw Error('request_gate_wait_exceeds_90s');
      if(ready>time)return {delay:ready-time};

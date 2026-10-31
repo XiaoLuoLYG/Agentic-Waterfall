@@ -35,7 +35,7 @@ def strict_category(result):
  if result.get('status') in ('submitted','no_delivery'):return 'attention' if result.get('error') else result['status']
  if result.get('status')!='failed':return 'attention'
  error=re.sub(r'^(ValueError|RuntimeError|JSONDecodeError):\s*','',str(result.get('error','')))
- if re.fullmatch(r'(model_http_(429|502|503|504)|model_timeout|model_transport_error|model_slots_busy)([:\s].*)?',error):return 'operational_failure'
+ if re.fullmatch(r'(model_http_(429|502|503|504)|model_timeout|model_transport_error|model_slots_busy|request_gate_call_deadline_exceeded)([:\s].*)?',error):return 'operational_failure'
  if error in METHOD_ERRORS|{'state_missing_user_state_md','state_missing_state_updates_md','state_missing_negative_signals_md'} or error.startswith(('Unexpected token','Unexpected end of JSON input','Expected property name')):return 'method_failure'
  return 'attention'
 

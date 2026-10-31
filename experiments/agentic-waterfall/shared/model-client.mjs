@@ -45,11 +45,12 @@ async function withLedger(fn) {
   } finally { rmdirSync(LOCK); }
 }
 
-async function reserve(experiment, request, model) {
+async function reserve(experiment, request, model, latestStart) {
   if (!/^[a-z0-9-]+$/.test(experiment)) throw new Error('invalid_experiment');
   const start=Date.now();
   while (true) {
     const reservation=await withLedger(ledger => {
+      if(Date.now()>latestStart)throw new Error('request_gate_call_deadline_exceeded');
       const controlPath=resolve(ROOT,experiment==='controller'?'shared/CONTROL.json':`${experiment}/CONTROL.json`);
       const control=JSON.parse(readFileSync(controlPath,'utf8'));
       if (control.model_calls_enabled === false) throw new Error('model_calls_not_enabled');
@@ -87,16 +88,17 @@ async function httpError(response,key) {
     retry_after_seconds:Number.isFinite(seconds)?seconds:null,...(response.status===429?{retryable:!quota}:{})};
 }
 
-async function callOnce(request, {experiment}={}, config) {
+async function callOnce(request, {experiment}={}, config, deadline) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
   const timeoutMs=modelTimeoutMs();
   const body={model:config.model,messages:request.messages,temperature:request.temperature??0.3,max_tokens:request.max_tokens??4096,...config.parameters,...(request.response_format?{response_format:request.response_format}:{})};
   if (!Number.isInteger(body.max_tokens)||body.max_tokens<1||body.max_tokens>8192) throw new Error('invalid_max_tokens');
   const gate=createRequestGate(config);
-  const attempt=await reserve(experiment,body,config.model);
+  const latestStart=deadline-timeoutMs-10000;
+  const attempt=await reserve(experiment,body,config.model,latestStart);
   const started=Date.now(); let receipt,http,gateWaitMs,httpStartedAt=null;
   try {
-    gateWaitMs=Math.max(0,(await gate.admit())-started);
+    gateWaitMs=Math.max(0,(await gate.admit({deadline:latestStart}))-started);
     httpStartedAt=new Date().toISOString();
     const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
     if (!response.ok) { http=await httpError(response,config.key);if(response.status===429&&http.retryable)await gate.cooldown(http.retry_after_seconds??60);throw new Error(`model_http_${response.status}`); }
@@ -119,18 +121,20 @@ async function callOnce(request, {experiment}={}, config) {
 
 export async function callModel(request, options={}) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
-  const config=loadModelConfig(),frozen=structuredClone(request),failures=[];
+  // Finish before the Python callers' 300-second timeout, including retry waits and accounting.
+  const deadline=Date.now()+270000,config=loadModelConfig(),frozen=structuredClone(request),failures=[];
   for(let index=0;index<3;index++) {
     try {
-      const receipt=await callOnce(frozen,options,config);
+      const receipt=await callOnce(frozen,options,config,deadline);
       if(failures.length)receipt.service_attempts=failures;
       return receipt;
     } catch(error) {
+      if(!error.receipt&&error.message==='request_gate_call_deadline_exceeded')error.receipt={status:'failed',error:error.message,requested_model:config.model,http_request_started_at:null};
       const receipt=error.receipt;
       const throttled=receipt?.error==='model_http_429'&&receipt.http_error?.retryable===true&&receipt.http_error.type==='throttling_error';
       if(!throttled||index===2) {
         if(receipt&&failures.length)receipt.service_attempts=failures;
-        if(throttled)receipt.service_retry_exhausted=true;
+        if(throttled||error.message==='request_gate_call_deadline_exceeded')receipt.service_retry_exhausted=true;
         throw error;
       }
       failures.push(structuredClone(receipt));

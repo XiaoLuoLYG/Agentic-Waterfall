@@ -17,6 +17,13 @@ spec.loader.exec_module(queue)
 
 
 class FirstEpisodeTests(unittest.TestCase):
+    def test_call_deadline_is_operational_and_exhaustion_still_requires_attention(self):
+        result={'status':'failed','error':'request_gate_call_deadline_exceeded'}
+        self.assertEqual(queue.strict_category(result),'operational_failure')
+        with tempfile.TemporaryDirectory() as folder:
+            Path(folder,'stage.error.json').write_text(json.dumps({**result,'http_request_started_at':None,'service_retry_exhausted':True}))
+            self.assertEqual(queue.checked_category(result,Path(folder)),'attention')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

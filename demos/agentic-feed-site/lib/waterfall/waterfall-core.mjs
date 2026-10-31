@@ -246,7 +246,10 @@ Respect recommendation_constraints and budget. When acquiring new material, requ
 export async function runEpisode(input,{experiment,variant='full',decide,acquire,lookupHistory,onAction,modelCall}={}) {
   const start=Date.now(),modelCalls=[],normalizations=[];let error=null,callsIssued=0,partialTask=null,partialAttempted=false,formatFeedback=null,runtime;
   const phases=variant==='fixed_workflow'?['update_state','acquire','recommend']:null;
+  const rankingEvidence=new Map();let committedEvidence=new Set();
+  const acquiredEvidence=observation=>observation.environment.tool_results.filter(r=>r.kind==='acquire'&&r.status==='success').map(r=>r.action_id);
   runtime=createRuntime(input,{variant,acquire,lookupHistory,onAction:(receipt,progress)=>{
+    if(receipt.kind==='recommend'&&receipt.status==='success')committedEvidence=rankingEvidence.get(receipt.action_id)||new Set();
     onAction?.(receipt,progress);
     if(!phases&&!partialAttempted&&!partialTask&&receipt.kind==='acquire'&&receipt.status==='success'&&receipt.result?.items?.length&&progress.pending_acquisitions>0&&callsIssued<runtime.protocol.max_model_calls){
       partialAttempted=true;partialTask=perform(undefined,true).catch(error=>{const call=modelCalls.findLast(entry=>entry.context?.other_acquisitions_pending);if(call&&!call.error)call.error=error.message;});
@@ -341,9 +344,14 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       }catch(e){if(!e.recoverableModelFormat||phase)throw e;return {model_format_error:e.message,new_actions:0,execution_results:[]};}
     }
     const normalized=normalizeDecision(decision,observation.environment.candidate_pool);normalizations.push(...normalized.repairs.map(r=>({...r,call_index:executionIndex})));
+    const registered=[],evidence=new Set(acquiredEvidence(observation));
+    for(const action of Array.isArray(normalized.decision?.actions)?normalized.decision.actions:[])if(action?.kind==='recommend'&&!rankingEvidence.has(action.action_id)){
+      rankingEvidence.set(action.action_id,evidence);registered.push(action.action_id);
+    }
     let step;
     try{step=await runtime.execute(normalized.decision,{phase});}catch(e){
       if(!['action_id_reuse_with_different_payload','action_id_already_in_progress'].includes(e.message))throw e;
+      for(const id of registered)rankingEvidence.delete(id);
       const call=modelCalls.findLast(x=>x.context?.call_index===executionIndex);if(call)call.error=e.message;
       formatFeedback={error:e.message,call_index:executionIndex,message:'No actions from this response were executed. Use new action IDs and regenerate the decision.'};
       return {model_format_error:e.message,new_actions:0,execution_results:[]};
@@ -361,7 +369,10 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       const step=await perform(phases?.[i]);
       if(partialTask)await partialTask;
       if(step.model_format_error||formatFeedback)continue;
-      const result=runtime.result,afterHistory=runtime.snapshot().dialogue.length+runtime.snapshot().behavior_events.length;if(result.ended||(result.ordered_item_ids.length&&result.acquired_items===beforeAcquired&&afterHistory===beforeHistory&&!step.execution_results.some(recoverableRankingFailure)))break;
+      const result=runtime.result,snapshot=runtime.snapshot(),afterHistory=snapshot.dialogue.length+snapshot.behavior_events.length;
+      // Known-item enrichment adds evidence without increasing the acquired-ID count.
+      const unseenEvidence=acquiredEvidence(snapshot).some(id=>!committedEvidence.has(id));
+      if(result.ended||(result.ordered_item_ids.length&&!unseenEvidence&&result.acquired_items===beforeAcquired&&afterHistory===beforeHistory&&!step.execution_results.some(recoverableRankingFailure)))break;
       if(!step.new_actions){error='no_progress';break;}
     }
   }catch(e){error=e.message;}
