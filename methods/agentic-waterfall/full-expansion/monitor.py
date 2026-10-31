@@ -286,7 +286,10 @@ def queue_line(title, state, pid, script, states=(), fatal=None, expected=(), sh
                               ('acquisition_failed:unsupported_source_or_mode', '获取来源/方式不支持')]:
             detail = detail.replace(code, meaning)
         return f'  {title}: {label}' + detail + (f'；{current}' if current else '')
-    return f"  {title}: {label} ({status})；进程{'存活' if running else '未匹配/未运行'}" + (f'；当前: {current}' if current else '') + detail
+    process = '存活' if running else '未匹配/未运行'
+    if not running and status in {'predictions_complete', 'validation_holds_remaining', 'method_failures_remaining', 'complete'}:
+        process = '已结束（无需常驻）'
+    return f"  {title}: {label} ({status})；进程{process}" + (f'；当前: {current}' if current else '') + detail
 
 
 def resources(root):

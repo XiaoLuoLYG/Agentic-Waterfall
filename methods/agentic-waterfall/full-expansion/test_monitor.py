@@ -35,6 +35,15 @@ def lines(path, rows):
 
 
 class MonitorTests(unittest.TestCase):
+    def test_finished_hold_queue_does_not_look_like_a_missing_live_process(self):
+        with mock.patch.object(monitor, 'live', return_value=False):
+            text=monitor.queue_line('WF/kuairec', {'status':'validation_holds_remaining','held_count':6}, 123, 'formal_queue.py')
+            self.assertIn('已结束（无需常驻）', text)
+            self.assertNotIn('未匹配/未运行', text)
+            self.assertIn('隔离 6题', text)
+            text=monitor.queue_line('WF/kuairec', {'status':'running'}, 123, 'formal_queue.py')
+            self.assertIn('未匹配/未运行', text)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
