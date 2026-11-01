@@ -289,7 +289,7 @@ def queue_line(title, state, pid, script, states=(), fatal=None, expected=(), sh
             reasons.append(str(row.get('error') or row.get('reason') or row['outcome']))
     detail = '；原因: ' + ', '.join(dict.fromkeys(reasons)) if reasons else ''
     label = {'running': '运行中', 'waiting_for_resources':'等待本机资源', 'waiting_for_service': '等待重试', 'needs_attention': '已暂停，需检查',
-             'predictions_complete': '预测已交付，待评分', 'stopped': '已停止', 'not_running': '未运行',
+             'predictions_complete': '预测已交付', 'stopped': '已停止', 'not_running': '未运行',
              'validation_holds_remaining': '可运行部分已收集，隔离项待审',
              'reviewed_quarantine': '收集结束，隔离审核已结案',
              'method_failures_remaining': '方法失败已保留，依赖后继阻断',
@@ -393,7 +393,7 @@ def screen_lines(lines, height, width):
 
 
 def table_lines(table, dev=False):
-    lines = ['  方法           非空通过/计划   进度       空 失败 隔离 在途 待跑 阻断 不适用']
+    lines = ['  方法           采集通过/计划   进度       空 失败 隔离 在途 待跑 阻断 不适用']
     previous = None
     names = {'generic-agent': '通用Agent', 'fixed': '固定检索', 'i2agent': 'i²Agent',
              'clawrec': 'ClawRec', 'recbot': 'RecBot语义版', 'mars': 'MARS复现'}
@@ -437,7 +437,7 @@ def snapshot(root, details=False):
     lines = [f'统一实验进度  {datetime.datetime.now():%m-%d %H:%M:%S}  MIND 暂停', resources(root),
              '已处理    ' + progress_text(all_counts, include_terminal=True), 'Waterfall ' + progress_text(own, include_terminal=True),
              '对照方法  ' + progress_text(other, include_terminal=True),
-             f"验收含合法空交付：测试 {test['delivered'] + test['empty']:,}/{test['total']:,}；开发 {dev['delivered'] + dev['empty']:,}/{dev['total']:,}；不适用 {all_counts['inapplicable']} 另列",
+             f"最新采集验收含合法空交付：测试 {test['delivered'] + test['empty']:,}/{test['total']:,}；开发 {dev['delivered'] + dev['empty']:,}/{dev['total']:,}；不适用 {all_counts['inapplicable']} 另列",
              f"合法空交付 {all_counts['empty']}；失败 {all_counts['failed']}；隔离 {all_counts['held']}；阻断 {all_counts['blocked']}；在途 {all_counts['uncommitted']}；已处理含失败/隔离/阻断，不是效果分。",
              '', *(table_lines(table) if details else compact_rows(table))]
     if details:
@@ -479,7 +479,7 @@ def snapshot(root, details=False):
         ledger=read(base.parent/'experiments/agentic-waterfall/shared/model-ledger.json')
         occupied=sum(row.get('status')=='in_progress' for row in ledger.get('attempts',[]))
         remaining=max(0,round((gate.get('cooldown_until',0)-time.time()*1000)/1000))
-        lines.append(f"共享API：请求名额 {occupied}/{ledger.get('max_concurrent',2)}（含排队）；本地 {gate.get('requests_per_minute',45)}次/分钟；服务端退避剩余 {remaining}秒")
+        lines.append(f"共享API：账本占位 {occupied}/{ledger.get('max_concurrent',2)}（含排队/未结回执，不等于在跑任务）；本地 {gate.get('requests_per_minute',45)}次/分钟；服务端退避剩余 {remaining}秒")
     if errors and details:
         lines.append('Waterfall 当前失败：' + '；'.join(f'{reason} ×{count}' for reason, count in errors.items()))
     if warnings and details:
@@ -497,9 +497,16 @@ def snapshot(root, details=False):
     if database_error:
         lines.append('KuaiRand SQLite 无法读取（显示仅含旧队列）：' + database_error)
     evaluation=read(root/'evaluation-status.json')
-    if evaluation.get('status')=='partial_scored':
-        lines.append(f"评分：AgentRecBench {len(evaluation.get('completed_dataset_groups',[]))}个领域、{evaluation.get('completed_metric_groups',0)}组离线评分已完成；新增模型请求 {evaluation.get('new_model_calls',0)}。")
-        lines.append('其余评分：KuaiRec/KuaiRand统一评分、SimBench统一评委评分尚未执行；完整分数见阶段报告。')
+    if evaluation.get('status') in {'partial_scored', 'complete'}:
+        lines.append(f"评分：{evaluation.get('completed_offline_metric_groups', evaluation.get('completed_metric_groups',0))}组离线评分已完成。")
+        counts=evaluation.get('strict_test_status_counts')
+        if counts:
+            lines.append(f"正式计分：非空交付 {counts.get('submitted',0)}；失败 {counts.get('failed',0)}；阻断 {counts.get('blocked',0)}；合法空 {counts.get('no_delivery',0)}（上方为最新采集回执，含后续恢复）。")
+        if evaluation.get('judge_progress'):
+            judge=read(Path(evaluation['judge_progress']))
+            state={'running':'评分中','complete':'已完成','needs_attention':'需检查'}.get(judge.get('status'),'状态待核对')
+            lines.append(f"SimBench统一评委：{state}；{judge.get('completed_batches',0)}/{judge.get('planned_batches',0)}批；{judge.get('fully_judged_cases',0)}/{judge.get('planned_cases',0)}题；当前失败 {len(judge.get('failed_batches',[]))}批。")
+        lines.append(evaluation.get('remaining', '完整分数见阶段报告。'))
     lines += [preparation(expansion), '30秒原位刷新；q / Ctrl+C 仅关闭显示。完整明细：加 --details']
     return '\n'.join(lines)
 

@@ -156,6 +156,29 @@ class MonitorTests(unittest.TestCase):
             document['tasks']['a']['raw_result_sha256']='0'*64;save(run/'evaluation-resolution.json',document)
             self.assertIn('隔离待审 2题',monitor.snapshot(self.root,details=True))
 
+    def test_live_and_completed_judge_scores_replace_stale_pending_text(self):
+        self.waterfall_fixture()
+        judge=self.root/'judge-progress.json'
+        save(judge,{'status':'running','completed_batches':302,'planned_batches':564,
+                    'fully_judged_cases':113,'planned_cases':210,'failed_batches':[]})
+        save(self.root/'evaluation-status.json',{'status':'partial_scored',
+             'completed_offline_metric_groups':40,'judge_progress':str(judge),'remaining':'MIND暂停'})
+        with mock.patch.object(monitor,'resources',return_value='资源'):
+            text=monitor.snapshot(self.root,details=True)
+            self.assertIn('40组离线评分已完成',text);self.assertIn('302/564批',text)
+            self.assertIn('113/210题',text);self.assertNotIn('尚未执行',text)
+            save(judge,{'status':'needs_attention','failed_batches':[{'batch':1}]})
+            self.assertIn('需检查',monitor.snapshot(self.root,details=True))
+            save(judge,{'status':'complete','completed_batches':564,'planned_batches':564,
+                        'fully_judged_cases':210,'planned_cases':210,'failed_batches':[]})
+            save(self.root/'evaluation-status.json',{'status':'complete',
+                 'completed_offline_metric_groups':40,'judge_progress':str(judge),'remaining':'MIND暂停',
+                 'strict_test_status_counts':{'submitted':9676,'failed':151,'blocked':13,'no_delivery':19}})
+            text=monitor.snapshot(self.root,details=True)
+            self.assertIn('已完成；564/564批；210/210题',text)
+            self.assertIn('非空交付 9676；失败 151；阻断 13；合法空 19',text)
+            self.assertNotIn('待评分',monitor.queue_line('fixed',{'status':'predictions_complete'},123,'none'))
+
     def test_waterfall_cache_rechecks_only_changed_results(self):
         run = self.waterfall_fixture()
         queue = monitor.validator(run / 'code/experiments/agentic-waterfall/unified/formal_queue.py')
