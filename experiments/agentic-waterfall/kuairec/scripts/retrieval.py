@@ -1,7 +1,6 @@
 """Public-only fixed BM25 backend; relevance labels are not imported here."""
 import re
 import time
-import numpy as np
 from rank_bm25 import BM25Okapi
 
 def tokenize(text):
@@ -19,15 +18,11 @@ class CatalogRetriever:
 
     def acquire(self,query,eligible,limit=100,mode='search',exclude=()):
         if limit<0 or limit>100: raise ValueError('Invalid acquisition limit')
-        if mode not in ['search','hot']: raise ValueError('Unsupported acquire mode')
+        if mode != 'search': raise ValueError('KuaiRec benchmark supports search only')
         start=time.perf_counter();allowed=set(map(str,eligible))-set(map(str,exclude))
         tokens=tokenize(query)
-        if mode=='hot' or not tokens:
-            scores=np.asarray([x['big_positive_count'] for x in self.catalog],dtype=float)
-            actual_mode='hot_big_only'
-        else:
-            scores=self.bm25.get_scores(tokens);actual_mode='bm25'
-        candidates=[(str(x['id']),float(scores[i]),x) for i,x in enumerate(self.catalog) if str(x['id']) in allowed]
+        scores=self.bm25.get_scores(tokens);actual_mode='bm25'
+        candidates=[(str(x['id']),float(scores[i]),x) for i,x in enumerate(self.catalog) if str(x['id']) in allowed and any(token in self.bm25.doc_freqs[i] for token in tokens)]
         candidates.sort(key=lambda r:(-r[1],int(r[0])))
         selected=candidates[:limit]
         return {'items':[x[2] for x in selected],'scores':{x[0]:x[1] for x in selected},'evidence':{'query':query,'backend':actual_mode,'elapsed_seconds':time.perf_counter()-start,'catalog_items_scored':len(self.catalog),'eligible_items':len(allowed),'returned_items':len(selected)},'actual_requests':1}

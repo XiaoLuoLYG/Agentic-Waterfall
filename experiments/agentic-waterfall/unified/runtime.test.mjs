@@ -138,14 +138,14 @@ test('agent candidate indices map exactly to the items it selected',async()=>{
  assert.equal(result.status,'submitted');assert.deepEqual(result.ordered_item_ids,['id-2','id-0']);
  assert.deepEqual(result.model_calls[0].parsed_output.actions[0].arguments.ordered_candidate_indices,[3,1]);assert(result.normalizations.some(x=>x.operation==='candidate_indices_to_ids'));
 });
-test('large fixed candidate sets are model-ranked in batches and merged without losing IDs',async()=>{
+test('large fixed candidate sets retain all text in a single model ranking',async()=>{
  const i=input();i.observation.environment.candidate_pool=Array.from({length:101},(_,n)=>({id:`item-${n}`,title:`item ${n}`,abstract:'x'.repeat(1200)}));
  i.protocol={mode:'fixed_candidates',require_full_ranking:true,top_k:101,max_model_calls:5,max_tool_calls:0,max_acquired_items:0,max_output_tokens:8192};const stages=[];
- const result=await runEpisode(i,{modelCall:async request=>{assert(Buffer.byteLength(JSON.stringify(request.messages))<=100000);const {observation:obs,context}=JSON.parse(request.messages[1].content);stages.push({stage:context.batch_stage,ids:obs.environment.candidate_pool.map(item=>item.id)});return {attempt_id:`call-${stages.length}`,content:JSON.stringify(decision([action(`rank-${stages.length}`,'recommend',{ordered_item_ids:obs.environment.candidate_pool.map(item=>item.id),delivery:'replace_pending'})]))};}});
+ const result=await runEpisode(i,{modelCall:async request=>{assert(Buffer.byteLength(JSON.stringify(request.messages))>100000);const {observation:obs,context}=JSON.parse(request.messages[1].content);stages.push({stage:context.batch_stage,ids:obs.environment.candidate_pool.map(item=>item.id)});return {attempt_id:`call-${stages.length}`,content:JSON.stringify(decision([action(`rank-${stages.length}`,'recommend',{ordered_item_ids:obs.environment.candidate_pool.map(item=>item.id),delivery:'replace_pending'})]))};}});
  assert.equal(result.status,'submitted');assert.equal(new Set(result.ordered_item_ids).size,101);assert.equal(result.ordered_item_ids.length,101);
- assert(stages.filter(x=>x.stage==='rank').length>=2);assert.equal(stages.at(-1).stage,'merge');
+ assert.equal(stages.length,1);assert.equal(stages[0].stage,undefined);assert(result.model_calls[0].input.environment.candidate_pool.every(item=>item.abstract.length===1200));
 });
-test('batch rankings and merge map the original candidate indices without dropping items',async()=>{
+test('large direct rankings map original candidate indices without dropping items',async()=>{
  const i=input();i.observation.environment.candidate_pool=Array.from({length:101},(_,n)=>({id:`item-${n}`,title:`item ${n}`,abstract:'x'.repeat(1200)}));
  i.protocol={mode:'fixed_candidates',require_full_ranking:true,top_k:101,max_model_calls:5,max_tool_calls:0,max_acquired_items:0,max_output_tokens:8192};
  const result=await runEpisode(i,{modelCall:async request=>{const {observation:obs,context}=JSON.parse(request.messages[1].content);return {attempt_id:`call-${context.call_index}`,content:JSON.stringify(decision([action(`rank-${context.call_index}`,'recommend',{ordered_candidate_indices:obs.environment.candidate_pool.map(x=>x.candidate_index).reverse(),delivery:'replace_pending'})]))};}});

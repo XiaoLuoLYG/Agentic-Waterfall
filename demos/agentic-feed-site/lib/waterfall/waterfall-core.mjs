@@ -368,8 +368,6 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
   const messagesFor=(observation,context,extra='')=>[{role:'system',content:SYSTEM_PROMPT+extra},{role:'user',content:JSON.stringify({observation,context:{...context,...(formatFeedback?{previous_output_error:formatFeedback}:{}),output_requirements:{candidate_count:observation.environment.candidate_pool.length,recommendation:`${observation.environment.recommendation_constraints.mode==='fixed_candidates'?'Rank the supplied candidates using visible history and candidate evidence.':'Update the next feed slate using current requirements and supported interests; distinguish relative adjustments from exclusive requests.'} Use only allowed_candidate_indices for ordered_candidate_indices. ${observation.environment.recommendation_constraints.require_full_ranking?'Include every listed candidate index exactly once.':'Follow top_k for the delivery count.'} Return complete action JSON.`}}})}];
   async function requestDecision(observation,context,extra){
     const feedback=formatFeedback,messages=messagesFor(observation,context,extra);
-    // Conservative byte cap, explicitly not a tokenizer-equivalent 32k guarantee.
-    check(Buffer.byteLength(JSON.stringify(messages))<=100000,'input_byte_budget_exceeded');
     const entry={input:observation,context,messages};modelCalls.push(entry);let receipt;
     try{receipt=await modelCall({messages,temperature:0.3,max_tokens:runtime.protocol.max_output_tokens,response_format:{type:'json_object'}},{experiment});}
     catch(e){Object.assign(entry,e.receipt,{error:e.message});throw e;}
@@ -383,62 +381,6 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
     if(formatFeedback===feedback)formatFeedback=null;
     entry.parsed_output=decision;return decision;
   }
-  async function batchDecision(observation,context,extra){
-    const all=observation.environment.candidate_pool;check(all.length>0,'input_byte_budget_exceeded');
-    const chunkExtra=extra+' Rank every candidate in this batch exactly once and return one recommend action.';
-    const groups=[];let group=[];
-    const batchObservation=items=>({...observation,environment:{...observation.environment,candidate_pool:items,recommendation_constraints:{...observation.environment.recommendation_constraints,mode:'fixed_candidates',require_full_ranking:true,top_k:items.length,candidate_count:items.length,candidate_index_range:[items[0]?.candidate_index,items.at(-1)?.candidate_index],allowed_candidate_indices:items.map(item=>item.candidate_index),acquire_enabled:false}}});
-    const fits=items=>Buffer.byteLength(JSON.stringify(messagesFor(batchObservation(items),{...context,batch_stage:'rank',batch_index:9999},chunkExtra)))<=98000;
-    for(const item of all){if(group.length&&!fits([...group,item])){groups.push(group);group=[];}group.push(item);check(fits(group),'candidate_or_history_too_large');}if(group.length)groups.push(group);
-    check(context.call_index+groups.length+1<=runtime.protocol.max_model_calls,'batch_model_budget_insufficient');
-    const rankings=[];
-    async function rankStage(stageObservation,stageContext,stageExtra,reservedCalls,initialIndex){
-      const items=stageObservation.environment.candidate_pool,byId=new Map(items.map(item=>[item.id,item.candidate_index])),allowed=new Set(byId.values());
-      const full=stageObservation.environment.recommendation_constraints.require_full_ranking;
-      let index=initialIndex,feedback=null;
-      while(true){
-        if(index===undefined){check(callsIssued+reservedCalls<runtime.protocol.max_model_calls,'batch_model_budget_exhausted');index=callsIssued++;}
-        const nextContext={...stageContext,call_index:index,remaining_model_calls:runtime.protocol.max_model_calls-index,...(feedback?{previous_batch_error:feedback}:{})};
-        let raw;
-        try{raw=await requestDecision(stageObservation,nextContext,stageExtra);}catch(e){if(!e.recoverableModelFormat)throw e;index=undefined;continue;}
-        const normalized=normalizeDecision(raw,items),decision=normalized.decision;
-        const actions=decision?.actions,recommendations=Array.isArray(actions)?actions.filter(a=>a?.kind==='recommend'):[];
-        check(decision?.decision_id===observation.decision_id&&recommendations.length>0&&(stageContext.batch_stage!=='rank'||actions.length===1),'invalid_batch_actions');
-        let details=null;
-        for(const action of recommendations){
-          const args=action.arguments||{},ids=args.ordered_item_ids,values=Array.isArray(ids)?ids:[],indices=ids?values.map(id=>byId.get(id)).filter(value=>value!==undefined):Array.isArray(args.ordered_candidate_indices)?args.ordered_candidate_indices:[];
-          const duplicates=[...new Set(indices.filter((value,position)=>indices.indexOf(value)!==position))];
-          const required=full?items.length:null,max=full?items.length:stageObservation.environment.recommendation_constraints.top_k;
-          if(Array.isArray(ids)&&values.length>0&&new Set(values).size===values.length&&values.every(id=>byId.has(id))&&(full?values.length===required:values.length<=max)&&(stageContext.batch_stage==='rank'||['append','replace_pending'].includes(args.delivery)))continue;
-          details={candidate_count:items.length,candidate_index_range:[items[0].candidate_index,items.at(-1).candidate_index],required_count:required,max_count:max,
-            received_count:Array.isArray(ids)?ids.length:Array.isArray(args.ordered_candidate_indices)?args.ordered_candidate_indices.length:null,
-            invalid_indices:ids?[]:indices.filter(value=>!Number.isInteger(value)||!allowed.has(value)),duplicate_indices:duplicates,
-            missing_indices:full?[...allowed].filter(value=>!indices.includes(value)):[],unknown_item_ids:values.filter(id=>!byId.has(id)),
-            duplicate_item_ids:[...new Set(values.filter((value,position)=>values.indexOf(value)!==position))],allowed_deliveries:['append','replace_pending']};
-          break;
-        }
-        if(stageContext.batch_stage==='rank'||details)normalizations.push(...normalized.repairs.map(r=>({...r,call_index:index})));
-        if(!details)return {decision:raw,index,ids:recommendations[0].arguments.ordered_item_ids};
-        Object.assign(modelCalls.findLast(entry=>entry.context?.call_index===index),{error:'invalid_batch_ranking',error_details:details});
-        // Keep full diagnostics in the receipt; small examples fit the batch's reserved input space.
-        const brief=values=>values.slice(0,4).map(value=>typeof value==='string'?value.slice(0,40):typeof value==='number'?value:typeof value);
-        const summary={candidate_count:details.candidate_count,candidate_index_range:details.candidate_index_range,required_count:details.required_count,max_count:details.max_count,received_count:details.received_count,allowed_deliveries:details.allowed_deliveries};
-        for(const key of ['invalid_indices','duplicate_indices','missing_indices','unknown_item_ids','duplicate_item_ids']){summary[key+'_count']=details[key].length;summary[key]=brief(details[key]);}
-        feedback={error:'invalid_batch_ranking',call_index:index,error_details:summary,message:'No actions from this stage were executed. Resubmit using allowed batch indices and new action IDs; successful batches are retained.'};
-        if(Buffer.byteLength(JSON.stringify(feedback))>1500)for(const key of ['invalid_indices','duplicate_indices','missing_indices','unknown_item_ids','duplicate_item_ids'])summary[key]=[];
-        index=undefined;
-      }
-    }
-    for(let i=0;i<groups.length;i++){
-      const ranked=await rankStage(batchObservation(groups[i]),{...context,batch_stage:'rank',batch_index:i},chunkExtra,groups.length-i,i===0?context.call_index:undefined);
-      rankings.push(ranked.ids);
-    }
-    const compact=all.map(item=>pick(item,['id','candidate_index','title','category','source_id','content_type','duration_ms','retrieval_score','retrieval_backend','retrieval_query']));
-    const mergeObservation={...observation,environment:{...observation.environment,candidate_pool:compact}};
-    const mergeContext={...context,batch_stage:'merge',batch_rankings:rankings};
-    const mergeExtra=extra+' Merge the batch rankings into the recommendation order using the visible candidate metadata.';
-    return rankStage(mergeObservation,mergeContext,mergeExtra,0);
-  }
   async function perform(phase,partial=false){
     const observation=runtime.snapshot(),index=callsIssued++,feedback=formatFeedback;let executionIndex=index;
     const context={variant,phase,call_index:index,remaining_model_calls:runtime.protocol.max_model_calls-index,...(index===runtime.protocol.max_model_calls-1?{final_decision:'This is the final decision call. Complete the requested recommendation using the observed evidence; new acquisitions cannot be reviewed by another decision.'}:{}),...(formatFeedback?{previous_output_error:formatFeedback}:{}),...(partial?{other_acquisitions_pending:true}:{})};
@@ -448,9 +390,7 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       check(typeof modelCall==='function','model_transport_required');
       const extra=phase?` Fixed-workflow ablation: execute the ${phase} phase; responses and history lookups may accompany it. Use edits:[] if no state changes are needed; acquire in the acquisition phase.`:partial?' Other acquisitions are still pending. Recommend useful known content or wait for the remaining evidence.':'';
       try{
-        if(Buffer.byteLength(JSON.stringify(messagesFor(observation,context,extra)))>100000){
-          check(!phase,'input_byte_budget_exceeded');const batched=await batchDecision(observation,context,extra);decision=batched.decision;executionIndex=batched.index;
-        }else decision=await requestDecision(observation,context,extra);
+        decision=await requestDecision(observation,context,extra);
       }catch(e){if(!e.recoverableModelFormat||phase)throw e;return {model_format_error:e.message,new_actions:0,execution_results:[]};}
     }
     const normalized=normalizeDecision(decision,observation.environment.candidate_pool);normalizations.push(...normalized.repairs.map(r=>({...r,call_index:executionIndex})));

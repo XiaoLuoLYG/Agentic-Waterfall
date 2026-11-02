@@ -17,7 +17,7 @@ test('AgentRecBench uses the existing disk index and never returns masked review
   mkdirSync(data); mkdirSync(join(tasks, 'tasks'), {recursive: true}); mkdirSync(join(tasks, 'groundtruth'));
   const candidates = Array.from({length: 20}, (_, i) => `item-${i}`);
   for (const [kind, rows] of Object.entries({
-    item: candidates.map(item_id => ({item_id, title: item_id})), user: [{user_id: 'u', name: 'user'}],
+    item: candidates.slice(0,19).map(item_id => ({item_id, title: item_id, description: item_id===candidates[0]?'full description '+ 'x'.repeat(12000)+' END_OF_DESCRIPTION':'public details', private_label:'DO_NOT_EXPOSE'})), user: [{user_id: 'u', name: 'user'}],
     review: [{review_id: 'hidden', user_id: 'u', item_id: candidates[0], text: 'SECRET_HIDDEN'},
       {review_id: 'visible', user_id: 'u', item_id: candidates[1], text: 'public review'}],
   })) writeFileSync(join(data, `${kind}.json`), rows.map(row => JSON.stringify(row)).join('\n') + '\n');
@@ -29,6 +29,19 @@ test('AgentRecBench uses the existing disk index and never returns masked review
   const adapter = await buildFormalAdapter({dataset: 'agentrecbench', root, domain: 'amazon', task_file: taskFile, task_dir: tasks, data_dir: data, index_file: index});
   assert.equal(adapter.input.observation.decision_id, 'agentrecbench:short_term:amazon:0');
   assert.equal(adapter.input.observation.environment.candidate_pool.length, 20);
+  const pool=adapter.input.observation.environment.candidate_pool;
+  assert.equal(JSON.parse(pool[0].text).description.endsWith('END_OF_DESCRIPTION'),true);
+  assert.equal(JSON.parse(pool.at(-1).text).metadata_status,'unavailable');
+  assert.equal(adapter.toolCalls.filter(call=>call.phase==='candidate_preload').length,20);
+  assert.equal(adapter.input.run_meta.candidate_details.preloaded_requests,20);
+  assert.deepEqual(adapter.input.run_meta.candidate_details.unavailable_ids,[candidates.at(-1)]);
+  assert.equal(JSON.stringify(adapter.input).includes('DO_NOT_EXPOSE'),false);
+  const {runEpisode}=await import('../../../demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs');
+  const direct=await runEpisode(adapter.input,{decide:async observation=>{
+    assert.equal(JSON.parse(observation.environment.candidate_pool[0].text).description.endsWith('END_OF_DESCRIPTION'),true);
+    return {decision_id:observation.decision_id,actions:[{action_id:'rank',kind:'recommend',arguments:{ordered_item_ids:candidates,delivery:'replace_pending'},depends_on:[],evidence_refs:[]}]};
+  }});
+  assert.equal(direct.status,'submitted');
   const reviews = await adapter.acquire({source_ids: ['get_reviews'], mode: 'browse', query: '{"user_id":"u"}'}, {remaining_tool_calls: 1});
   assert.equal(reviews.evidence[0].result.length, 1);
   assert.equal(reviews.evidence[0].result[0].review_id, 'visible');

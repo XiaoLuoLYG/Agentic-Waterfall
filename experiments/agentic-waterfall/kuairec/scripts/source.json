@@ -1,7 +1,7 @@
 {
   "id": "kuairec",
-  "modes": ["search", "hot"],
+  "modes": ["search"],
   "content_types": ["video"],
-  "description": "Frozen 3327-video KuaiRec catalog with public captions/categories. content_types accepts video; put topics or interests in query. search uses BM25 query scores; hot uses aggregate positive-watch counts from the public big table. Scores are source signals, not individual relevance probabilities. duration_ms is a public big-table content measurement. Per-user unknown entries are ineligible. Retrieve up to 100 distinct candidates and recommend exactly 10. limit is the number requested from this retrieval, from 1 to 100; it is separate from the final recommendation count.",
+  "description": "Frozen 3327-video KuaiRec catalog with public captions/categories. content_types accepts video; put topics or interests in query. Search returns BM25-ranked lexical matches using terms in the visible titles, captions or categories. Empty or unmatched queries return no items. Popularity retrieval is not available in this benchmark. Scores are source signals, not individual relevance probabilities. duration_ms is a public big-table content measurement. Per-user unknown entries are ineligible. Retrieve up to 100 distinct candidates and recommend exactly 10. limit is the number requested from this retrieval, from 1 to 100; it is separate from the final recommendation count.",
   "public_input_version": "kuairec-public-content-v1"
 }

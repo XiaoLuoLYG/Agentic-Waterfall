@@ -159,13 +159,14 @@ test('Python bridge preserves all five pinned author i2Agent stages and full can
 });
 
 
-test('Waterfall keeps the normal demo history window while older natural history remains searchable',async()=>{
+test('Waterfall receives all authorized natural history before the first model call',async()=>{
  const calls=[];const input=snapshot();input.command='';input.recent_commands=[];
  const history=Array.from({length:190},(_,i)=>({id:'older-'+i,kind:'exposure',phase:'end',track:'feed',title:'old-title-'+i+'x'.repeat(700),content_id:'old-'+i}));
  const {run,archive}=await setup({modelCall:async request=>{const d=JSON.parse(request.messages.at(-1).content);if(!d.observation)throw Error('unrelated method');calls.push(d.observation);if(calls.length===1)return receipt({decision_id:d.observation.decision_id,actions:[{action_id:'history',kind:'lookup_history',arguments:{query:'old-title-0',offset:0,limit:1},evidence_refs:[],depends_on:[]}]});throw Error('probe complete');}});
  await run({snapshot:input,history,session:{session_id:'s'},userId:'u',data_origin:'test_only'});
  assert.ok(calls.length>=1,'large allowed history must not prevent the first model request');
- assert.deepEqual(calls[0].behavior_events.map(x=>x.id),['a','b']);
+ assert.equal(calls[0].behavior_events.length,192);
+ assert.ok(calls[0].behavior_events.some(x=>x.id==='older-0'&&x.title.endsWith('x'.repeat(700))));
  assert.ok(archive.some(x=>x.event==='core_action'&&x.runtime.receipt.kind==='lookup_history'&&JSON.stringify(x.runtime.receipt).includes('older-0')));
 });
 

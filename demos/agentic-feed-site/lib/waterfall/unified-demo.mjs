@@ -27,6 +27,16 @@ export function demoModelCall(config,signal){
 export async function runDemo(snapshot,{userId,sessionId,modelCall,acquireSource,lookupHistory,onAction,topK=1000}){
  check(Number.isInteger(topK)&&topK>0&&topK<=1000,'topK must be an integer from 1 to 1000');
  const input=demoInput(snapshot,{userId,sessionId});
+ let historyReads=0;
+ if(lookupHistory){
+  const seen=Object.fromEntries(['dialogue','behavior_events'].map(field=>[field,new Set(input.observation[field].map(row=>row.id))]));
+  for(let offset=0;;){
+   const page=await lookupHistory({query:'',offset,limit:100},{observation:input.observation});historyReads++;
+   for(const field of ['dialogue','behavior_events'])for(const row of page[field]||[])if(!seen[field].has(row.id)){input.observation[field].push(structuredClone(row));seen[field].add(row.id);}
+   if(page.next_offset==null)break;
+   check(Number.isInteger(page.next_offset)&&page.next_offset>offset,'invalid_history_pagination');offset=page.next_offset;
+  }
+ }
  input.protocol={mode:'acquire',top_k:topK,max_model_calls:20,max_tool_calls:20,max_acquired_items:1000,max_output_tokens:8192};
  const original=new Map(input.observation.user_state.records.map(record=>[record.id,JSON.stringify(record)]));
  const items=new Map((snapshot.candidate_pool||[]).map(item=>[item.id,structuredClone(item)]));
@@ -44,6 +54,7 @@ export async function runDemo(snapshot,{userId,sessionId,modelCall,acquireSource
   return {items:found.map(item=>({id:item.id,title:item.title,abstract:item.summary,source_id:item.source,content_type:item.modality,url:item.url,content_hash:item.content_hash,published_at:item.published_at})),evidence:results.map(({items,...rest})=>rest),actual_requests:args.source_ids.length};
  };
  const runtime=await runEpisode(input,{modelCall,acquire,lookupHistory,onAction:onAction?(receipt,progress)=>onAction(receipt,{...progress,items:[...items.values()],slate:(receipt.result?.queued_item_ids||[]).map(id=>items.get(id)).filter(Boolean)}):undefined});
+ runtime.preparation_history_reads=historyReads;
  if(runtime.status==='failed')throw Object.assign(new Error(`本轮推荐未完成：${runtime.error}`),{status:502,runtime});
  const state=structuredClone(snapshot.state);
  if(runtime.state_after.version!==state.version){

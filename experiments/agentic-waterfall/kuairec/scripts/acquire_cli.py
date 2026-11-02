@@ -7,7 +7,7 @@ from retrieval import CatalogRetriever, public_result
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 req=json.load(sys.stdin);a=req['arguments']
 assert a['source_ids']==['kuairec']
-assert a['mode'] in ['search','hot']
+assert a['mode']=='search'
 assert not a.get('content_types') or a['content_types']==['video']
 data=np.load(ROOT/'data/processed/eligibility.npz')
 i=np.flatnonzero(data['users']==int(req['user_id']))
