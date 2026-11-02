@@ -27,6 +27,7 @@ function acquireRequest(request){
 }
 let failed=0;
 for(const input of inputs){
+  input.observation.environment.sources=[JSON.parse(readFileSync(resolve(root,'scripts/source.json'),'utf8'))];
   const user=input.observation.user_id;
   const acquire=async(arguments_,context)=>{
     if(context.remaining_tool_calls<1)throw new Error('no_reserved_tool_request');

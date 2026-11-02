@@ -34,6 +34,7 @@ test('KuaiRec runner reads the requested input and writes only requested output 
 test('KuaiRec input builder exports a selected split without overwriting the development file',t=>{
  const dir=temp(t),scripts=join(dir,'scripts'),data=join(dir,'processed');mkdirSync(scripts);mkdirSync(data);
  copyFileSync(join(root,'kuairec/scripts/build_waterfall_inputs.py'),join(scripts,'build_waterfall_inputs.py'));
+ copyFileSync(join(root,'kuairec/scripts/source.json'),join(scripts,'source.json'));
  writeFileSync(join(data,'splits.json'),JSON.stringify({test:[7,8],subset_dev16:[3]}));
  writeFileSync(join(data,'histories.jsonl'),[3,7,8].map(user_id=>JSON.stringify({user_id,events:[]})).join('\n')+'\n');
  const output=join(dir,'test-inputs.jsonl');

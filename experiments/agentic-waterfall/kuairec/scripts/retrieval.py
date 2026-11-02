@@ -40,3 +40,17 @@ def history_query(events):
         seen.add(item);texts.append(event['item']['text'])
         if len(texts)>=20:break
     return ' '.join(reversed(texts))
+
+
+def public_result(result,metadata):
+    """One public tool projection shared by Waterfall and the comparison adapters."""
+    evidence=result['evidence']
+    items=[]
+    for row in result['items']:
+        item={'id':row['id'],'source_id':'kuairec','content_type':'video','text':row['text']}
+        duration=metadata.get('items',{}).get(row['id'],{}).get('duration_ms')
+        if duration is not None:item['duration_ms']=duration
+        if row['id'] in result.get('scores',{}):
+            item.update(retrieval_score=result['scores'][row['id']],retrieval_backend=evidence['backend'],retrieval_query=evidence['query'])
+        items.append(item)
+    return {**result,'items':items,'scores':{row['id']:result['scores'][row['id']] for row in items if row['id'] in result.get('scores',{})},'evidence':[evidence]}

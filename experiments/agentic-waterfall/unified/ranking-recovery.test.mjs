@@ -28,7 +28,7 @@ test('invalid raw video numbers are reported and the agent independently supplie
   assert.deepEqual(result.model_calls[0].parsed_output.actions[0].arguments.ordered_candidate_indices,[1,1059,1]);
   assert.equal(result.trace[0].execution_results[0].status,'failed');
   assert.deepEqual(result.trace[0].decision.actions[0].arguments.ordered_candidate_indices,[1,1059,1]);
-  assert.match(SYSTEM_PROMPT,/新动作ID/);assert.match(SYSTEM_PROMPT,/填写实际 candidate_index/);
+  assert.match(SYSTEM_PROMPT,/new IDs/);assert.match(SYSTEM_PROMPT,/actual candidate_index/);
 });
 
 test('incomplete and duplicate rankings expose missing and repeated indices without filling them',async()=>{
@@ -61,7 +61,8 @@ test('ranking recovery does not swallow state, tool or dependency failures',asyn
     {action_id:'tool',kind:'acquire',arguments:{source_ids:['offline'],mode:'search',query:'x',limit:1},depends_on:[],evidence_refs:[]},
     {...action('dependent',{ordered_candidate_indices:full}),depends_on:['bad']},
   ]){
-    let calls=0;const result=await runEpisode(input(),{decide:async()=>{calls++;return decision([action('bad',{ordered_candidate_indices:[9000]}),other]);}});
+    const fixture=input();fixture.observation.environment.sources=[{id:'offline',modes:['search']}];fixture.protocol.max_tool_calls=1;
+    let calls=0;const result=await runEpisode(fixture,{acquire:async()=>{throw Error('source_failed');},decide:async()=>{calls++;return decision([action('bad',{ordered_candidate_indices:[9000]}),other]);}});
     assert.equal(calls,1);assert.equal(result.status,'failed');assert.equal(result.error,'action_execution_failed');
     assert.deepEqual(result.ordered_item_ids,[]);assert.equal(result.state_after.version,0);
   }
@@ -80,7 +81,7 @@ test('truncated or invalid JSON gets a short diagnostic and a fresh agent respon
       calls++;const {observation,context}=JSON.parse(request.messages[1].content);
       assert.deepEqual(observation.environment.recommendation_constraints.allowed_candidate_indices,Array.from({length:101},(_,i)=>i+1));
       assert.equal(context.output_requirements.candidate_count,101);
-      assert.match(context.output_requirements.recommendation,/只填写.*候选序号/);
+      assert.match(context.output_requirements.recommendation,/Use only allowed_candidate_indices/);
       if(calls===1)return {attempt_id:'broken',finish_reason,content:broken};
       assert.equal(context.previous_output_error.error,expectedError);
       assert(request.messages.every(message=>!message.content.includes('UNTRUSTED_REPEAT')));
@@ -245,7 +246,8 @@ test('batch recovery preserves network, state and dependency failures and checks
     {action_id:'bad-state',kind:'update_state',arguments:{base_version:99,edits:[]},depends_on:[],evidence_refs:[]},
     {action_id:'bad-tool',kind:'acquire',arguments:{source_ids:['offline'],mode:'search',query:'x',limit:1},depends_on:[],evidence_refs:[]},
   ]){
-    const result=await runEpisode(batchedInput(),{modelCall:async request=>{
+    const fixture=batchedInput();fixture.observation.environment.sources=[{id:'offline',modes:['search']}];fixture.protocol.max_tool_calls=1;
+    const result=await runEpisode(fixture,{acquire:async()=>{throw Error('source_failed');},modelCall:async request=>{
       const {observation,context}=JSON.parse(request.messages[1].content);
       return batchReply(observation,context,context.batch_stage==='merge'?[extra]:[]);
     }});

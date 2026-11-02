@@ -26,5 +26,7 @@ test('KuaiRec export identifies complete splits and preserves the default dev4 i
     assert.deepEqual(rows.map(row=>row.observation.user_id),users.map(String));
     assert.deepEqual(rows.map(row=>row.observation.decision_id),users.map(user=>`kuairec-static-${idSplit}-${user}`));
     assert(rows.every(row=>row.run_meta.split===split&&row.run_meta.kind===kind));
+    assert(rows.every(row=>JSON.stringify(row.observation.environment.sources[0].content_types)==='["video"]'));
+    assert(rows.every(row=>row.observation.environment.sources[0].public_input_version==='kuairec-public-content-v1'));
   }
 });

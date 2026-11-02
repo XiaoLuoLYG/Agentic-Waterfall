@@ -53,7 +53,10 @@ async function main(){
       if(prior.task.id!==task.previous||prior.task.dataset!=='kuairand'||prior.input.observation.user_id!==input.observation.user_id||Date.parse(prior.input.observation.observed_at)>Date.parse(input.observation.observed_at)||!Number.isInteger(prior.result.state_after?.version)||!Array.isArray(prior.result.state_after?.records))throw Error('invalid_previous_user_state');
       input.observation.user_state=structuredClone(prior.result.state_after);
     }
-    if(task.dataset==='kuairec')acquire=makeKuaiRecAcquirer(input,request=>pythonJSON(task.python,resolve(task.root,'experiments/agentic-waterfall/kuairec/scripts/acquire_cli.py'),request));
+    if(task.dataset==='kuairec'){
+      input.observation.environment.sources=[JSON.parse(readFileSync(resolve(task.root,'experiments/agentic-waterfall/kuairec/scripts/source.json'),'utf8'))];
+      acquire=makeKuaiRecAcquirer(input,request=>pythonJSON(task.python,resolve(task.root,'experiments/agentic-waterfall/kuairec/scripts/acquire_cli.py'),request));
+    }
   }
   // Match the demo decision allowance; this is a new protocol, not the old one-call MIND run.
   input.protocol={...input.protocol,max_model_calls:20,max_output_tokens:8192};

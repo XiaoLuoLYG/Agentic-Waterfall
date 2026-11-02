@@ -22,7 +22,7 @@ const prior=process.argv[5]?JSON.parse(read(resolve(process.argv[5]))):{user_id:
 if(prior.user_id!==obs.user_id||!Array.isArray(prior.event_ids)||prior.event_ids.some(id=>typeof id!=='string'))throw Error('invalid prior user state');
 const previousIds=new Set(prior.event_ids);if(previousIds.size!==prior.event_ids.length)throw Error('duplicate prior event');
 const cutoff=Date.parse(obs.observed_at);if(!Number.isFinite(cutoff)||obs.behavior_events.some(e=>!Number.isFinite(Date.parse(e.occurred_at))||Date.parse(e.occurred_at)>cutoff))throw Error('future event');
-const selected={observation:{session_id:obs.session_id,behavior_events:obs.behavior_events.filter(e=>!previousIds.has(e.id)).map(e=>({id:e.id,type:e.type,item_id:e.item_id,occurred_at:e.occurred_at,payload:{item_text:e.payload.item_text,watch_ratio:e.payload.watch_ratio}}))}};
+const selected={observation:{session_id:obs.session_id,behavior_events:obs.behavior_events.filter(e=>!previousIds.has(e.id)).map(e=>({id:e.id,type:e.type,item_id:e.item_id,occurred_at:e.occurred_at,payload:{item_text:e.payload.item_text,watch_ratio:e.payload.watch_ratio,duration_ms:e.payload.duration_ms}}))}};
 save('public-history.jsonl',JSON.stringify(selected)+'\n');
 const packetResult=spawnSync('python3',[resolve(root,'kuairec_data.py'),'--input',resolve(out,'public-history.jsonl'),'--output',resolve(out,'packets')],{encoding:'utf8',timeout:120000});if(packetResult.status!==0)throw Error('packet preparation failed');
 const packets=read(resolve(out,'packets/update-packets.md'));

@@ -12,7 +12,7 @@ async function lateEvidence({mode='fixed_candidates',reviews=false,max_model_cal
  const late=new Promise(resolve=>release=resolve);
  const result=await runEpisode(input(mode,max_model_calls),{
   acquire:async args=>{
-   if(args.target_id==='B')await late;
+   if(args.target_id==='B'){if(max_model_calls===2)release();await late;}
    if(reviews&&args.target_id==='B')return {items:[],evidence:[{id:'review',text:'Prefer B'}],actual_requests:1};
    return {items:[{id:args.target_id,title:args.target_id}],actual_requests:1};
   },
@@ -60,7 +60,7 @@ test('late evidence never increases the logical call budget',async()=>{
  const {result,seen}=await lateEvidence({max_model_calls:2});
  assert.equal(seen.length,2);
  assert.equal(result.model_calls.length,2);
- assert.deepEqual(result.ordered_item_ids,['A','B']);
+ assert.deepEqual(result.ordered_item_ids,['B','A']);
 });
 
 test('an explicit end still stops after the interim recommendation',async()=>{
@@ -88,4 +88,64 @@ test('a failed acquisition stays failed and does not become successful evidence'
  assert.equal(calls,1);
  assert.equal(result.trace[0].execution_results[0].status,'failed');
  assert.equal(result.trace[0].execution_results[0].error,'source_failed');
+});
+
+test('waiting for in-flight metadata resumes after all results, including completion races',async()=>{
+ for(const releaseBeforeWait of [true,false]){
+  let release;const gate=new Promise(resolve=>release=resolve);const seen=[];
+  const result=await runEpisode(input(),{
+   acquire:async args=>{if(args.target_id==='B')await gate;return {items:[{id:args.target_id,title:args.target_id}],actual_requests:1};},
+   onAction:receipt=>{if(receipt.kind==='idle'&&!releaseBeforeWait)release();},
+   decide:async(obs,context)=>{
+    seen.push(obs.environment.candidate_pool.filter(x=>x.title).length);
+    if(context.call_index===0)return {decision_id:obs.decision_id,actions:[get('A'),get('B')]};
+    if(context.other_acquisitions_pending){if(releaseBeforeWait){release();await gate;}return {decision_id:obs.decision_id,actions:[action('wait','idle',{mode:'wait'})]};}
+    return {decision_id:obs.decision_id,actions:[action('final','recommend',{ordered_item_ids:['B','A'],delivery:'replace_pending'})]};
+   }
+  });
+  assert.equal(result.status,'submitted');assert.deepEqual(result.ordered_item_ids,['B','A']);assert.deepEqual(seen,[0,1,2]);
+ }
+});
+
+test('the last model call is reserved for the completed acquisition set',async()=>{
+ let release;const gate=new Promise(resolve=>release=resolve);const seen=[];
+ const result=await runEpisode(input('fixed_candidates',2),{
+  acquire:async args=>{if(args.target_id==='B')await gate;return {items:[{id:args.target_id,title:args.target_id}],actual_requests:1};},
+  onAction:receipt=>{if(receipt.action_id==='get-A')release();},
+  decide:async(obs,context)=>{seen.push({partial:!!context.other_acquisitions_pending,metadata:obs.environment.candidate_pool.filter(x=>x.title).length});return {decision_id:obs.decision_id,actions:context.call_index===0?[get('A'),get('B')]:[rank('final')]};}
+ });
+ assert.equal(result.status,'submitted');assert.deepEqual(seen,[{partial:false,metadata:0},{partial:false,metadata:2}]);
+});
+
+test('waiting without an in-flight request yields without spinning',async()=>{
+ const result=await runEpisode(input(),{decide:async obs=>({decision_id:obs.decision_id,actions:[action('wait','idle',{mode:'wait'})]})});
+ assert.equal(result.status,'idle');assert.equal(result.model_calls.length,1);
+});
+
+test('wait is nonterminal for acquisitions in the same response regardless of order or dependencies',async()=>{
+ for(const order of ['wait-first','wait-last','wait-dependent']){
+  const result=await runEpisode(input(),{acquire:async()=>({items:[{id:'A',title:'enriched'}],actual_requests:1}),decide:async(obs,c)=>{
+   const waiting=action('wait','idle',{mode:'wait'});if(order==='wait-dependent')waiting.depends_on=['get-A'];
+   return {decision_id:obs.decision_id,actions:c.call_index===0?(order==='wait-first'?[waiting,get('A')]:[get('A'),waiting]):[rank('final')]};
+  }});
+  assert.equal(result.status,'submitted',order);assert.equal(result.model_calls.length,2,order);
+ }
+});
+
+test('pending dependent acquisitions reserve slots against an overlapping partial decision',async()=>{
+ const executed=[];let sawRefusal=false;
+ const result=await runEpisode(input('fixed_candidates',4),{acquire:async a=>{executed.push(a.target_id);return {items:[{id:a.target_id,title:a.target_id}],actual_requests:1};},decide:async(obs,c)=>{
+  if(c.call_index===0){const b=get('B');b.depends_on=['get-A'];return {decision_id:obs.decision_id,actions:[get('A'),b]};}
+  if(c.other_acquisitions_pending){assert.equal(obs.environment.budget.remaining_tool_calls,0);return {decision_id:obs.decision_id,actions:[{...get('A'),action_id:'duplicate-fetch'}]};}
+  sawRefusal=c.previous_output_error?.error==='tool_budget_exhausted';
+  return {decision_id:obs.decision_id,actions:[rank('final')]};
+ }});
+ assert.deepEqual(executed,['A','B']);assert.equal(sawRefusal,true);assert.equal(result.status,'submitted');
+ assert(result.trace.flatMap(x=>x.execution_results).every(r=>r.status==='success'));
+});
+
+test('a ranking never becomes a complete result when final-call evidence was not reviewed',async()=>{
+ const result=await runEpisode(input('fixed_candidates',2),{acquire:async a=>({items:[{id:a.target_id,title:a.target_id}],actual_requests:1}),decide:async(obs,c)=>({decision_id:obs.decision_id,actions:c.call_index===0?[rank('early'),get('A')]:[get('B')]})});
+ assert.deepEqual(result.ordered_item_ids,['A','B']);
+ assert.equal(result.continuation_error,'model_call_budget_exhausted_with_unreviewed_evidence');
 });

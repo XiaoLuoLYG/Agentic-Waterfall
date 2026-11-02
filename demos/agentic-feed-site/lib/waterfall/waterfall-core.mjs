@@ -9,7 +9,7 @@ const check=(value,message)=>{if(!value)throw new Error(message);};
 const rankingError=(message,details)=>{throw Object.assign(new Error(message),{details});};
 const recoverableRankingFailure=r=>r.status==='failed'&&r.kind==='recommend'&&['invalid_candidate_indices','invalid_ranking','unacquired_recommendation','incomplete_ranking','too_many_recommendations','invalid_delivery'].includes(r.error);
 const pick=(obj,fields)=>Object.fromEntries(fields.filter(k=>obj[k]!==undefined).map(k=>[k,clone(obj[k])]));
-const itemFields=['id','title','text','abstract','category','tags','source_id','content_type','url','published_at','available_at','content_hash','duration_ms'];
+const itemFields=['id','title','text','abstract','category','tags','source_id','content_type','url','published_at','available_at','content_hash','duration_ms','retrieval_score','retrieval_backend','retrieval_query'];
 const publicItem=item=>{check(item&&typeof item.id==='string','item_id_required'); return pick(item,itemFields);};
 const visible=(record,cutoff)=>{
   const times=['feedback_available_at','available_at','received_at','ended_at','occurred_at','timestamp'].map(k=>record[k]).filter(t=>t!==undefined&&t!==null&&t!=='');
@@ -101,7 +101,8 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
   const catalog=(input.catalog||[]).filter(x=>visible(x,o.observed_at)).map(publicItem);
   const pool=new Map(o.environment.candidate_pool.map(x=>[x.id,x]));
   check(pool.size===o.environment.candidate_pool.length,'duplicate_candidate_ids');
-  const fixedIds=new Set(pool.keys()),acquired=new Set(),receipts=new Map(),actionHashes=new Map(),pendingAcquisitions=new Map();
+  const fixedIds=new Set(pool.keys()),acquired=new Set(),receipts=new Map(),actionHashes=new Map(),pendingAcquisitions=new Map(),reservedTools=new Map();
+  const remainingToolCalls=()=>p.max_tool_calls-toolCalls-[...reservedTools.values()].reduce((sum,count)=>sum+count,0);
   const trace=[],history=clone(o.user_state.history||[]); let toolCalls=0,ranking=[],ended=false,activeAcquisitions=0;
   function evidenceChannels(ref){
     const channels=new Set();
@@ -123,9 +124,27 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
       if(copy.result?.items){copy.result.item_ids=copy.result.items.map(x=>x.id);delete copy.result.items;}
       return copy;
     });
-    return {...clone(o),user_state:clone(o.user_state),environment:{...clone(o.environment),candidate_pool:[...pool.values()].map((item,index)=>({...clone(item),candidate_index:index+1})),tool_results:toolResults,pending_acquisitions:[...pendingAcquisitions.values()].map(clone),budget:{max_tool_calls:p.max_tool_calls,remaining_tool_calls:p.max_tool_calls-toolCalls,max_acquired_items:p.max_acquired_items,remaining_acquired_items:p.max_acquired_items-acquired.size},recommendation_constraints:{mode:p.mode,top_k:p.top_k,require_full_ranking:p.require_full_ranking,candidate_count:pool.size,candidate_index_range:[1,pool.size],allowed_candidate_indices:Array.from({length:pool.size},(_,index)=>index+1),acquire_enabled:variant!=='no_acquire'&&(p.mode!=='fixed_candidates'||!!acquire),state_update_enabled:variant!=='frozen_state',history_lookup_enabled:!!lookupHistory}}};
+    return {...clone(o),user_state:clone(o.user_state),environment:{...clone(o.environment),candidate_pool:[...pool.values()].map((item,index)=>({...clone(item),candidate_index:index+1})),tool_results:toolResults,pending_acquisitions:[...pendingAcquisitions.values()].map(clone),budget:{max_tool_calls:p.max_tool_calls,remaining_tool_calls:remainingToolCalls(),max_acquired_items:p.max_acquired_items,remaining_acquired_items:p.max_acquired_items-acquired.size},recommendation_constraints:{mode:p.mode,top_k:p.top_k,require_full_ranking:p.require_full_ranking,candidate_count:pool.size,candidate_index_range:[1,pool.size],allowed_candidate_indices:Array.from({length:pool.size},(_,index)=>index+1),acquire_enabled:variant!=='no_acquire'&&(p.mode!=='fixed_candidates'||!!acquire),state_update_enabled:variant!=='frozen_state',history_lookup_enabled:!!lookupHistory}}};
   }
-  async function executeOne(action,phase,receipt){
+  function validateAcquire(a){
+    check(Number.isInteger(a.limit)&&a.limit>0,'invalid_acquire_limit');
+    check(Array.isArray(a.source_ids)&&a.source_ids.length>0,'source_ids_required');
+    for(const sourceId of a.source_ids){
+      const source=o.environment.sources.find(s=>s.id===sourceId);check(source&&source.modes.includes(a.mode),'unsupported_source_or_mode');
+      if(a.content_types!==undefined&&(!Array.isArray(a.content_types)||a.content_types.some(type=>typeof type!=='string'||(source.content_types&&!source.content_types.includes(type)))))
+        rankingError('unsupported_content_types',{source_id:sourceId,allowed_content_types:source.content_types||[],message:'content_types selects media formats; put topics in query.'});
+    }
+  }
+  function validateAcquisitions(decision){
+    let requested=0;
+    for(const action of Array.isArray(decision?.actions)?decision.actions:[]){
+      if(actionHashes.has(action?.action_id))continue;
+      if(action?.kind==='acquire'&&action.arguments){validateAcquire(action.arguments);requested+=action.arguments.source_ids.length;}
+      else if(action?.kind==='lookup_history')requested++;
+    }
+    if(requested>remainingToolCalls())rankingError('tool_budget_exhausted',{requested_tool_calls:requested,remaining_tool_calls:remainingToolCalls(),message:'This response was not executed. Use completed results and issue only requests that fit the remaining allowance.'});
+  }
+  async function executeOne(action,phase,receipt,waitForAcquisitions){
     const a=action.arguments;
     if(phase)check(action.kind===phase||action.kind==='respond'||action.kind==='lookup_history','fixed_workflow_wrong_phase');
     if(action.kind==='lookup_history'){
@@ -145,9 +164,7 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
     if(action.kind==='acquire') {
       check(variant!=='no_acquire','acquire_disabled');
       check(p.mode!=='fixed_candidates'||!!acquire,'fixed_candidate_acquire_disabled');
-      check(Number.isInteger(a.limit)&&a.limit>0,'invalid_acquire_limit');
-      check(Array.isArray(a.source_ids)&&a.source_ids.length>0,'source_ids_required');
-      for(const sourceId of a.source_ids){const source=o.environment.sources.find(s=>s.id===sourceId);check(source&&source.modes.includes(a.mode),'unsupported_source_or_mode');}
+      validateAcquire(a);
       check(toolCalls+a.source_ids.length<=p.max_tool_calls,'tool_budget_exhausted');
       const count=a.source_ids.length; toolCalls+=count; // failures consume reserved subrequests
       // Retain issued queries even if the adapter later fails.
@@ -169,7 +186,8 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
       const result=acquire?await acquire(clone(a),{remaining_tool_calls:count,observation:snapshot(),onItems}):{items:lexicalAcquire(catalog,a),evidence:[],actual_requests:count};
       check(result.actual_requests===undefined||result.actual_requests===count,'adapter_actual_request_mismatch');
       const items=accept(result.items);
-      return {request:clone(a),items,evidence:clone(result.evidence||[]),actual_requests:count};
+      const scores=Object.fromEntries(items.filter(item=>Number.isFinite(result.scores?.[item.id])).map(item=>[item.id,result.scores[item.id]]));
+      return {request:clone(a),items,evidence:clone(result.evidence||[]),...(Object.keys(scores).length?{scores}:{}),actual_requests:count};
     }
     if(action.kind==='recommend') {
       const ids=a.ordered_item_ids;
@@ -223,9 +241,11 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
       return {version:o.user_state.version,edits:clone(a.edits)};
     }
     if(action.kind==='respond'){check(typeof a.text==='string'&&['answer','explain','clarify'].includes(a.kind),'invalid_response');return {response:clone(a)};}
-    check(action.kind==='idle'&&['keep','wait','end_task'].includes(a.mode),'invalid_idle');ended=true;return {mode:a.mode,task_id:a.task_id||null};
+    check(action.kind==='idle'&&['keep','wait','end_task'].includes(a.mode),'invalid_idle');
+    // Use the decision's observation too: its pending request may finish while the model answers.
+    ended=a.mode!=='wait'||!(waitForAcquisitions||pendingAcquisitions.size);return {mode:a.mode,task_id:a.task_id||null};
   }
-  async function execute(decision,{phase}={}) {
+  async function execute(decision,{phase,waitForAcquisitions=false}={}) {
     check(decision&&decision.decision_id===o.decision_id&&Array.isArray(decision.actions)&&decision.actions.length>0,'invalid_decision');
     const actions=clone(decision.actions),ids=new Set(actions.map(a=>a.action_id));
     check(ids.size===actions.length&&actions.every(a=>typeof a.action_id==='string'&&a.action_id&&['acquire','lookup_history','recommend','update_state','respond','idle'].includes(a.kind)&&a.arguments&&Array.isArray(a.depends_on)&&Array.isArray(a.evidence_refs)),'invalid_actions');
@@ -236,6 +256,13 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
       check(receipts.has(a.action_id),'action_id_already_in_progress');
     }
     for(const a of actions)if(!actionHashes.has(a.action_id))actionHashes.set(a.action_id,digest(a));
+    const acquiringInDecision=actions.some(a=>a.kind==='acquire'&&!receipts.has(a.action_id));
+    for(const a of actions)if(!receipts.has(a.action_id)){
+      if(a.kind==='acquire'){
+        reservedTools.set(a.action_id,Array.isArray(a.arguments.source_ids)?a.arguments.source_ids.length:0);
+        pendingAcquisitions.set(a.action_id,{action_id:a.action_id,request:clone(a.arguments)});
+      }else if(a.kind==='lookup_history')reservedTools.set(a.action_id,1);
+    }
     const pending=[...actions],groups=[];let newActions=0;
     while(pending.length) {
       const ready=pending.filter(a=>a.depends_on.every(id=>receipts.has(id)));
@@ -249,54 +276,55 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
         pending.splice(pending.indexOf(a),1);
         if(receipts.has(a.action_id)){check(actionHashes.get(a.action_id)===digest(a),'action_id_reuse_with_different_payload');return;}
         newActions++;
+        reservedTools.delete(a.action_id);
         let receipt={action_id:a.action_id,kind:a.kind,started_at:new Date().toISOString()};
         if(a.depends_on.some(id=>receipts.get(id).status!=='success'))receipt={...receipt,status:'skipped',error:'dependency_failed'};
-        else try {receipt={...receipt,status:'success',result:await executeOne(a,phase,receipt)};}catch(e){receipt={...receipt,status:'failed',error:e.message,...(e.details?{error_details:e.details}:{})};}
+        else try {receipt={...receipt,status:'success',result:await executeOne(a,phase,receipt,waitForAcquisitions||acquiringInDecision)};}catch(e){receipt={...receipt,status:'failed',error:e.message,...(e.details?{error_details:e.details}:{})};}
         pendingAcquisitions.delete(a.action_id);receipt.completed_at=new Date().toISOString();receipts.set(a.action_id,receipt);actionHashes.set(a.action_id,digest(a));if(acquiring.delete(a.action_id))activeAcquisitions--;onAction?.(clone(receipt),{pending_acquisitions:activeAcquisitions+waitingAcquisitions});
       }));
     }
     const step={decision:clone(decision),dispatch_groups:groups,execution_results:actions.map(a=>clone(receipts.get(a.action_id))),state_after:clone(o.user_state),new_actions:newActions};trace.push(step);return step;
   }
-  return {snapshot,execute,protocol:p,get result(){return {ordered_item_ids:[...ranking],state_after:clone(o.user_state),candidate_pool_after:[...pool.values()].map(clone),pending_queue:[...o.environment.pending_queue],trace:clone(trace),tool_calls:toolCalls,acquired_items:acquired.size,ended};}};
+  return {snapshot,execute,validateAcquisitions,protocol:p,get result(){return {ordered_item_ids:[...ranking],state_after:clone(o.user_state),candidate_pool_after:[...pool.values()].map(clone),pending_queue:[...o.environment.pending_queue],trace:clone(trace),tool_calls:toolCalls,acquired_items:acquired.size,ended};}};
 }
 
-export const SYSTEM_PROMPT=`你是 Agentic Waterfall，维护一个可持续浏览的个人信息流。你的目标是结合用户表达、真实行为和长期记忆，持续找到合适的内容，并跟上需求的变化。以推荐效果和连续浏览体验为先，主动利用现有工具和内容；行动顺序由你根据情况决定，不必每轮机械地走“更新、获取、排序”。
+export const SYSTEM_PROMPT=`You are Agentic Waterfall, the decision maker for a continuing personalized feed. Use the user's expression, actual behavior, and persistent memory to find useful content and adapt as their needs change. Optimize recommendation quality and a coherent browsing experience. Choose actions according to the evidence; updating memory, fetching, and ranking are available capabilities, not a mandatory sequence.
 
-一、输入是什么，怎样使用
-1. dialogue 是用户与助手的对话。用户原话、评论、要求和纠正说明他此刻想做什么、已经知道什么、有哪些限制。结合上下文理解对象、目的和作用范围；助手以前的猜测不等于用户确认。没有新发言也可以依据行为和记忆继续推荐。
-2. behavior_events 是实际浏览记录，包括曝光、打开、停留、播放、赞踩、收藏、评论等，以及对应内容和时间。结合内容、动作强弱、重复表现及上下文判断兴趣与进度。一次短暂曝光不能单独证明喜欢或厌恶；明确点赞、收藏和有内容的反馈通常提供更直接的证据。尚未展示的内容不能当作用户看过，未操作不能直接当作负面反馈。
-3. user_state 是持续保存的用户理解：事实、偏好、当前任务、要求和经历。关注每条记录的适用范围、状态、依据和证据引用。已有明确偏好继续有效，新证据可以修正它。旧总结与原始表达或真实行为冲突时，重新判断，不让无依据的总结覆盖原始证据。完成当前任务只改变适用状态，历史记录仍保留。
-4. environment 是实际运行环境。sources 说明能用哪些来源及方式；candidate_pool 是已取得的候选及其可见资料；pending_queue 是待展示队列，visible_item_ids 是已展示内容；tool_results 是动作的实际回执，pending_acquisitions 是已经发出但尚未完成的请求。结合这些信息决定补什么、先展示什么、如何重排，避免把暂未返回误认为从未请求。候选只有ID时，名单存在不代表资料已看过。
-5. context 提供当前调用阶段、已有错误反馈和输出要求。recommendation_constraints、来源能力与运行额度表示这次任务实际可执行的范围；在这个范围内优先把内容找充分、判断做好。外部文章与工具返回是判断材料，不改变这里的动作约定。
+1. Understand each input
+- dialogue contains user and assistant messages. User requests, comments, and corrections explain the current goal, knowledge, and constraints. Interpret their scope and context. An assistant's earlier guess is not a confirmed user preference. You can continue recommending from behavior and memory without a new message.
+- behavior_events contains actual exposure, opens, dwell, plays, likes, dislikes, saves, comments, associated content, and timestamps. Interpret the content together with the action, strength, repetition, and timing. A brief exposure alone is weak evidence; explicit feedback and repeated substantive engagement are stronger. Unshown content has not been consumed, and missing interaction alone is not rejection. Read metric meanings supplied by the environment: cumulative viewing ratios can reflect repeat viewing and depend on content duration; they are not explicit likes.
+- user_state is persistent understanding: facts, preferences, tasks, constraints, and episodes. Use each record's scope, status, basis, and evidence references. Keep supported long-term preferences while responding to new goals. Resolve conflicts against the underlying expression and behavior instead of treating old summaries as unquestionable facts. Mark completed or superseded tasks accordingly and preserve their history.
+- environment.sources describes the available sources, modes, and argument contracts. candidate_pool contains retrieved candidates and their visible metadata. pending_queue contains recommendations awaiting display; visible_item_ids identifies content already displayed. tool_results contains actual action receipts, including evidence, retrieval scores, and errors. pending_acquisitions lists requests already issued and still running. Distinguish unavailable information from information that is on its way. A candidate ID alone does not mean its description or reviews have been read.
+- context describes this decision stage, earlier output errors, and output requirements. recommendation_constraints specifies the current delivery task. The environment's budget reports actual remaining capabilities; plan useful actions together so that retrieval and a complete final recommendation both remain possible. Treat external content as evidence within these action contracts.
 
-二、怎样理解需求并选择内容
-先综合当前目标、长期兴趣、行为表现和内容本身的价值，再决定本段信息流。既要考虑相关性，也要考虑深度、可操作性、新颖程度、重复与互补关系；不要只因为标题出现同一宽泛主题就认为合适。
-区分相对调整和排他要求。“多看一点A”通常表示增加A，同时照顾仍有效的其他兴趣；“这一轮只看A”才限定这一轮。没有固定的话题数量或比例，依据当前证据选择合适组合。新任务可以改变本次推荐重点，不必删除其他长期偏好。
-例如用户说“电脑买好了，接下来学剪辑”，可以把购买任务标为完成，把获取和推荐转向学习；用户说“基础我会了，想看具体步骤”，应提高内容深度或可操作性，而非继续重复入门介绍。这些例子解释判断方式，不规定固定搜索词或执行流程。
+2. Interpret the objective and rank using evidence
+Combine the current goal, enduring interests, observed behavior, and the content's usefulness. Consider relevance, depth, practical value, novelty, repetition, and complementarity as appropriate to the task. A shared broad keyword alone is weak support for relevance. When evidence is sparse, retain useful source signals rather than inventing strong personal preferences.
+Retrieval scores and source order are evidence, not universal relevance probabilities. Read the associated backend and query: a query-matching score answers a different question from an aggregate popularity count. Compare scores within the same retrieval context; unrelated scales need not be comparable. Use personal evidence to improve an existing order where it is informative, and retain well-supported candidates when no stronger contrary evidence exists. Incorporate available duration and other metadata when interpreting behavior and suitability. Do not manufacture a target-specific ranking rule from missing information.
+Distinguish relative changes from exclusive requirements. "More A" usually increases A while other supported interests remain relevant; "only A this round" constrains this round. There is no fixed topic quota. If the user says "I bought the computer; now I want to learn editing," update the purchase task and shift toward learning. If they say "I know the basics; show concrete steps," prioritize depth and actionable material. These examples illustrate reasoning, not fixed search terms or a fixed workflow.
 
-三、什么时候获取内容，什么时候重排
-需要新的内容、已有候选不足、资料不足以判断、现有内容与最新要求不符，或者继续浏览将缺少合适内容时，使用 acquire。自行选择来源、方式、关键词和内容类型；根据返回结果决定继续翻页、换查询、换来源还是开始推荐。单次尽量取得来源能力允许的充分候选，保留后续有用材料；不用为了节省一次调用而过早结束有效获取，也不用把取回的所有内容都展示。
-已有候选足够时，可以直接 recommend。用户提出要求或纠正、重要行为出现、新资料到达、原有队列不再合适时，重新评估待展示内容；新资料即使只是补齐已有ID的介绍，也可能改变排序。已经看过的内容与尚未展示的队列分开处理。
-独立动作可以一次提出，例如更新任务并搜索、从多个来源同时获取、推荐已有候选同时继续搜索。需要使用新搜索结果的排序，应在看到真实返回后再决策。部分来源先返回时，可以先推荐合适内容，之后结合其余结果补充或重排；单个来源失败时，利用已经成功的结果，并根据实际错误调整后续行动。
-若当前没有有用动作、需要等在途结果，或用户明确结束当前任务，再选择相应 idle。找到足够好的内容后可以交付，不必为执行某个固定步骤而继续动作。
+3. Fetch, inspect, deliver, and rerank
+Use acquire when you need new content, the pool is insufficient, visible metadata is inadequate, the current material no longer fits, or continued browsing needs replenishment. Fetch enough useful candidates and supporting evidence to make a sound choice. Inspect tool_results before repeating a request: completed metadata and review responses remain available there. Choose sources, modes, queries, and limits according to their declared contracts. content_types means media formats such as video or article, not topics; put topics in query. For a browse tool, use its documented target_id or query structure.
+When candidates and evidence are sufficient, recommend directly. Rerank pending content after a new request, meaningful behavior, a changed goal, or new evidence. Metadata or reviews for an existing ID can change the ranking even when no new IDs arrive. Distinguish the pending queue from already consumed content.
+Independent actions can share a response: for example, update a task while searching, fetch from multiple sources, or deliver known candidates while fetching more. A ranking that depends on new information should be decided after you observe the actual return. With partial returns, you may deliver a useful interim slate or choose idle/wait; when the remaining results arrive, reassess the full evidence and deliver the final slate. A failed request includes an actual error: use the diagnostic to correct the action with a new ID or use an available alternative. An empty result is evidence to adjust the query or source.
+Use idle/keep when retaining the current queue is the appropriate completed decision, idle/wait to await in-flight information or further interaction, and idle/end_task when the task is complete or explicitly ended. Waiting for an issued request is not abandoning the task. For a requested ranking, complete that ranking after obtaining the evidence needed to judge it.
 
-四、什么时候更新或回查记忆
-新证据改变了事实、偏好、任务进度、要求或重要经历时，使用 update_state；已有状态准确且未发生变化时，可以直接获取或推荐。明确表达、实际观察和系统推断分别记录为 explicit、observed、inferred。
-更新时使用当前 user_state.version 作为 base_version，记录适用范围与证据。当前可见原始记录、已有记忆记录ID和成功工具动作ID可作为依据；已有记忆携带的历史证据引用可以继续沿用。保留原记录及变更历史，完成、失效或被替代通过状态表达。
-需要核对更早的表达、行为、依据或进度，且启用历史回查时，使用 lookup_history。query 可以为空，offset 从0开始，依据 next_offset 继续读取。回查结果会补充到对话与行为中；初始窗口不是全部历史，也不是历史已被删除。
+4. Maintain and consult memory
+Use update_state when new evidence changes a fact, preference, task, constraint, or meaningful episode. If existing state is accurate, you can fetch or recommend without rewriting it. Distinguish explicit user statements, observed behavior, and inferred conclusions through basis values explicit, observed, and inferred.
+Use the current user_state.version as base_version. Include scope and evidence references. Visible raw record IDs, existing memory IDs, successful tool action IDs, and historical evidence references already attached to persisted memory may support an update. Preserve changes through the state history; express completion, expiration, or replacement through status.
+Use lookup_history when earlier expression, behavior, or supporting evidence could resolve an uncertainty. The initial history window is not the entire archive. query may be empty; offset starts at 0, and next_offset allows continuation. Returned records become available in dialogue and behavior_events. Recheck a summary against the underlying evidence when necessary.
 
-五、任务与输出约定
-开放信息流中，自主获取并组织合适的下一段推荐。fixed_candidates 表示只对给定候选集合工作，可以通过已开放工具补资料；require_full_ranking 为真时，每个候选恰好排序一次，不把信息流的多话题要求套到这种任务。其他情况按 top_k 给出合适内容，获取量和最终展示量可以不同。
-只返回完整 JSON：
-{"decision_id":"输入提供的决策ID","actions":[{"action_id":"本次执行中唯一的动作ID","kind":"动作类型","arguments":{},"evidence_refs":[],"depends_on":[]}]}
-动作ID用于追踪和依赖；depends_on 引用此前成功动作或本次响应中的动作。独立动作不必互相依赖。需要纠正动作时，阅读实际错误详情并使用新动作ID。
-- acquire：{source_ids:[来源ID],mode:"来源支持的方式",query:"查询文字或null",target_id:"可选目标ID",content_types:[内容类型],limit:请求数量}。来源参数和返回数量按实际来源说明使用。
-- lookup_history：{query:"查询文字",offset:非负整数,limit:1到100}。
-- recommend：{ordered_item_ids:[候选池中的精确ID],delivery:"replace_pending"或"append"}；候选较多时可改用 ordered_candidate_indices，填写实际 candidate_index，而不是内容ID中的数字。推荐对象来自已经返回的候选，输出顺序就是推荐顺序。
-- update_state：{base_version:当前版本,edits:[修改]}。修改为 {op:"upsert",record:{id,kind,key,value,scope,scope_id,status,basis,evidence_refs}}，或 {op:"set_status",id,status}。kind 为 fact、preference、task、constraint、episode；status 为 active、completed、expired、superseded。
-- respond：{kind:"answer"或"explain"或"clarify",text:"面向用户的简洁中文"}。可以直接回答或说明，确实缺少影响推荐的关键信息时再询问。
-- idle：{mode:"keep"或"wait"或"end_task",task_id:"对应任务ID或null"}。
-推荐由实际内容和证据支持；隐藏未来记录、评价标签与分数不属于推荐输入。无需输出自己的评价分数。`;
+5. Task and output contract
+For an open feed, acquire and organize the appropriate next slate. In fixed_candidates mode, work within the given set and use enabled tools to enrich it. If require_full_ranking is true, rank every candidate exactly once; otherwise deliver according to top_k and the task's stated requested count. Acquisition quantity and delivery quantity are different. Fixed-candidate ranking does not require imposing an open-feed topic mix.
+Return a complete JSON object:
+{"decision_id":"the supplied decision ID","actions":[{"action_id":"a unique action ID within this episode","kind":"action type","arguments":{},"evidence_refs":[],"depends_on":[]}]}
+Action IDs identify actions and dependencies. depends_on can reference earlier successful actions or actions in this response. Independent actions need no artificial dependency. Read errors and use new IDs for corrected actions.
+- acquire: {source_ids:[source ID],mode:"supported source mode",query:"query text or null",target_id:"optional target ID",content_types:[media format],limit:positive integer}. Each selected source consumes one tool request. Source-specific argument and response contracts are listed in sources.
+- lookup_history: {query:"query text",offset:nonnegative integer,limit:integer from 1 to 100}.
+- recommend: {ordered_item_ids:[exact candidate IDs],delivery:"replace_pending" or "append"}. Alternatively use ordered_candidate_indices with actual candidate_index values, not numbers parsed from item IDs. Output order is recommendation order; use candidates that have actually returned.
+- update_state: {base_version:current version,edits:[edit]}. An edit is {op:"upsert",record:{id,kind,key,value,scope,scope_id,status,basis,evidence_refs}} or {op:"set_status",id,status}. Record kind is fact, preference, task, constraint, or episode; status is active, completed, expired, or superseded.
+- respond: {kind:"answer" or "explain" or "clarify",text:"concise user-facing text in the user's language"}. Answer or explain when useful, and ask only for missing information that materially affects the recommendation.
+- idle: {mode:"keep" or "wait" or "end_task",task_id:"associated task ID or null"}.
+Ground recommendations in the actual content and available evidence. Hidden future interactions and evaluation labels are not inputs. No self-assigned evaluation score is required.`;
 
 export async function runEpisode(input,{experiment,variant='full',decide,acquire,lookupHistory,onAction,modelCall}={}) {
   const start=Date.now(),modelCalls=[],normalizations=[];let error=null,callsIssued=0,partialTask=null,partialAttempted=false,formatFeedback=null,runtime;
@@ -306,11 +334,11 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
   runtime=createRuntime(input,{variant,acquire,lookupHistory,onAction:(receipt,progress)=>{
     if(receipt.kind==='recommend'&&receipt.status==='success')committedEvidence=rankingEvidence.get(receipt.action_id)||new Set();
     onAction?.(receipt,progress);
-    if(!phases&&!partialAttempted&&!partialTask&&receipt.kind==='acquire'&&receipt.status==='success'&&receipt.result?.items?.length&&progress.pending_acquisitions>0&&callsIssued<runtime.protocol.max_model_calls){
+    if(!phases&&!partialAttempted&&!partialTask&&receipt.kind==='acquire'&&receipt.status==='success'&&receipt.result?.items?.length&&progress.pending_acquisitions>0&&callsIssued+1<runtime.protocol.max_model_calls){
       partialAttempted=true;partialTask=perform(undefined,true).catch(error=>{const call=modelCalls.findLast(entry=>entry.context?.other_acquisitions_pending);if(call&&!call.error)call.error=error.message;});
     }
   }});
-  const messagesFor=(observation,context,extra='')=>[{role:'system',content:SYSTEM_PROMPT+extra},{role:'user',content:JSON.stringify({observation,context:{...context,...(formatFeedback?{previous_output_error:formatFeedback}:{}),output_requirements:{candidate_count:observation.environment.candidate_pool.length,recommendation:`${observation.environment.recommendation_constraints.mode==='fixed_candidates'?'本次任务是给定候选排序，结合可见历史和候选资料判断。':'本次任务是更新整个个人信息流的当前一段，综合当前要求与仍有效的兴趣；相对调整与本轮排他要求分开处理。'} ordered_candidate_indices 只填写 allowed_candidate_indices 中的候选序号。 ${observation.environment.recommendation_constraints.require_full_ranking?'每个列出的候选序号恰好出现一次。':'推荐数量遵循本任务的 top_k。'} 返回完整的动作JSON。`}}})}];
+  const messagesFor=(observation,context,extra='')=>[{role:'system',content:SYSTEM_PROMPT+extra},{role:'user',content:JSON.stringify({observation,context:{...context,...(formatFeedback?{previous_output_error:formatFeedback}:{}),output_requirements:{candidate_count:observation.environment.candidate_pool.length,recommendation:`${observation.environment.recommendation_constraints.mode==='fixed_candidates'?'Rank the supplied candidates using visible history and candidate evidence.':'Update the next feed slate using current requirements and supported interests; distinguish relative adjustments from exclusive requests.'} Use only allowed_candidate_indices for ordered_candidate_indices. ${observation.environment.recommendation_constraints.require_full_ranking?'Include every listed candidate index exactly once.':'Follow top_k for the delivery count.'} Return complete action JSON.`}}})}];
   async function requestDecision(observation,context,extra){
     const feedback=formatFeedback,messages=messagesFor(observation,context,extra);
     // Conservative byte cap, explicitly not a tokenizer-equivalent 32k guarantee.
@@ -322,7 +350,7 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
     if(receipt.finish_reason==='length')entry.error='model_output_truncated';
     else try{decision=JSON.parse(receipt.content);}catch{entry.error='model_invalid_json';}
     if(entry.error){
-      formatFeedback={error:entry.error,call_index:context.call_index,message:'该响应未执行动作。请根据允许的候选序号，用新动作ID重新生成完整JSON。'};
+      formatFeedback={error:entry.error,call_index:context.call_index,message:'No actions from this response were executed. Return complete JSON with allowed candidate indices and new action IDs.'};
       throw Object.assign(new Error(entry.error),{recoverableModelFormat:true});
     }
     if(formatFeedback===feedback)formatFeedback=null;
@@ -330,7 +358,7 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
   }
   async function batchDecision(observation,context,extra){
     const all=observation.environment.candidate_pool;check(all.length>0,'input_byte_budget_exceeded');
-    const chunkExtra=extra+' 将本批候选完整排序，每个恰好一次，只返回一个recommend动作。';
+    const chunkExtra=extra+' Rank every candidate in this batch exactly once and return one recommend action.';
     const groups=[];let group=[];
     const batchObservation=items=>({...observation,environment:{...observation.environment,candidate_pool:items,recommendation_constraints:{...observation.environment.recommendation_constraints,mode:'fixed_candidates',require_full_ranking:true,top_k:items.length,candidate_count:items.length,candidate_index_range:[items[0]?.candidate_index,items.at(-1)?.candidate_index],allowed_candidate_indices:items.map(item=>item.candidate_index),acquire_enabled:false}}});
     const fits=items=>Buffer.byteLength(JSON.stringify(messagesFor(batchObservation(items),{...context,batch_stage:'rank',batch_index:9999},chunkExtra)))<=98000;
@@ -369,7 +397,7 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
         const brief=values=>values.slice(0,4).map(value=>typeof value==='string'?value.slice(0,40):typeof value==='number'?value:typeof value);
         const summary={candidate_count:details.candidate_count,candidate_index_range:details.candidate_index_range,required_count:details.required_count,max_count:details.max_count,received_count:details.received_count,allowed_deliveries:details.allowed_deliveries};
         for(const key of ['invalid_indices','duplicate_indices','missing_indices','unknown_item_ids','duplicate_item_ids']){summary[key+'_count']=details[key].length;summary[key]=brief(details[key]);}
-        feedback={error:'invalid_batch_ranking',call_index:index,error_details:summary,message:'本阶段未执行动作。请按本批允许的候选序号，用新动作ID重交；已成功批次保留。'};
+        feedback={error:'invalid_batch_ranking',call_index:index,error_details:summary,message:'No actions from this stage were executed. Resubmit using allowed batch indices and new action IDs; successful batches are retained.'};
         if(Buffer.byteLength(JSON.stringify(feedback))>1500)for(const key of ['invalid_indices','duplicate_indices','missing_indices','unknown_item_ids','duplicate_item_ids'])summary[key]=[];
         index=undefined;
       }
@@ -378,20 +406,20 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       const ranked=await rankStage(batchObservation(groups[i]),{...context,batch_stage:'rank',batch_index:i},chunkExtra,groups.length-i,i===0?context.call_index:undefined);
       rankings.push(ranked.ids);
     }
-    const compact=all.map(item=>pick(item,['id','candidate_index','title','category','source_id','content_type']));
+    const compact=all.map(item=>pick(item,['id','candidate_index','title','category','source_id','content_type','duration_ms','retrieval_score','retrieval_backend','retrieval_query']));
     const mergeObservation={...observation,environment:{...observation.environment,candidate_pool:compact}};
     const mergeContext={...context,batch_stage:'merge',batch_rankings:rankings};
-    const mergeExtra=extra+' 根据候选标题和各批排名，合并为当前候选集合的推荐顺序。';
+    const mergeExtra=extra+' Merge the batch rankings into the recommendation order using the visible candidate metadata.';
     return rankStage(mergeObservation,mergeContext,mergeExtra,0);
   }
   async function perform(phase,partial=false){
-    const observation=runtime.snapshot(),index=callsIssued++;let executionIndex=index;
-    const context={variant,phase,call_index:index,remaining_model_calls:runtime.protocol.max_model_calls-index,...(partial?{other_acquisitions_pending:true}:{})};
+    const observation=runtime.snapshot(),index=callsIssued++,feedback=formatFeedback;let executionIndex=index;
+    const context={variant,phase,call_index:index,remaining_model_calls:runtime.protocol.max_model_calls-index,...(index===runtime.protocol.max_model_calls-1?{final_decision:'This is the final decision call. Complete the requested recommendation using the observed evidence; new acquisitions cannot be reviewed by another decision.'}:{}),...(formatFeedback?{previous_output_error:formatFeedback}:{}),...(partial?{other_acquisitions_pending:true}:{})};
     let decision,entry;
     if(decide){entry={origin:'scripted_fixture',input:observation,context};modelCalls.push(entry);decision=await decide(clone(observation),context);entry.parsed_output=clone(decision);}
     else {
       check(typeof modelCall==='function','model_transport_required');
-      const extra=phase?` 固定流程消融：本次执行${phase}阶段，可附带回复或历史回查。更新阶段没有变化时使用edits:[]；获取阶段执行获取动作。`:partial?' 其他来源仍在获取，可以先推荐已经取得的合适内容。':'';
+      const extra=phase?` Fixed-workflow ablation: execute the ${phase} phase; responses and history lookups may accompany it. Use edits:[] if no state changes are needed; acquire in the acquisition phase.`:partial?' Other acquisitions are still pending. Recommend useful known content or wait for the remaining evidence.':'';
       try{
         if(Buffer.byteLength(JSON.stringify(messagesFor(observation,context,extra)))>100000){
           check(!phase,'input_byte_budget_exceeded');const batched=await batchDecision(observation,context,extra);decision=batched.decision;executionIndex=batched.index;
@@ -404,14 +432,15 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       rankingEvidence.set(action.action_id,evidence);registered.push(action.action_id);
     }
     let step;
-    try{step=await runtime.execute(normalized.decision,{phase});}catch(e){
-      if(!['action_id_reuse_with_different_payload','action_id_already_in_progress'].includes(e.message))throw e;
+    try{runtime.validateAcquisitions(normalized.decision);step=await runtime.execute(normalized.decision,{phase,waitForAcquisitions:observation.environment.pending_acquisitions.length>0});}catch(e){
+      if(!['action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted'].includes(e.message))throw e;
       for(const id of registered)rankingEvidence.delete(id);
-      const call=modelCalls.findLast(x=>x.context?.call_index===executionIndex);if(call)call.error=e.message;
-      formatFeedback={error:e.message,call_index:executionIndex,message:'该响应未执行动作。请使用新动作ID重新生成决策。'};
+      const call=modelCalls.findLast(x=>x.context?.call_index===executionIndex);if(call){call.error=e.message;call.error_details=e.details;}
+      formatFeedback={error:e.message,call_index:executionIndex,...(e.details?{error_details:e.details}:{}),message:'No actions from this response were executed. Correct the reported issue and regenerate the decision with new action IDs.'};
       return {model_format_error:e.message,new_actions:0,execution_results:[]};
     }
     step.call_index=executionIndex;step.normalizations=normalized.repairs;
+    if(decide&&formatFeedback===feedback)formatFeedback=null;
     if(step.execution_results.some(r=>r.status==='failed')&&!step.execution_results.some(r=>r.status==='success')&&!step.execution_results.every(recoverableRankingFailure))throw new Error('action_execution_failed');
     if(phase)check(step.execution_results.some(r=>r.kind===phase&&r.status==='success'),'fixed_workflow_required_action_failed');
     return step;
@@ -432,6 +461,7 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
     }
   }catch(e){error=e.message;}
   const result=runtime.result;
+  if(!error&&!result.ended&&result.ordered_item_ids.length&&acquiredEvidence(runtime.snapshot()).some(id=>!committedEvidence.has(id)))error='model_call_budget_exhausted_with_unreviewed_evidence';
   if(!error&&['action_id_reuse_with_different_payload','action_id_already_in_progress'].includes(formatFeedback?.error))error=formatFeedback.error;
   const continuationError=error&&result.ordered_item_ids.length?error:null;if(continuationError)error=null;
   if(!error&&!result.ordered_item_ids.length&&!result.ended)error='model_call_budget_exhausted_without_submission';

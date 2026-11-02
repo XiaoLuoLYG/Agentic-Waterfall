@@ -9,10 +9,10 @@ LOCAL_CONTEXT_LIMITS={'input_byte_budget_exceeded','candidate_or_history_too_lar
 FIRST_EPISODE_POLICY='first-complete-episode-v2'
 METHOD_ERRORS=REJECTED_RESPONSE_ERRORS|LOCAL_CONTEXT_LIMITS|{
     'model_invalid_json','model_output_truncated','invalid_batch_ranking','invalid_batch_actions',
-    'model_call_budget_exhausted_without_submission','batch_model_budget_exhausted','no_progress',
+    'model_call_budget_exhausted_without_submission','model_call_budget_exhausted_with_unreviewed_evidence','batch_model_budget_exhausted','no_progress',
     'invalid_actions','invalid_dependency','dependency_cycle','invalid_ranking','invalid_candidate_indices',
     'unacquired_recommendation','incomplete_ranking','too_many_recommendations','invalid_delivery',
-    'invalid_acquire_limit','source_ids_required','unsupported_source_or_mode','invalid_frozen_search',
+    'invalid_acquire_limit','source_ids_required','unsupported_source_or_mode','unsupported_content_types','invalid_frozen_search',
     'tool_budget_exhausted','unique_acquisition_budget_exhausted','acquire_disabled','fixed_candidate_acquire_disabled',
     'state_evidence_missing','state_version_conflict','state_edits_required','record_id_required',
     'invalid_record_kind','invalid_record_status','state_record_missing','invalid_state_edit','state_update_disabled',
@@ -79,7 +79,7 @@ def failure_reason(result):
     if result.get('status')!='submitted':return result.get('error') or 'no_valid_submission'
     trace=result.get('trace',[])
     for call in result.get('model_calls',[]):
-        if call.get('error') not in {'model_invalid_json','model_output_truncated','invalid_batch_ranking','action_id_reuse_with_different_payload','action_id_already_in_progress'}:continue
+        if call.get('error') not in {'model_invalid_json','model_output_truncated','invalid_batch_ranking','action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted'}:continue
         index=call.get('context',{}).get('call_index')
         corrected=type(index) is int and any(type(step.get('call_index')) is int and step['call_index']>index and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in step.get('execution_results',[])) for step in trace)
         if not corrected:return call['error']

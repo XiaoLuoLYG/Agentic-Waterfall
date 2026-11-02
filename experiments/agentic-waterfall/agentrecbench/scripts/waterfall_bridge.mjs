@@ -14,9 +14,9 @@ export function makeInput(task,scenario,taskId){
     environment:{candidate_pool:task.candidate_list.map(id=>({id})),pending_queue:[],visible_item_ids:[],
       content_version:'AgentRecBench-288f7f09ca0387e5169a61b219047aea397e4b06',
       sources:[
-        {id:'get_user',modes:['browse'],description:'查询公开用户资料，target_id填写用户ID。返回资料在evidence中，不占新增候选数量；limit表示候选数量，不表示评论条数。状态依据可引用成功工具动作ID。',benchmark_task:{candidate_category:task.candidate_category,loc:task.loc}},
-        {id:'get_item',modes:['browse'],description:'查询一个候选的公开资料，target_id填写候选ID，limit通常为1；仅原候选ID参与排序。'},
-        {id:'get_reviews',modes:['browse'],description:'查询全部可见评论。query是只含user_id、item_id或review_id之一的JSON，例如 {"user_id":"用户ID"}。结果在evidence中，limit不限制评论条数；隐藏目标交互已屏蔽。状态依据引用成功工具动作ID，返回的review_id本身是来源元数据。'}
+        {id:'get_user',modes:['browse'],description:'Read public user metadata. Set target_id to the user ID and limit to 1. The result appears in evidence and adds no candidate IDs. Cite the successful action ID as evidence.',benchmark_task:{candidate_category:task.candidate_category,loc:task.loc}},
+        {id:'get_item',modes:['browse'],description:'Read one candidate metadata record. Set target_id to its exact candidate ID and limit to 1. The complete returned record remains in tool_results.evidence; rank only the original candidates.'},
+        {id:'get_reviews',modes:['browse'],description:'Read all visible reviews for one entity. query is a JSON string containing exactly one of user_id, item_id, or review_id, for example {"user_id":"the user ID"}. Results appear in evidence; limit does not truncate the review list. Held-out target interactions are masked. Cite the successful action ID; review_id is source metadata.'}
       ]}},protocol:{mode:'fixed_candidates',top_k:20,require_full_ranking:true,max_model_calls:4,
         max_tool_calls:22,max_acquired_items:20,max_output_tokens:4096},run_meta:{scenario,task_id:taskId,synthetic:false}};
 }

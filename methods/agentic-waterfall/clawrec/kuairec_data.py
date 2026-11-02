@@ -25,6 +25,10 @@ def convert_events(observation):
         if ratio is not None:
             if isinstance(ratio,bool) or not isinstance(ratio,(float,int)) or not math.isfinite(ratio):raise ValueError('invalid watch ratio')
             signals.append(f'watch_ratio={ratio}')
+        duration=payload.get('duration_ms')
+        if duration is not None:
+            if isinstance(duration,bool) or not isinstance(duration,(float,int)) or not math.isfinite(duration) or duration<=0:raise ValueError('invalid duration')
+            signals.append(f'duration_ms={duration}')
         events.append({'record_id':str(event['id']),'kind':'content_interest','session_id':str(observation['session_id']),
                        'ts_start_ms':milliseconds,'ts_end_ms':milliseconds,'platform':'kuairec','page_type':'video',
                        'content_key':f"kuairec:video:{event['item_id']}",'title':text,'canonical_url':'',
