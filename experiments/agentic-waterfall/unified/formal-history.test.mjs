@@ -60,3 +60,8 @@ test('explicit history pagination has no hidden byte cutoff and retains full rec
  assert.equal(new Set([...first.behavior_events,...second.behavior_events].map(x=>x.id)).size,130);
  assert([...first.behavior_events,...second.behavior_events].every(x=>x.text.length===2000));
 });
+
+test('preparation retains the original raw-history export audit',()=>{
+ const source=fixture(90);source.run_meta={history_protocol:{version:'raw-full',event_count:90,source_sha256:'source-audit',selection:'all raw rows'}};
+ const {input}=prepareHistory(source);assert.deepEqual(input.run_meta.source_history_protocol,source.run_meta.history_protocol);assert.equal(input.run_meta.history_protocol.omitted_visible_events,0);
+});

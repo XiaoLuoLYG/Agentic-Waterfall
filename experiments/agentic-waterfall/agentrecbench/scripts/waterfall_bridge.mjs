@@ -60,6 +60,21 @@ export async function preloadCandidateDetails(input,acquire){
   input.observation.environment.candidate_pool=items;
   input.run_meta={...input.run_meta,candidate_details:{policy:'preloaded_official_public_item_fields_v1',preloaded_requests:candidates.length,available_count:items.length-unavailable.length,unavailable_ids:unavailable}};
 }
+export async function preloadUserEvidence(input,acquire){
+  const observation=input.observation,userId=observation.user_id;
+  const userResponse=await acquire({source_ids:['get_user'],mode:'browse',target_id:userId,limit:1},{phase:'user_preload'});
+  const reviewResponse=await acquire({source_ids:['get_reviews'],mode:'browse',query:JSON.stringify({user_id:userId}),limit:1},{phase:'user_preload'});
+  const user=userResponse.evidence[0].result,reviews=reviewResponse.evidence[0].result;
+  if(!Array.isArray(reviews)||reviews.some(review=>typeof review.review_id!=='string'||review.user_id!==userId))throw Error('invalid_preloaded_user_reviews');
+  if(user!==null){
+    if(user.user_id!==userId)throw Error('user_metadata_identity_mismatch');
+    observation.user_state.records.push({id:`agentrecbench:user:${userId}`,kind:'fact',key:'public_user_metadata',value:structuredClone(user),scope:'user',scope_id:userId,status:'active',basis:'observed',source_channels:['independent_profile'],evidence_refs:[]});
+  }
+  observation.behavior_events.push(...reviews.map((review,index)=>({id:`agentrecbench:review:${userId}:${index}:${review.review_id}`,user_id:userId,item_id:review.item_id,type:'comment',source_channels:['behavior','expression'],payload:{review:structuredClone(review)}})));
+  observation.environment.sources.find(source=>source.id==='get_user').initial_evidence={available:user!==null,location:'user_state.records'};
+  observation.environment.sources.find(source=>source.id==='get_reviews').initial_evidence={visible_user_reviews:reviews.length,location:'behavior_events',complete:true};
+  input.run_meta={...input.run_meta,user_evidence:{policy:'all_official_visible_user_evidence_v1',preloaded_requests:2,user_available:user!==null,visible_review_count:reviews.length,omitted_reviews:0}};
+}
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const {values:v}=parseArgs({options:{task:{type:'string'},bundle:{type:'string'},'tool-url':{type:'string'},output:{type:'string'},scenario:{type:'string'},'task-id':{type:'string'},variant:{type:'string',default:'full'}}});
   for(const k of ['task','output','scenario','task-id'])if(!v[k])throw new Error(`--${k} required`);
@@ -77,9 +92,10 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   } else if(bundle.provenance?.synthetic!==false)throw new Error('real_run_requires_public_corpus_bundle');
   const input=makeInput(task,v.scenario,v['task-id']),toolCalls=[];
   const acquire=makeAcquire(bundle,task,toolCalls,remoteTool);
+  await preloadUserEvidence(input,acquire);
   await preloadCandidateDetails(input,acquire);
   const result=await runEpisode(input,{experiment:'agentrecbench',variant:v.variant,acquire,modelCall:callModel});
-  result.preparation_tool_calls=input.run_meta.candidate_details.preloaded_requests;
+  result.preparation_tool_calls=input.run_meta.candidate_details.preloaded_requests+input.run_meta.user_evidence.preloaded_requests;
   result.total_tool_calls=result.tool_calls+result.preparation_tool_calls;
   writeFileSync(v.output,JSON.stringify({input,result,benchmark_tool_calls:toolCalls},null,2)+'\n',{flag:'wx'});
   console.log(JSON.stringify({status:result.status,error:result.error,model_requests:result.model_request_count,tool_calls:toolCalls.length}));

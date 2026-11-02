@@ -7,9 +7,19 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {buildFormalAdapter} from './formal-adapters.mjs';
+import {makeInput,makeAcquire,preloadUserEvidence} from '../agentrecbench/scripts/waterfall_bridge.mjs';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const json = (path, value) => writeFileSync(path, JSON.stringify(value));
+test('preloaded user reviews preserve duplicate source IDs as distinct complete records',async()=>{
+ const task={user_id:'u',candidate_list:['i']},input=makeInput(task,'short_term','0');
+ const reviews=[{review_id:'same',user_id:'u',item_id:'i',text:'original',stars:2},{review_id:'same',user_id:'u',item_id:'i',text:'updated '+ 'x'.repeat(15000)+' END',stars:5}];
+ await preloadUserEvidence(input,makeAcquire({users:{},user_reviews:{u:reviews}},task,[]));
+ assert.deepEqual(input.observation.behavior_events.map(row=>row.payload.review),reviews);
+ assert.equal(new Set(input.observation.behavior_events.map(row=>row.id)).size,2);
+ assert.equal(input.run_meta.user_evidence.user_available,false);
+ assert.equal(input.observation.user_state.records.length,0);
+});
 test('AgentRecBench uses the existing disk index and never returns masked reviews', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'waterfall-formal-arb-'));
   t.after(() => rmSync(dir, {recursive: true, force: true}));
@@ -29,6 +39,9 @@ test('AgentRecBench uses the existing disk index and never returns masked review
   const adapter = await buildFormalAdapter({dataset: 'agentrecbench', root, domain: 'amazon', task_file: taskFile, task_dir: tasks, data_dir: data, index_file: index});
   assert.equal(adapter.input.observation.decision_id, 'agentrecbench:short_term:amazon:0');
   assert.equal(adapter.input.observation.environment.candidate_pool.length, 20);
+  assert.equal(adapter.input.observation.behavior_events.length,1,'The first decision must receive every visible user review');
+  assert.equal(adapter.input.observation.behavior_events[0].payload.review.text,'public review');
+  assert.equal(adapter.input.run_meta.user_evidence.preloaded_requests,2);
   const pool=adapter.input.observation.environment.candidate_pool;
   assert.equal(JSON.parse(pool[0].text).description.endsWith('END_OF_DESCRIPTION'),true);
   assert.equal(JSON.parse(pool.at(-1).text).metadata_status,'unavailable');
@@ -39,6 +52,8 @@ test('AgentRecBench uses the existing disk index and never returns masked review
   const {runEpisode}=await import('../../../demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs');
   const direct=await runEpisode(adapter.input,{decide:async observation=>{
     assert.equal(JSON.parse(observation.environment.candidate_pool[0].text).description.endsWith('END_OF_DESCRIPTION'),true);
+    assert.equal(observation.behavior_events[0].payload.review.text,'public review');
+    assert.equal(observation.user_state.records[0].value.name,'user');
     return {decision_id:observation.decision_id,actions:[{action_id:'rank',kind:'recommend',arguments:{ordered_item_ids:candidates,delivery:'replace_pending'},depends_on:[],evidence_refs:[]}]};
   }});
   assert.equal(direct.status,'submitted');

@@ -3,7 +3,7 @@ import {resolve, dirname, basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {makeInput, makeAcquire, preloadCandidateDetails} from '../agentrecbench/scripts/waterfall_bridge.mjs';
+import {makeInput, makeAcquire, preloadCandidateDetails, preloadUserEvidence} from '../agentrecbench/scripts/waterfall_bridge.mjs';
 import {sourceCoverage} from '../../../methods/agentic-waterfall/simbench/coverage.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -38,6 +38,7 @@ export async function buildFormalAdapter(task, previous = null) {
     input.run_meta.tool_backend = 'existing_target_masked_sqlite_index';
     const bundle = {users: {}, items: {}, reviews: {}, item_reviews: {}, user_reviews: {}};
     const acquire = makeAcquire(bundle, raw, toolCalls, async (tool, arguments_) => query({operation: 'agentrecbench', ...locations, tool, arguments: arguments_}));
+    await preloadUserEvidence(input,acquire);
     await preloadCandidateDetails(input,acquire);
     return {input, acquire, toolCalls};
   }

@@ -127,7 +127,7 @@ test('an injected model transport uses the same decision prompt and records the 
 test('an unknown recommendation ID is reported to the agent for a bounded correction',async()=>{
  let calls=0;const result=await runEpisode(input(),{modelCall:async request=>{
   const {observation:obs,context}=JSON.parse(request.messages[1].content);calls++;
-  if(context.call_index===1){assert(obs.environment.tool_results.some(x=>x.error_details?.unknown_item_ids?.includes('missing-id')));assert.match(request.messages[0].content,/Read errors/);}
+  if(context.call_index===1){assert.deepEqual(obs.environment.tool_results,[]);assert.equal(context.previous_output_error.error,'unacquired_recommendation');assert.deepEqual(context.previous_output_error.error_details.unknown_item_ids,['missing-id']);assert.match(request.messages[0].content,/Read errors/);}
   return {attempt_id:`attempt-${calls}`,content:JSON.stringify(decision([action(`rank-${calls}`,'recommend',{ordered_item_ids:[calls===1?'missing-id':'a'],delivery:'append'})]))};
  }});
  assert.equal(calls,2);assert.equal(result.status,'submitted');assert.deepEqual(result.ordered_item_ids,['a']);

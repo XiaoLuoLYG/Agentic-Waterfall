@@ -14,7 +14,7 @@ export function prepareHistory(source) {
   }]};
   // Retain the deployed allowance; changing input completeness does not also change tool budgets.
   input.protocol={...input.protocol,max_tool_calls:(input.protocol?.max_tool_calls||0)+20};
-  input.run_meta={...input.run_meta,history_protocol:{version:'full-visible-history-v1',original_events:history.length,
+  input.run_meta={...input.run_meta,...(input.run_meta?.history_protocol?{source_history_protocol:input.run_meta.source_history_protocol||input.run_meta.history_protocol}:{}),history_protocol:{version:'full-visible-history-v1',original_events:history.length,
     initial_events:available.length,omitted_visible_events:0,original_history_retained:true,state_unchanged:true}};
   const lookupHistory=(args,{observation:current})=>{
     if(current.user_id!==owner)throw Error('history_owner_mismatch');

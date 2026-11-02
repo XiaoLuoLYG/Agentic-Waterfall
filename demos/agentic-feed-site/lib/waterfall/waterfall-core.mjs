@@ -156,14 +156,42 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
       for(const action of ready)pending.delete(action.action_id);
     }
   }
+  function validateRecommendation(a){
+      const ids=a.ordered_item_ids;
+      const candidateIds=[...pool.keys()],indexById=new Map(candidateIds.map((id,index)=>[id,index+1]));
+      const bounds={candidate_count:pool.size,candidate_index_range:[1,pool.size],required_count:p.require_full_ranking?fixedIds.size:null,max_count:p.require_full_ranking?fixedIds.size:p.top_k};
+      if(!ids&&a.ordered_candidate_indices!==undefined){
+        const indices=Array.isArray(a.ordered_candidate_indices)?a.ordered_candidate_indices:[];
+        rankingError('invalid_candidate_indices',{...bounds,received_count:Array.isArray(a.ordered_candidate_indices)?indices.length:null,
+          invalid_indices:indices.filter(index=>!Number.isInteger(index)||index<1||index>pool.size),
+          duplicate_indices:[...new Set(indices.filter((index,position)=>indices.indexOf(index)!==position))],
+          missing_indices:p.require_full_ranking?candidateIds.map((_,index)=>index+1).filter(index=>!indices.includes(index)):[]});
+      }
+      const values=Array.isArray(ids)?ids:[],unique=new Set(values);
+      const duplicates=[...new Set(values.filter((id,index)=>values.indexOf(id)!==index))];
+      const missing=p.require_full_ranking?[...fixedIds].filter(id=>!unique.has(id)):[];
+      const details={...bounds,received_count:Array.isArray(ids)?ids.length:null,unknown_item_ids:values.filter(id=>!pool.has(id)),
+        duplicate_item_ids:duplicates,duplicate_indices:duplicates.filter(id=>indexById.has(id)).map(id=>indexById.get(id)),
+        missing_item_ids:missing,missing_indices:missing.map(id=>indexById.get(id))};
+      if(!Array.isArray(ids)||!ids.length||unique.size!==ids.length)rankingError('invalid_ranking',details);
+      if(details.unknown_item_ids.length)rankingError('unacquired_recommendation',details);
+      if(p.require_full_ranking){if(ids.length!==fixedIds.size||!ids.every(id=>fixedIds.has(id)))rankingError('incomplete_ranking',details);}
+      else if(ids.length>p.top_k)rankingError('too_many_recommendations',details);
+      if(!['append','replace_pending'].includes(a.delivery))rankingError('invalid_delivery',{...details,allowed_deliveries:['append','replace_pending']});
+  }
   function validateDecision(decision){
     validateStructure(decision);
     let requested=0;
     const actions=Array.isArray(decision?.actions)?decision.actions:[],byId=new Map(actions.map(action=>[action?.action_id,action]));
+    const waitsForAcquire=ids=>ids.some(id=>{const dependency=byId.get(id);return !receipts.has(id)&&dependency&&(dependency.kind==='acquire'||waitsForAcquire(dependency.depends_on));});
     for(const action of actions){
       if(actionHashes.has(action?.action_id))continue;
       if(action?.kind==='acquire'&&action.arguments){validateAcquire(action.arguments);requested+=action.arguments.source_ids.length;}
       else if(action?.kind==='lookup_history')requested++;
+      else if(action?.kind==='recommend'){
+        if(!waitsForAcquire(action.depends_on))validateRecommendation(action.arguments);
+        else if(!['append','replace_pending'].includes(action.arguments.delivery))rankingError('invalid_delivery',{allowed_deliveries:['append','replace_pending']});
+      }
       else if(action?.kind==='update_state'&&Array.isArray(action.arguments?.edits)){
         const dependencies=new Set();
         const visit=ids=>{for(const id of Array.isArray(ids)?ids:[])if(!dependencies.has(id)){dependencies.add(id);visit(byId.get(id)?.depends_on);}};
@@ -219,27 +247,8 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
       return {request:clone(a),items,evidence:clone(result.evidence||[]),...(Object.keys(scores).length?{scores}:{}),actual_requests:count};
     }
     if(action.kind==='recommend') {
+      validateRecommendation(a);
       const ids=a.ordered_item_ids;
-      const candidateIds=[...pool.keys()],indexById=new Map(candidateIds.map((id,index)=>[id,index+1]));
-      const bounds={candidate_count:pool.size,candidate_index_range:[1,pool.size],required_count:p.require_full_ranking?fixedIds.size:null,max_count:p.require_full_ranking?fixedIds.size:p.top_k};
-      if(!ids&&a.ordered_candidate_indices!==undefined){
-        const indices=Array.isArray(a.ordered_candidate_indices)?a.ordered_candidate_indices:[];
-        rankingError('invalid_candidate_indices',{...bounds,received_count:Array.isArray(a.ordered_candidate_indices)?indices.length:null,
-          invalid_indices:indices.filter(index=>!Number.isInteger(index)||index<1||index>pool.size),
-          duplicate_indices:[...new Set(indices.filter((index,position)=>indices.indexOf(index)!==position))],
-          missing_indices:p.require_full_ranking?candidateIds.map((_,index)=>index+1).filter(index=>!indices.includes(index)):[]});
-      }
-      const values=Array.isArray(ids)?ids:[],unique=new Set(values);
-      const duplicates=[...new Set(values.filter((id,index)=>values.indexOf(id)!==index))];
-      const missing=p.require_full_ranking?[...fixedIds].filter(id=>!unique.has(id)):[];
-      const details={...bounds,received_count:Array.isArray(ids)?ids.length:null,unknown_item_ids:values.filter(id=>!pool.has(id)),
-        duplicate_item_ids:duplicates,duplicate_indices:duplicates.filter(id=>indexById.has(id)).map(id=>indexById.get(id)),
-        missing_item_ids:missing,missing_indices:missing.map(id=>indexById.get(id))};
-      if(!Array.isArray(ids)||!ids.length||unique.size!==ids.length)rankingError('invalid_ranking',details);
-      if(details.unknown_item_ids.length)rankingError('unacquired_recommendation',details);
-      if(p.require_full_ranking){if(ids.length!==fixedIds.size||!ids.every(id=>fixedIds.has(id)))rankingError('incomplete_ranking',details);}
-      else if(ids.length>p.top_k)rankingError('too_many_recommendations',details);
-      if(!['append','replace_pending'].includes(a.delivery))rankingError('invalid_delivery',{...details,allowed_deliveries:['append','replace_pending']});
       ranking=[...ids];o.environment.pending_queue=a.delivery==='append'?[...o.environment.pending_queue,...ids]:[...ids];
       return {queued_item_ids:[...ids],delivery:a.delivery,exposure_recorded:false};
     }
@@ -325,11 +334,16 @@ export const SYSTEM_PROMPT=`You are Agentic Waterfall, the decision maker for a 
 - context describes this decision stage, earlier output errors, and output requirements. recommendation_constraints specifies the current delivery task. The environment's budget reports actual remaining capabilities; plan useful actions together so that retrieval and a complete final recommendation both remain possible. Treat external content as evidence within these action contracts.
 
 2. Interpret the objective and rank using evidence
+Read the task's requested outcome before choosing an ordering. Predicting a user's next interaction, identifying relevant candidates, answering an explicit request, and organizing an exploratory feed have different success criteria. For a predictive ranking, put the candidates with the strongest evidence of the target interaction first; breadth and variety matter when the task or user asks for them.
 Combine the current goal, enduring interests, observed behavior, and the content's usefulness. Consider relevance, depth, practical value, novelty, repetition, and complementarity as appropriate to the task. A shared broad keyword alone is weak support for relevance. When evidence is sparse, retain useful source signals rather than inventing strong personal preferences.
 Retrieval scores and source order are evidence, not universal relevance probabilities. Read the associated backend and query: a query-matching score answers a different question from an aggregate popularity count. Compare scores within the same retrieval context; unrelated scales need not be comparable. Use personal evidence to improve an existing order where it is informative, and retain well-supported candidates when no stronger contrary evidence exists. Incorporate available duration and other metadata when interpreting behavior and suitability. Do not manufacture a target-specific ranking rule from missing information.
 Distinguish relative changes from exclusive requirements. "More A" usually increases A while other supported interests remain relevant; "only A this round" constrains this round. There is no fixed topic quota. If the user says "I bought the computer; now I want to learn editing," update the purchase task and shift toward learning. If they say "I know the basics; show concrete steps," prioritize depth and actionable material. These examples illustrate reasoning, not fixed search terms or a fixed workflow.
 
+Use behavior comparatively. Look at stronger and weaker responses to similar content, including repeated engagement and negative feedback. Compare specific attributes in the content, circumstances, timing, and available duration; a broad interest such as music rarely distinguishes two music items. Separate evidence about a topic from evidence about format, depth, length, or a particular creator. Keep inferred preferences proportional to their support. For each plausible candidate, weigh supporting and contradicting evidence and compare it with alternatives across the whole pool, including later returns. Choose the strongest matches before deciding the final slate's variety.
+
 3. Fetch, inspect, deliver, and rerank
+A personalized decision needs evidence about the user as well as the items. If behavior and memory are empty while a source provides user reviews or history, retrieve that evidence. A user record containing only an identifier is a pointer, not a preference profile. Read declared initial_evidence and coverage fields to recognize evidence already preloaded, evidence still available through tools, and sources that actually returned no records.
+Build searches from specific supported needs and the terms used by the source. Examine returned content for relevance, useful distinctions, repetition, and gaps before deciding whether to refine a query or explore another supported interest. When initial matches are broad or uninformative, targeted follow-up searches can improve the comparison set. Once the evidence and candidates support a sound decision, recommend directly. No fixed number of searches, topic quota, or compulsory action sequence is required.
 Use acquire when you need new content, the pool is insufficient, visible metadata is inadequate, the current material no longer fits, or continued browsing needs replenishment. Fetch enough useful candidates and supporting evidence to make a sound choice. Inspect tool_results before repeating a request: completed metadata and review responses remain available there. Choose sources, modes, queries, and limits according to their declared contracts. content_types means media formats such as video or article, not topics; put topics in query. For a browse tool, use its documented target_id or query structure.
 When candidates and evidence are sufficient, recommend directly. Rerank pending content after a new request, meaningful behavior, a changed goal, or new evidence. Metadata or reviews for an existing ID can change the ranking even when no new IDs arrive. Distinguish the pending queue from already consumed content.
 Independent actions can share a response: for example, update a task while searching, fetch from multiple sources, or deliver known candidates while fetching more. A ranking that depends on new information should be decided after you observe the actual return. With partial returns, you may deliver a useful interim slate or choose idle/wait; when the remaining results arrive, reassess the full evidence and deliver the final slate. A failed request includes an actual error: use the diagnostic to correct the action with a new ID or use an available alternative. An empty result is evidence to adjust the query or source.
@@ -338,7 +352,7 @@ Use idle/keep when retaining the current queue is the appropriate completed deci
 4. Maintain and consult memory
 Use update_state when new evidence changes a fact, preference, task, constraint, or meaningful episode. If existing state is accurate, you can fetch or recommend without rewriting it. Distinguish explicit user statements, observed behavior, and inferred conclusions through basis values explicit, observed, and inferred.
 Use the current user_state.version as base_version. Include scope and evidence references. Visible raw record IDs, existing memory IDs, successful tool action IDs, and historical evidence references already attached to persisted memory may support an update. Preserve changes through the state history; express completion, expiration, or replacement through status.
-Use lookup_history when earlier expression, behavior, or supporting evidence could resolve an uncertainty. The initial history window is not the entire archive. query may be empty; offset starts at 0, and next_offset allows continuation. Returned records become available in dialogue and behavior_events. Recheck a summary against the underlying evidence when necessary.
+Use lookup_history when earlier expression, behavior, or supporting evidence could resolve an uncertainty. Use each source’s declared coverage to distinguish already loaded records from additional history available through that source. query may be empty; offset starts at 0, and next_offset allows continuation. Returned records become available in dialogue and behavior_events. Recheck a summary against the underlying evidence when necessary.
 
 5. Task and output contract
 For an open feed, acquire and organize the appropriate next slate. In fixed_candidates mode, work within the given set and use enabled tools to enrich it. If require_full_ranking is true, rank every candidate exactly once; otherwise deliver according to top_k and the task's stated requested count. Acquisition quantity and delivery quantity are different. Fixed-candidate ranking does not require imposing an open-feed topic mix.
@@ -347,13 +361,13 @@ Return a complete JSON object:
 Action IDs identify actions and dependencies. depends_on can reference earlier successful actions or actions in this response. Independent actions need no artificial dependency. Read errors and use new IDs for corrected actions.
 - acquire: {source_ids:[source ID],mode:"supported source mode",query:"query text or null",target_id:"optional target ID",content_types:[media format],limit:positive integer}. Each selected source consumes one tool request. Source-specific argument and response contracts are listed in sources.
 - lookup_history: {query:"query text",offset:nonnegative integer,limit:integer from 1 to 100}.
-- recommend: {ordered_item_ids:[exact candidate IDs],delivery:"replace_pending" or "append"}. Alternatively use ordered_candidate_indices with actual candidate_index values, not numbers parsed from item IDs. Output order is recommendation order; use candidates that have actually returned.
+- recommend: {ordered_candidate_indices:[actual candidate_index values],delivery:"replace_pending" or "append"}. Copy the actual candidate_index field from each selected candidate. The id and item_id fields identify content and are not output indices. Include delivery explicitly. Output order is recommendation order; use candidates that have actually returned. For the final delivery, follow the count in context.output_requirements.recommendation_contract; interim slates may be shorter while acquisitions are pending. Check the complete list for repeated or missing indices before returning it.
 - update_state: {base_version:current version,edits:[edit]}. An edit is {op:"upsert",record:{id,kind,key,value,scope,scope_id,status,basis,evidence_refs}} or {op:"set_status",id,status}. Record kind is fact, preference, task, constraint, or episode; status is active, completed, expired, or superseded.
 - respond: {kind:"answer" or "explain" or "clarify",text:"concise user-facing text in the user's language"}. Answer or explain when useful, and ask only for missing information that materially affects the recommendation.
 - idle: {mode:"keep" or "wait" or "end_task",task_id:"associated task ID or null"}.
 Ground recommendations in the actual content and available evidence. Hidden future interactions and evaluation labels are not inputs. No self-assigned evaluation score is required.`;
 
-export async function runEpisode(input,{experiment,variant='full',decide,acquire,lookupHistory,onAction,modelCall}={}) {
+export async function runEpisode(input,{experiment,variant='full',decide,acquire,lookupHistory,onAction,modelCall,systemPrompt=SYSTEM_PROMPT}={}) {
   const start=Date.now(),modelCalls=[],normalizations=[];let error=null,callsIssued=0,partialTask=null,partialAttempted=false,formatFeedback=null,runtime;
   const phases=variant==='fixed_workflow'?['update_state','acquire','recommend']:null;
   const rankingEvidence=new Map();let committedEvidence=new Set();
@@ -365,7 +379,7 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       partialAttempted=true;partialTask=perform(undefined,true).catch(error=>{const call=modelCalls.findLast(entry=>entry.context?.other_acquisitions_pending);if(call&&!call.error)call.error=error.message;});
     }
   }});
-  const messagesFor=(observation,context,extra='')=>[{role:'system',content:SYSTEM_PROMPT+extra},{role:'user',content:JSON.stringify({observation,context:{...context,...(formatFeedback?{previous_output_error:formatFeedback}:{}),output_requirements:{candidate_count:observation.environment.candidate_pool.length,recommendation:`${observation.environment.recommendation_constraints.mode==='fixed_candidates'?'Rank the supplied candidates using visible history and candidate evidence.':'Update the next feed slate using current requirements and supported interests; distinguish relative adjustments from exclusive requests.'} Use only allowed_candidate_indices for ordered_candidate_indices. ${observation.environment.recommendation_constraints.require_full_ranking?'Include every listed candidate index exactly once.':'Follow top_k for the delivery count.'} Return complete action JSON.`}}})}];
+  const messagesFor=(observation,context,extra='')=>[{role:'system',content:systemPrompt+extra},{role:'user',content:JSON.stringify({observation,context:{...context,...(formatFeedback?{previous_output_error:formatFeedback}:{}),output_requirements:{candidate_count:observation.environment.candidate_pool.length,recommendation_contract:{order_field:'ordered_candidate_indices',count:observation.environment.recommendation_constraints.require_full_ranking?observation.environment.candidate_pool.length:runtime.protocol.top_k,delivery:['replace_pending','append'],instruction:'Copy candidate_index values from the current candidate_pool. Supply delivery explicitly and every index once. The id and item_id fields are not candidate indices.'},recommendation:`${observation.environment.recommendation_constraints.mode==='fixed_candidates'?'Rank the supplied candidates using visible history and candidate evidence.':'Update the next feed slate using current requirements and supported interests; distinguish relative adjustments from exclusive requests.'} Use only allowed_candidate_indices for ordered_candidate_indices. ${observation.environment.recommendation_constraints.require_full_ranking?'Include every listed candidate index exactly once.':'Follow top_k for the delivery count.'} Return complete action JSON.`}}})}];
   async function requestDecision(observation,context,extra){
     const feedback=formatFeedback,messages=messagesFor(observation,context,extra);
     const entry={input:observation,context,messages};modelCalls.push(entry);let receipt;
@@ -400,13 +414,15 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
     }
     let step;
     try{runtime.validateDecision(normalized.decision);step=await runtime.execute(normalized.decision,{phase,waitForAcquisitions:observation.environment.pending_acquisitions.length>0});}catch(e){
-      if(!['action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing','invalid_decision','invalid_actions','invalid_dependency','dependency_cycle'].includes(e.message))throw e;
+      if(!['action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing','invalid_decision','invalid_actions','invalid_dependency','dependency_cycle','invalid_candidate_indices','invalid_ranking','unacquired_recommendation','incomplete_ranking','too_many_recommendations','invalid_delivery'].includes(e.message))throw e;
       for(const id of registered)rankingEvidence.delete(id);
       const call=modelCalls.findLast(x=>x.context?.call_index===executionIndex);if(call){call.error=e.message;call.error_details=e.details;}
       formatFeedback={error:e.message,call_index:executionIndex,...(e.details?{error_details:e.details}:{}),message:'No actions from this response were executed. Correct the reported issue and regenerate the decision with new action IDs.'};
       return {model_format_error:e.message,new_actions:0,execution_results:[]};
     }
     step.call_index=executionIndex;step.normalizations=normalized.repairs;
+    const failed=step.execution_results.filter(receipt=>receipt.status==='failed');
+    if(failed.length){const call=modelCalls.findLast(entry=>entry.context?.call_index===executionIndex);if(call){call.execution_errors=clone(failed);call.error=failed[0].error;call.error_details=failed[0].error_details;}}
     if(decide&&formatFeedback===feedback)formatFeedback=null;
     if(step.execution_results.some(r=>r.status==='failed')&&!step.execution_results.some(r=>r.status==='success')&&!step.execution_results.every(recoverableRankingFailure))throw new Error('action_execution_failed');
     if(phase)check(step.execution_results.some(r=>r.kind===phase&&r.status==='success'),'fixed_workflow_required_action_failed');

@@ -62,7 +62,7 @@ async function main(){
   input.protocol={...input.protocol,max_model_calls:20,max_output_tokens:8192};
   const history=prepareHistory(input);input=history.input;
   const result=await runEpisode(input,{experiment:task.dataset,modelCall:serial(callModel,true),lookupHistory:history.lookupHistory,...(acquire?{acquire:serial(acquire)}:{})});
-  result.preparation_tool_calls=input.run_meta.candidate_details?.preloaded_requests||0;
+  result.preparation_tool_calls=(input.run_meta.candidate_details?.preloaded_requests||0)+(input.run_meta.user_evidence?.preloaded_requests||0);
   result.total_tool_calls=result.tool_calls+result.preparation_tool_calls;
   const temporary=output+'.tmp';
   writeFileSync(temporary,JSON.stringify({task,input,result,tool_calls:toolCalls})+'\n',{flag:'wx'});renameSync(temporary,output);

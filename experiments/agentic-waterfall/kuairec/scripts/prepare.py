@@ -6,6 +6,7 @@ import pathlib
 import time
 import numpy as np
 import pandas as pd
+from public_content import item_record as public_item_record
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 RAW = ROOT/'data/raw'
@@ -97,12 +98,7 @@ def main():
     texts={int(x['video_id']):x for x in text.to_dict('records')}
     assert set(texts)==big_items,'Caption/matrix ID universe mismatch'
     def item_record(v):
-        row=texts[int(v)]
-        fields={k:('' if str(val) in ['UNKNOWN','[]'] else str(val)) for k,val in row.items() if k in ['manual_cover_text','caption','topic_tag'] or k.endswith('_category_name')}
-        caption=fields.get('caption','')
-        category=' / '.join(val for key,val in fields.items() if 'category' in key and val)
-        body=' '.join(v for v in fields.values() if v)
-        return {'id':str(int(v)),'source_id':'kuairec','content_type':'video','title':caption or category or f'KuaiRec video {v}','text':body,'category':category,'content_sha256':hashlib.sha256(body.encode()).hexdigest(),'metadata_version':'zenodo-18164998-caption-2024','big_positive_count':item_counts.get(int(v),0)}
+        return {**public_item_record(v,texts[int(v)]),'big_positive_count':item_counts.get(int(v),0)}
     catalog=[item_record(v) for v in items]
     write_json(OUT/'catalog.json',catalog)
     with (OUT/'histories.jsonl').open('w') as f:
