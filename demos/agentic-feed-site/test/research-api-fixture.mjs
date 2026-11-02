@@ -16,4 +16,3 @@ export function fixture({makeResult}={}){
  return {env,jobs,objects,get starts(){return starts;},set failPut(value){failPut=value;}};
 }
 export async function account(env,name,recordKind='human'){const identity=await handleApi(new Request('https://app.test/api/identity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name,type:'human'})}),env),cookie=identity.headers.get('set-cookie').split(';')[0];const raw=(path,data)=>handleApi(new Request('https://app.test'+path,{headers:{cookie,'Content-Type':'application/json'},...(data?{method:'POST',body:JSON.stringify(data)}:{})}),env);const api=async(path,data)=>{const response=await raw(path,data);return {status:response.status,body:await response.json()};};const created=await api('/api/session',{consent:true,recordKind,interests:['摄影'],profile:'明确提供的摄影画像'});return {api,raw,sid:created.body.session.session_id,user:created.body.session.user_id,session:created.body.session};}
-
