@@ -345,7 +345,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
         const row=store.rows.findLast(r=>r.kind==='comparison' && r.session_id===sessionId && r.study_protocol==='blind-next-v1' && !researchStopped(store,r.id) && !store.rows.some(v=>v.kind==='evaluation' && v.comparison_id===r.id));
         return send(res,200,{comparison:row?publicBlind(row):null,batch:blindBatch(sessionId)});
       }
-      if (req.method === 'POST' && path === '/api/blind/round') { return send(res,410,{error:'新盲选已迁移到五系统评测，请先查看并确认共同输入',next:'/api/research/prepare'}); }
+      if (req.method === 'POST' && path === '/api/blind/round') { return send(res,410,{error:'新盲选已迁移到参评系统评测，请先查看并确认共同输入',next:'/api/research/prepare'}); }
       if (req.method === 'POST' && path === '/api/blind/present') {
         const input=await body(req);exact(input,['sessionId','comparisonId','eventTime']);ownSession(input.sessionId,user);
         const comparison=store.rows.find(r=>r.id===input.comparisonId && r.session_id===input.sessionId && r.kind==='comparison' && r.study_protocol==='blind-next-v1');check(comparison,'盲选不存在',404);check(!researchStopped(store,comparison.id),'本次旧版评测已结束，未答题保留为空',409);

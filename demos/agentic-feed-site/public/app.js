@@ -42,7 +42,7 @@ async function loadDatasetStatus(retry=false){
  if(!user||!session)return;const owner=user.id,sid=session.session_id;
  try{const data=await api(`/api/dataset/${retry?'retry':'status'}?sessionId=${encodeURIComponent(sid)}`,retry?{}:undefined);if(user?.id!==owner||session?.session_id!==sid)return;
   const place=data.storage==='sqlite+files'?'本机服务器':'云端服务器',pending=data.captures.pending+data.captures.incomplete;
-  $('#datasetStatus').textContent=`${place}自动保存 · ${data.captures.total} 次在线获取，${data.returned_items} 条返回内容。${data.archive_ready?'私有归档已就绪':pending?`${pending} 次归档待重试或未完成`:'私有归档尚未配置'}。五系统评测会把本组输入发送到云端计算后端并保存运行归档；正式数据包由你选择保留后导出。`;
+  $('#datasetStatus').textContent=`${place}自动保存 · ${data.captures.total} 次在线获取，${data.returned_items} 条返回内容。${data.archive_ready?'私有归档已就绪':pending?`${pending} 次归档待重试或未完成`:'私有归档尚未配置'}。参评系统评测会把本组输入发送到云端计算后端并保存运行归档；正式数据包由你选择保留后导出。`;
   $('#datasetRetry').hidden=!data.captures.pending;
  }catch(error){if(user?.id===owner&&session?.session_id===sid)$('#datasetStatus').textContent=`保存状态读取失败：${error.message}`;}
 }

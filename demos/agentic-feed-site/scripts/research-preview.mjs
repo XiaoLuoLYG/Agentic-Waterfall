@@ -130,7 +130,7 @@ export async function createPreview({fixture=false}={}){
     if(!candidate.startsWith(publicRoot+sep))return send(res,403,'Forbidden','text/plain; charset=utf-8');
     let file;try{file=realpathSync(candidate);}catch(error){if(error.code==='ENOENT'||error.code==='ENOTDIR')return send(res,404,'Not found','text/plain; charset=utf-8');throw error;}
     if(!file.startsWith(publicRoot+sep)||!lstatSync(file).isFile())return send(res,403,'Forbidden','text/plain; charset=utf-8');
-    let content=readFileSync(file);if(extname(file)==='.html')content=Buffer.from(content.toString('utf8').replace('<body>','<body><aside role="note" style="position:fixed;bottom:76px;right:8px;z-index:9999;pointer-events:none;padding:6px 10px;border:1px solid #b8a24a;background:#fff8d6;color:#433a17;font:10px system-ui;max-width:180px">隔离 QA 预览 · 全部记录 test_only · '+(fixture?'合成 UI 输出，未执行真实方法':'云端五系统需确认输入；普通发现为 rules')+'</aside>'));
+    let content=readFileSync(file);if(extname(file)==='.html')content=Buffer.from(content.toString('utf8').replace('<body>','<body><aside role="note" style="position:fixed;bottom:76px;right:8px;z-index:9999;pointer-events:none;padding:6px 10px;border:1px solid #b8a24a;background:#fff8d6;color:#433a17;font:10px system-ui;max-width:180px">隔离 QA 预览 · 全部记录 test_only · '+(fixture?'合成 UI 输出，未执行真实方法':'云端参评系统需确认输入；普通发现为 rules')+'</aside>'));
     send(res,200,req.method==='HEAD'?'':content,mime[extname(file)]||'application/octet-stream');
    }catch{if(!res.headersSent)send(res,500,JSON.stringify({error:'Local QA preview request failed'}));else res.end();}
   });
