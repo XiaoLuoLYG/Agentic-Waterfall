@@ -121,8 +121,8 @@ async function callOnce(request, {experiment}={}, config, deadline) {
 
 export async function callModel(request, options={}) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
-  // Finish before the Python callers' 300-second timeout, including retry waits and accounting.
-  const deadline=Date.now()+270000,config=loadModelConfig(),frozen=structuredClone(request),failures=[];
+  // Keep 200 seconds for shared queue/backoff plus HTTP and accounting; the default fits 300-second callers.
+  const deadline=Date.now()+modelTimeoutMs()+210000,config=loadModelConfig(),frozen=structuredClone(request),failures=[];
   for(let index=0;index<3;index++) {
     try {
       const receipt=await callOnce(frozen,options,config,deadline);
