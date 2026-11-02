@@ -1,7 +1,7 @@
 import {SYSTEM_PROMPT} from '../../../demos/agentic-feed/waterfall-core.mjs';
 
 const INITIAL = 60, BYTE_LIMIT = 85000, INITIAL_BYTE_TARGET = 45000;
-const compactFields = ['id', 'candidate_index', 'title', 'category', 'source_id', 'content_type'];
+const compactFields = ['id', 'candidate_index', 'title', 'category', 'source_id', 'content_type', 'duration_ms', 'retrieval_score', 'retrieval_backend', 'retrieval_query'];
 const messageBytes = (observation, context, extra) => Buffer.byteLength(JSON.stringify([
   {role: 'system', content: SYSTEM_PROMPT + extra},
   {role: 'user', content: JSON.stringify({observation, context})},
@@ -13,12 +13,12 @@ function fitsHistory(observation, byteLimit = BYTE_LIMIT) {
   const compact = candidates.map(item => Object.fromEntries(compactFields.filter(key => item[key] !== undefined).map(key => [key, item[key]])));
   const merge = {...observation, environment: {...observation.environment, candidate_pool: compact}};
   const mergeBytes = messageBytes(merge, {...context, batch_stage: 'merge', batch_rankings: [candidates.map(item => item.id)]},
-    ' 根据候选标题和各批排名合并为当前候选集合的推荐顺序。');
+    ' Merge the batch rankings into the recommendation order using the visible candidate metadata.');
   const largest = candidates.reduce((best, item) => Buffer.byteLength(JSON.stringify(item)) > Buffer.byteLength(JSON.stringify(best)) ? item : best, {});
   const single = {...observation, environment: {...observation.environment, candidate_pool: candidates.length ? [largest] : [],
     recommendation_constraints: {...observation.environment.recommendation_constraints, mode: 'fixed_candidates', require_full_ranking: true, top_k: 1, acquire_enabled: false}}};
   const singleBytes = messageBytes(single, {...context, batch_stage: 'rank', batch_index: 9999},
-    ' 将本批候选完整排序，每个恰好一次，只返回一个recommend动作。');
+    ' Rank every candidate in this batch exactly once and return one recommend action.');
   return Math.max(mergeBytes, singleBytes) <= byteLimit;
 }
 
@@ -35,17 +35,18 @@ export function prepareHistory(source) {
   observation.environment = {...observation.environment, sources: [...(observation.environment?.sources || []), {
     id: 'waterfall-history-archive', modes: [], tool: 'lookup_history', total_count: history.length,
     visible_count: available.length, initial_count: observation.behavior_events.length,
-    description: '完整原始行为保留。初始提供最近60条可见事件。更早记录可通过lookup_history查询；空query按由新到旧分页，非空query对事件JSON做忽略大小写的匹配。返回ID为空且next_offset未变，表示当前上下文已满，可根据当前证据推荐；不表示历史被删除。该归档通过lookup_history使用。',
+    description: 'The full original behavior history is retained. The initial input includes the latest 60 visible events. Use lookup_history to consult earlier records. An empty query paginates from newest to oldest; a nonempty query matches event JSON case-insensitively. Empty returned IDs with an unchanged next_offset mean the current context is full; the archive is still retained and current evidence remains available for recommendation.',
   }]};
-  input.protocol = {...input.protocol, max_tool_calls: Math.max(input.protocol?.max_tool_calls || 0, 20)};
+  // Added history access must not displace the dataset's original source-tool allowance.
+  input.protocol = {...input.protocol, max_tool_calls: (input.protocol?.max_tool_calls || 0) + 20};
   input.run_meta = {...input.run_meta, history_protocol: {version: 'recent60-with-original-history-lookup-v1',
     original_events: history.length, initial_events: observation.behavior_events.length, lookup_message_byte_limit: BYTE_LIMIT,
     original_history_retained: true, state_unchanged: true}};
 
   if (!fitsHistory(observation)) {
     const archive = observation.environment.sources.at(-1);
-    archive.description = archive.description.replace('初始提供最近60条可见事件。',
-      '初始提供最近60条可见事件中可装入上下文的部分，数量见initial_count，也可能为0。');
+    archive.description = archive.description.replace('The initial input includes the latest 60 visible events.',
+      'The initial input includes as many of the latest 60 visible events as fit the context; see initial_count, which can be zero.');
     const empty = {...observation, behavior_events: []};
     if (!fitsHistory(empty)) throw Error('history_context_byte_budget_exceeded');
     for (const row of available) {

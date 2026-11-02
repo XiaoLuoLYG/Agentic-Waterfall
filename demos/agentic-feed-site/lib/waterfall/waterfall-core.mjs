@@ -140,7 +140,24 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
     const unknown=Array.isArray(refs)?refs.filter(ref=>!allowedRefs.has(ref)&&!receipts.has(ref)&&!dependencies.has(ref)):[];
     if(!Array.isArray(refs)||!refs.length||unknown.length)rankingError('state_evidence_missing',{record_id:record?.id,unknown_evidence_refs:unknown,message:'Use exact visible evidence IDs, or retrieve the supporting history before citing it.'});
   }
+  function validateStructure(decision){
+    if(!decision||decision.decision_id!==o.decision_id||!Array.isArray(decision.actions)||!decision.actions.length)
+      rankingError('invalid_decision',{expected_decision_id:o.decision_id,received_decision_id:decision?.decision_id,required_actions:'A nonempty actions array.'});
+    const actions=decision.actions,ids=new Set(actions.map(action=>action?.action_id));
+    const kinds=['acquire','lookup_history','recommend','update_state','respond','idle'];
+    if(ids.size!==actions.length||!actions.every(a=>a&&typeof a.action_id==='string'&&a.action_id&&kinds.includes(a.kind)&&a.arguments&&typeof a.arguments==='object'&&!Array.isArray(a.arguments)&&Array.isArray(a.depends_on)&&Array.isArray(a.evidence_refs)))
+      rankingError('invalid_actions',{required:'Unique action_id, a supported kind, an arguments object, and depends_on/evidence_refs arrays.',allowed_kinds:kinds});
+    for(const a of actions)if(!a.depends_on.every(id=>id!==a.action_id&&(ids.has(id)||receipts.has(id))))
+      rankingError('invalid_dependency',{action_id:a.action_id,message:'Dependencies must reference another action in this response or a completed action.'});
+    const pending=new Set(ids);
+    while(pending.size){
+      const ready=actions.filter(a=>pending.has(a.action_id)&&a.depends_on.every(id=>!pending.has(id)));
+      if(!ready.length)rankingError('dependency_cycle',{action_ids:[...pending],message:'Remove cyclic dependencies; independent actions need no dependency.'});
+      for(const action of ready)pending.delete(action.action_id);
+    }
+  }
   function validateDecision(decision){
+    validateStructure(decision);
     let requested=0;
     const actions=Array.isArray(decision?.actions)?decision.actions:[],byId=new Map(actions.map(action=>[action?.action_id,action]));
     for(const action of actions){
@@ -258,11 +275,9 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
     ended=a.mode!=='wait'||!(waitForAcquisitions||pendingAcquisitions.size);return {mode:a.mode,task_id:a.task_id||null};
   }
   async function execute(decision,{phase,waitForAcquisitions=false}={}) {
-    check(decision&&decision.decision_id===o.decision_id&&Array.isArray(decision.actions)&&decision.actions.length>0,'invalid_decision');
-    const actions=clone(decision.actions),ids=new Set(actions.map(a=>a.action_id));
-    check(ids.size===actions.length&&actions.every(a=>typeof a.action_id==='string'&&a.action_id&&['acquire','lookup_history','recommend','update_state','respond','idle'].includes(a.kind)&&a.arguments&&Array.isArray(a.depends_on)&&Array.isArray(a.evidence_refs)),'invalid_actions');
+    validateStructure(decision);
+    const actions=clone(decision.actions);
     if(phase)check(actions.some(a=>a.kind===phase),'fixed_workflow_required_action_missing');
-    for(const a of actions)check(a.depends_on.every(id=>id!==a.action_id&&(ids.has(id)||receipts.has(id))),'invalid_dependency');
     for(const a of actions)if(actionHashes.has(a.action_id)){
       check(actionHashes.get(a.action_id)===digest(a),'action_id_reuse_with_different_payload');
       check(receipts.has(a.action_id),'action_id_already_in_progress');
@@ -445,7 +460,7 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
     }
     let step;
     try{runtime.validateDecision(normalized.decision);step=await runtime.execute(normalized.decision,{phase,waitForAcquisitions:observation.environment.pending_acquisitions.length>0});}catch(e){
-      if(!['action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing'].includes(e.message))throw e;
+      if(!['action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing','invalid_decision','invalid_actions','invalid_dependency','dependency_cycle'].includes(e.message))throw e;
       for(const id of registered)rankingEvidence.delete(id);
       const call=modelCalls.findLast(x=>x.context?.call_index===executionIndex);if(call){call.error=e.message;call.error_details=e.details;}
       formatFeedback={error:e.message,call_index:executionIndex,...(e.details?{error_details:e.details}:{}),message:'No actions from this response were executed. Correct the reported issue and regenerate the decision with new action IDs.'};

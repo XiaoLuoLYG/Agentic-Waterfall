@@ -14,18 +14,42 @@ function fixture(count = 65) {
 
 test('recent window retains original input, commands and state; archive remains visible to core', () => {
   const source = fixture(), before = structuredClone(source), {input, lookupHistory} = prepareHistory(source);
-  assert.equal(createHash('sha256').update(JSON.stringify(input)).digest('hex'), 'dc62a93c9416da00f7f3553e9f608527d4e684b7a7c1887948863a46156a3f2c');
+  assert.equal(createHash('sha256').update(JSON.stringify(input)).digest('hex'), '7a4cd993903d2db9d3e6cd65311e6bcae50a7f7d854bbe347f5b4246cfd440c0');
   assert.deepEqual(source, before);
   assert.deepEqual(input.observation.behavior_events.map(row => row.id), before.observation.behavior_events.slice(-60).map(row => row.id));
   assert.deepEqual(input.observation.dialogue, before.observation.dialogue);
   assert.deepEqual(input.observation.user_state, before.observation.user_state);
   assert.equal(input.protocol.max_tool_calls, 20);
+  assert(!/\p{Script=Han}/u.test(input.observation.environment.sources.at(-1).description));
   const current = createRuntime(input, {lookupHistory}).snapshot();
   assert.equal(current.environment.sources[0].total_count, 65);
   assert.equal(current.environment.recommendation_constraints.history_lookup_enabled, true);
   assert.deepEqual(lookupHistory({query: '', offset: 0, limit: 2}, {observation: current}).behavior_events.map(row => row.id), ['event-4', 'event-3']);
   assert.equal(lookupHistory({query: '', offset: 0, limit: 2}, {observation: current}).next_offset, 2);
   assert.equal(lookupHistory({query: 'orchid', offset: 0, limit: 10}, {observation: current}).behavior_events[0].id, 'event-1');
+});
+
+test('history envelope counts public retrieval metadata retained by the core merge', () => {
+  const source=fixture();
+  for(const event of source.observation.behavior_events.slice(0,5))event.text='x'.repeat(4000);
+  source.observation.environment.candidate_pool=Array.from({length:80},(_,i)=>({id:'item-'+i,title:'candidate',retrieval_query:'q'.repeat(700),retrieval_score:i,duration_ms:10000,retrieval_backend:'public'}));
+  const {input,lookupHistory}=prepareHistory(source),current=createRuntime(input,{lookupHistory}).snapshot();
+  const result=lookupHistory({query:'xxx',offset:0,limit:5},{observation:current});
+  assert.equal(result.budget_full,true);assert(result.behavior_events.length<5);
+  assert.equal(input.observation.environment.sources.at(-1).total_count,65);
+});
+
+test('adding history access preserves enough allowance to inspect every native fixed candidate', async () => {
+  const source=fixture();source.protocol={...source.protocol,max_tool_calls:22,max_model_calls:3};
+  source.observation.environment.candidate_pool=Array.from({length:20},(_,i)=>({id:'item-'+i}));
+  source.observation.environment.sources=[{id:'metadata',modes:['browse']}];
+  const {input,lookupHistory}=prepareHistory(source);let phase=0;
+  const action=(id,kind,args)=>({action_id:id,kind,arguments:args,evidence_refs:[],depends_on:[]});
+  const result=await runEpisode(input,{lookupHistory,acquire:async()=>({items:[],actual_requests:1}),decide:async()=>({decision_id:'decision',actions:phase++===0?
+    [action('history','lookup_history',{query:'',offset:0,limit:1}),...Array.from({length:22},(_,i)=>action('inspect-'+i,'acquire',{source_ids:['metadata'],mode:'browse',limit:1,target_id:String(i)}))]:
+    [action('rank','recommend',{ordered_item_ids:['item-0'],delivery:'replace_pending'})]})});
+  assert.equal(result.status,'submitted');assert.equal(result.tool_calls,23);
+  assert(result.trace.flatMap(step=>step.execution_results).every(receipt=>receipt.status==='success'));
 });
 
 test('lookups exclude visible duplicates, other owners and future events', () => {

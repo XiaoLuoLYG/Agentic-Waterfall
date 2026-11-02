@@ -7,6 +7,25 @@ const action=(id,args)=>({action_id:id,kind:'recommend',arguments:{...args,deliv
 const decision=actions=>({decision_id:'ranking-recovery',actions});
 const full=Array.from({length:101},(_,i)=>101-i);
 
+test('malformed decision envelopes and dependencies are rejected before dispatch and can be corrected',async()=>{
+  const valid=action('rank',{ordered_candidate_indices:full});
+  for(const [bad,error] of [
+    [{decision_id:'misspelled-task',actions:[valid]},'invalid_decision'],
+    [decision([null]),'invalid_actions'],
+    [decision([{...valid,depends_on:['missing']}]),'invalid_dependency'],
+    [decision([{...valid,action_id:'a',depends_on:['b']},{...valid,action_id:'b',depends_on:['a']}]),'dependency_cycle'],
+  ]){
+    let calls=0,executed=0;
+    const result=await runEpisode(input(),{onAction:()=>executed++,decide:async(observation,context)=>{
+      if(++calls===1)return bad;
+      assert.equal(executed,0);assert.equal(context.previous_output_error.error,error);
+      if(error==='invalid_decision')assert.equal(context.previous_output_error.error_details.expected_decision_id,'ranking-recovery');
+      return decision([{...valid,action_id:'corrected'}]);
+    }});
+    assert.equal(calls,2);assert.equal(result.status,'submitted');assert.equal(result.model_calls[0].error,error);assert.equal(result.trace.length,1);
+  }
+});
+
 test('invalid raw video numbers are reported and the agent independently supplies a complete correction',async()=>{
   let calls=0;
   const result=await runEpisode(input(),{decide:async(obs)=>{

@@ -79,7 +79,7 @@ def failure_reason(result):
     if result.get('status')!='submitted':return result.get('error') or 'no_valid_submission'
     trace=result.get('trace',[])
     for call in result.get('model_calls',[]):
-        if call.get('error') not in {'model_invalid_json','model_output_truncated','invalid_batch_ranking','action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing'}:continue
+        if call.get('error') not in {'model_invalid_json','model_output_truncated','invalid_batch_ranking','action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing','invalid_decision','invalid_actions','invalid_dependency','dependency_cycle'}:continue
         index=call.get('context',{}).get('call_index')
         corrected=type(index) is int and any(type(step.get('call_index')) is int and step['call_index']>index and any(r.get('kind')=='recommend' and r.get('status')=='success' for r in step.get('execution_results',[])) for step in trace)
         if not corrected:return call['error']

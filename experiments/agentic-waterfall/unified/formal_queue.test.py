@@ -85,7 +85,7 @@ class QueueChecks(unittest.TestCase):
             self.assertEqual(queue.failure_reason(result),error)
 
     def test_preflight_rejection_requires_a_later_delivery_and_preserves_diagnostics(self):
-        for error in ('unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing'):
+        for error in ('unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing','invalid_decision','invalid_actions','invalid_dependency','dependency_cycle'):
             result={'status':'submitted','model_calls':[{'context':{'call_index':1},'error':error}],
                     'trace':[{'call_index':0,'execution_results':[{'kind':'recommend','status':'success'}]}]}
             self.assertEqual(queue.failure_reason(result),error)
