@@ -104,3 +104,11 @@ test('ClawRec rejects missing prior state and modified snapshots before a model 
   writeFileSync(join(f.snapshot, 'catalog.jsonl'), '{}\n');
   await assert.rejects(buildFormalAdapter({...f.task, case_input: f.event(1)}), /snapshot_hash_mismatch/);
 });
+
+test('large multibyte prior state reaches the subprocess intact', async t => {
+  const f=simbenchFixture(t),first=await buildFormalAdapter({...f.task,case_input:f.event(1)});
+  const state={version:1,records:[{id:'complete',value:'完整记录'.repeat(90000)}]};
+  const previous={input:first.input,result:{state_after:state,model_calls:[{content:'retained trace'.repeat(20000)}]}};
+  const second=await buildFormalAdapter({...f.task,case_input:f.event(2)},previous);assert.deepEqual(second.input.observation.user_state,state);
+  assert.equal(previous.result.model_calls[0].content.length,280000);
+});

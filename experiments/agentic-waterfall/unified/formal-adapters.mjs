@@ -1,4 +1,5 @@
-import {readFileSync} from 'node:fs';
+import {readFileSync,mkdtempSync,writeFileSync,openSync,closeSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
 import {resolve, dirname, basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
@@ -8,12 +9,19 @@ import {sourceCoverage} from '../../../methods/agentic-waterfall/simbench/covera
 
 const here = dirname(fileURLToPath(import.meta.url));
 function python(script, args, input) {
-  const result = spawnSync('python3', [script, ...args], {
-    input: JSON.stringify(input), encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024,
-    env: {...process.env, PYTHONDONTWRITEBYTECODE: '1'},
-  });
-  if (result.error || result.status !== 0) throw Error(`formal_tool_failed: ${result.error?.message || result.stderr.trim()}`);
-  return JSON.parse(result.stdout);
+  // A file-backed stdin avoids the reproduced synchronous pipe stall without changing tool order or input.
+  const folder=mkdtempSync(resolve(tmpdir(),'waterfall-tool-'));let fd;
+  try {
+    const path=resolve(folder,'input.json');writeFileSync(path,JSON.stringify(input),{mode:0o600});fd=openSync(path,'r');
+    const result=spawnSync('python3',[script,...args],{
+      stdio:[fd,'pipe','pipe'],encoding:'utf8',timeout:30000,maxBuffer:16*1024*1024,
+      env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'},
+    });
+    if(result.error||result.status!==0)throw Error(`formal_tool_failed: ${result.error?.message||result.stderr.trim()}`);
+    return JSON.parse(result.stdout);
+  } finally {
+    if(fd!==undefined)closeSync(fd);rmSync(folder,{recursive:true,force:true});
+  }
 }
 
 // Paths are absolute or relative to the frozen code root; previous is the prior {input,result}.
