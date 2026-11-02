@@ -1,5 +1,5 @@
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const methodIds=['waterfall','clawrec','i2agent','generic-agent','fixed-retrieval'];
+import {validResearchMethods} from './research-methods.mjs';
 const statuses=new Set(['queued','running','succeeded','failed','interrupted']);
 
 // This client runs on the authenticated application server, never in browser code.
@@ -19,7 +19,7 @@ export function createRemoteResearchBackend({url,token}){
   identities.set(id,{user_id:value.user_id,session_id:value.session_id,artifact:value.artifact});return value;
  }
  return {
-  async info(){const value=await (await request('/v1/info')).json();if(typeof value?.ready!=='boolean'||!Array.isArray(value.methods)||value.methods.length!==5||new Set(value.methods).size!==5||value.methods.some(method=>!methodIds.includes(method))||!Array.isArray(value.sources))throw Error('research backend capabilities invalid');return value;},
+  async info(){const value=await (await request('/v1/info')).json();if(typeof value?.ready!=='boolean'||!validResearchMethods(value.methods)||!Array.isArray(value.sources))throw Error('research backend capabilities invalid');return value;},
   async start(input){const id=jobId(input.job_id);return validate(await (await request('/v1/jobs',input)).json(),id,input);},
   async poll(id){jobId(id);return validate(await (await request(`/v1/jobs/${id}`)).json(),id,identities.get(id));},
   async artifact(id){

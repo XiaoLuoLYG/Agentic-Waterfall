@@ -191,3 +191,22 @@ test('generic Agent retains a falsy JSON memory value in the next group',async()
  const memories=[];const {run}=await setup({modelCall:async request=>{const d=JSON.parse(request.messages.at(-1).content);if(d.stage!=='generic-agent')throw Error('unrelated method');if(!d.input.search_results.length){memories.push(d.input.own_state);return receipt({state:0,queries:[{source:'zhihu',mode:'search',query:'camera'}]});}return receipt({state:0,ordered_indices:[1,2,3,4,5]});}});
  const input={snapshot:snapshot(),session:{session_id:'s'},userId:'u',data_origin:'test_only'};await run(input);await run(input);assert.deepEqual(memories,[null,0]);
 });
+
+test('online roster executes the four original methods without invoking fixed retrieval',async()=>{
+ const {ONLINE_METHODS}=await import('../lib/waterfall/research-methods.mjs');
+ const {run,python}=await setup({methodIds:ONLINE_METHODS});
+ const result=await run({snapshot:snapshot(),userId:'four-qa',session:{session_id:'four-qa',record_kind:'synthetic'},data_origin:'test_only'});
+ assert.deepEqual(result.methods.map(method=>method.method_id),ONLINE_METHODS);
+ assert.ok(result.methods.every(method=>method.status==='submitted'));
+ assert.equal(python.some(call=>call.operation==='fixed'),false);
+});
+
+test('four live methods can await networking concurrently without changing result order',async()=>{
+ const {ONLINE_METHODS}=await import('../lib/waterfall/research-methods.mjs');
+ const original=await setup(),started=new Set();let release;const gate=new Promise(resolve=>release=resolve);
+ const {run}=await setup({methodIds:ONLINE_METHODS,archive:entry=>{if(entry.event==='method_start')started.add(entry.method_id);},modelCall:async request=>{await gate;return original.modelCall(request);}});
+ const pending=run({snapshot:snapshot(),userId:'parallel-qa',session:{session_id:'parallel-qa',record_kind:'synthetic'},data_origin:'test_only'});
+ await new Promise(resolve=>setImmediate(resolve));
+ try{assert.equal(started.size,4);}finally{release();}
+ const result=await pending;assert.deepEqual(result.methods.map(method=>method.method_id),ONLINE_METHODS);assert.equal(result.environment.method_scheduling,'parallel');
+});

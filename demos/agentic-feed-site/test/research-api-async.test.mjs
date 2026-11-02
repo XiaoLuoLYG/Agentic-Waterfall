@@ -65,7 +65,7 @@ test('account data includes sealed historical groups across sessions without rev
 
 test('offline backend, wrong identity and corrupt gzip never create a partial or fallback study',async()=>{
  const f=fixture(),a=await account(f.env,'fail-closed'),backend=f.env.RESEARCH_BACKEND;delete f.env.RESEARCH_BACKEND;
- const unavailable=(await a.api('/api/research/prepare',{sessionId:a.sid,mode:'rating'})).body.preparation;assert.equal(unavailable.backend_ready,false);assert.equal(unavailable.methods.length,5);
+ const unavailable=(await a.api('/api/research/prepare',{sessionId:a.sid,mode:'rating'})).body.preparation;assert.equal(unavailable.backend_ready,false);assert.equal(unavailable.methods.length,0);
  assert.equal((await a.api('/api/research/start',{sessionId:a.sid,mode:'rating',preparationId:unavailable.id})).status,503);assert.equal(f.starts,0);f.env.RESEARCH_BACKEND=backend;
  const p=(await a.api('/api/research/prepare',{sessionId:a.sid,mode:'rating'})).body.preparation;
  await a.api('/api/research/start',{sessionId:a.sid,mode:'rating',preparationId:p.id});const job=f.jobs.get(p.id);job.status='succeeded';job.user_id='another-account';

@@ -4,7 +4,8 @@ import {createHash} from 'node:crypto';
 import {gzipSync} from 'node:zlib';
 import {handleApi} from '../lib/waterfall/cloud-entry.mjs';
 const methods=['waterfall','clawrec','i2agent','generic-agent','fixed-retrieval'];
-export function fixture({makeResult}={}){
+export function fixture({makeResult,methods:participatingMethods=methods}={}){
+ const methods=participatingMethods;
  const sql=new DatabaseSync(':memory:');for(const file of readdirSync('drizzle').filter(x=>x.endsWith('.sql')).sort())sql.exec(readFileSync('drizzle/'+file,'utf8'));
  const DB={prepare(query){return {bind(...args){const statement=sql.prepare(query);return {async first(){return statement.get(...args)||null;},async all(){return {results:statement.all(...args)};},async run(){statement.run(...args);return {success:true};}};}};}};
  const objects=new Map(),jobs=new Map();let starts=0,failPut=false;

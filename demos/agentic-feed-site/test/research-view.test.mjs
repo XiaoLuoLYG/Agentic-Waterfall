@@ -131,7 +131,7 @@ test('pending work resumes through current and leaving cancels polling and stale
  }});
  await view.enter('rating');
  assert.equal(get.timers.size,1);
- assert.match(get('#researchProgress').textContent,/五系统正在生成/);
+ assert.match(get('#researchProgress').textContent,/参评系统正在生成/);
  const oldPoll=get.runTimer();
  view.leave();
  assert.equal(get.timers.size,0);
@@ -162,7 +162,7 @@ test('an unavailable five-system backend cannot be confirmed or silently downgra
   requests.push({path,data});return path==='/api/research/prepare'?{preparation:preparation('blind',false)}:{study:null,full_comparison_available:false};
  }});
  await view.enter('blind');await get('#researchStart').handlers.click();
- assert.match(get('#researchProgress').textContent,/五系统计算后端暂不可用/);
+ assert.match(get('#researchProgress').textContent,/参评系统计算后端暂不可用/);
  assert.equal(get('#researchConfirm').disabled,true);await get('#researchConfirm').handlers.click();
  assert.equal(requests.some(request=>request.path==='/api/research/start'),false);
  assert.equal(requests.some(request=>request.path.startsWith('/api/blind/')),false);

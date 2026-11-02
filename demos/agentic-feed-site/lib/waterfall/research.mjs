@@ -1,7 +1,7 @@
 import {check,exact,hash,id,comparisonAssignment} from './core.mjs';
 import {createHash} from 'node:crypto';
 import {researchPublicInput} from './research-input.mjs';
-const METHODS=['waterfall','clawrec','i2agent','generic-agent','fixed-retrieval'];
+import {RESEARCH_METHODS as METHODS,validResearchMethods,sameResearchMethods} from './research-methods.mjs';
 
 const itemFields=['id','title','summary','source','modality','url','image_url','duration','published_at','content_hash'];
 const publicItem=item=>Object.fromEntries(itemFields.filter(key=>item[key]!==undefined).map(key=>[key,item[key]]));
@@ -18,11 +18,11 @@ export function publicStudy(store,study){
  return {id:study.id,session_id:study.session_id,mode:study.mode,created_at:study.available_at,annotation_policy:'evaluation_only',stopped:researchStopped(store,study.id),
   items:study.items.map(question=>({id:question.id,item:question.item,answered:byQuestion.has(question.id)})),
   pairs:study.pairs.map(pair=>({id:pair.id,A:pair.A,B:pair.B,unavailable:pair.unavailable,same_content:pair.same_content,answered:byQuestion.has(pair.id)})),
-  incomplete_methods:METHODS.filter(id=>!methodResults(study).some(method=>method.method_id===id&&method.status==='submitted'&&method.slate?.length===5)).length,completed:saved.length,total:study.mode==='rating'?study.items.length:study.pairs.length};
+  method_count:(study.method_ids||METHODS).length,incomplete_methods:(study.method_ids||METHODS).filter(id=>!methodResults(study).some(method=>method.method_id===id&&method.status==='submitted'&&method.slate?.length===5)).length,completed:saved.length,total:study.mode==='rating'?study.items.length:study.pairs.length};
 }
 
 export function assertResearchExportable(store,sessionId){
- for(const job of store.rows.filter(row=>row.kind==='research_job'&&row.session_id===sessionId&&!store.rows.some(study=>study.kind==='research_study'&&study.preparation_id===row.preparation_id))){check(store.rows.some(row=>row.kind==='research_job_status'&&row.preparation_id===job.preparation_id&&['failed','interrupted'].includes(row.status)),'五系统评测尚未完成归档，请稍后导出',409);}
+ for(const job of store.rows.filter(row=>row.kind==='research_job'&&row.session_id===sessionId&&!store.rows.some(study=>study.kind==='research_study'&&study.preparation_id===row.preparation_id))){check(store.rows.some(row=>row.kind==='research_job_status'&&row.preparation_id===job.preparation_id&&['failed','interrupted'].includes(row.status)),'参评系统评测尚未完成归档，请稍后导出',409);}
  for(const study of store.rows.filter(row=>(row.kind==='research_study'||legacy(row))&&row.session_id===sessionId)){
   const view=publicStudy(store,study);check(view.stopped||view.completed===view.total,'请先完成或结束评测，再导出包含方法身份的数据',409);
  }
@@ -105,28 +105,28 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
  check(typeof input.sessionId==='string','会话无效');
  const session=store.session(input.sessionId);check(session.user_id===user.id,'会话不存在',404);
  const ownedStudy=studyId=>{const study=store.rows.find(row=>(row.kind==='research_study'||legacy(row))&&row.id===studyId);check(study&&store.session(study.session_id).user_id===user.id,'评测不存在',404);return study;};
- const capabilities=async()=>{try{const info=await backend?.info();return info?.ready&&Array.isArray(info.methods)&&info.methods.length===5&&new Set(info.methods).size===5&&info.methods.every(method=>METHODS.includes(method))&&Array.isArray(info.sources)&&info.sources.every(source=>source&&typeof source.id==='string'&&Array.isArray(source.modes)&&source.modes.length&&source.modes.every(mode=>['search','explore'].includes(mode))&&Array.isArray(source.modalities)&&source.modalities.length&&source.modalities.every(type=>['text','video','image'].includes(type)))?info:null;}catch{return null;}};
+ const capabilities=async()=>{try{const info=await backend?.info();return info?.ready&&validResearchMethods(info.methods)&&Array.isArray(info.sources)&&info.sources.every(source=>source&&typeof source.id==='string'&&Array.isArray(source.modes)&&source.modes.length&&source.modes.every(mode=>['search','explore'].includes(mode))&&Array.isArray(source.modalities)&&source.modalities.length&&source.modalities.every(type=>['text','video','image'].includes(type)))?info:null;}catch{return null;}};
  const context=async info=>{
   const raw=await snapshot(session.session_id),history=historyOf(store),public_input=researchPublicInput(raw,history,user.id);
   const sources=(info?.sources||[]).filter(source=>!user.settings.sources.length||user.settings.sources.includes(source.id)).map(source=>({...source,modalities:source.modalities.filter(type=>user.settings.contentTypes.includes(type))})).filter(source=>source.modalities.length);
   const unavailable_sources=user.settings.sources.filter(id=>!sources.some(source=>source.id===id));
   const frozen={...raw,unavailable_sources,state:{version:1,...public_input.provided_profile,memory:'',context:''},candidate_pool:[],previous_slate_ids:[],available_sources:sources,original_source_catalog:raw.available_sources||[]};delete frozen.hash;frozen.hash=hash(frozen);
-  return {snapshot:frozen,history,public_input,sources,unavailable_sources,fingerprint:hash({public_input,settings:user.settings,sources,backend:{model:info?.model,catalog_sha256:info?.catalog_sha256,source_sha256:info?.source_sha256}})};
+  return {snapshot:frozen,history,public_input,sources,unavailable_sources,fingerprint:hash({public_input,settings:user.settings,sources,backend:{methods:info?.methods,model:info?.model,catalog_sha256:info?.catalog_sha256,source_sha256:info?.source_sha256}})};
  };
- const payload=prep=>({job_id:prep.id,user_id:user.id,session_id:session.session_id,mode:prep.mode,context_hash:prep.context_hash,snapshot:prep.snapshot,history:prep.history,data_origin:prep.snapshot.qa_environment?.data_origin==='test_only'?'test_only':session.record_kind==='human'?'human':'synthetic'});
+ const payload=prep=>({job_id:prep.id,user_id:user.id,session_id:session.session_id,mode:prep.mode,context_hash:prep.context_hash,method_ids:prep.methods,snapshot:prep.snapshot,history:prep.history,data_origin:prep.snapshot.qa_environment?.data_origin==='test_only'?'test_only':session.record_kind==='human'?'human':'synthetic'});
  const finish=async(prep,job)=>{
   check(job?.job_id===prep.id&&job.user_id===user.id&&job.session_id===session.session_id,'计算任务身份不匹配',502);
   check(['queued','running','succeeded','failed','interrupted'].includes(job.status),'计算任务状态无效',502);
   if(['failed','interrupted'].includes(job.status)){await store.recordOnce('research_job_status',session.session_id,`research-job-status:${prep.id}:${job.status}`,{track:'evaluation',preparation_id:prep.id,status:job.status,error:job.error});return {pending:{id:prep.id,status:job.status,error:job.error}};}
   if(job.status!=='succeeded')return {pending:{id:prep.id,status:job.status}};
   const existing=store.rows.find(row=>row.kind==='research_study'&&row.preparation_id===prep.id);if(existing)return {study:publicStudy(store,existing)};
-  const summary=job.summary;check(summary&&Array.isArray(summary.methods)&&summary.methods.length===5&&new Set(summary.methods.map(method=>method.method_id)).size===5&&summary.methods.every(method=>METHODS.includes(method.method_id)&&Array.isArray(method.slate)&&['submitted','failed','not_applicable'].includes(method.status)),'五系统交付无效',502);
+  const summary=job.summary;check(summary&&Array.isArray(summary.methods)&&sameResearchMethods(summary.methods.map(method=>method.method_id),prep.methods||METHODS)&&summary.methods.every(method=>METHODS.includes(method.method_id)&&Array.isArray(method.slate)&&['submitted','failed','not_applicable'].includes(method.status)),'参评系统交付无效',502);
   check(archive?.put&&archive?.get,'私有原始归档尚未配置',503);
   const data=await bytes(await backend.artifact(prep.id));verifyGzip(data,job.artifact);
   const key=`research/${user.id}/${prep.id}.json.gz`,artifact_ref={...job.artifact,key,job_id:prep.id};
   try{await archive.put(key,data,{httpMetadata:{contentType:'application/gzip'},customMetadata:{sha256:job.artifact.sha256,user_id:user.id,session_id:session.session_id,job_id:prep.id,context_hash:prep.context_hash}});}catch{check(false,'原始记录归档失败，尚未创建评测，请稍后重试',503);}
   const cleanSummary={run_id:summary.run_id,artifact_version:summary.artifact_version,data_origin:payload(prep).data_origin,methods:smallMethods(summary.methods),environment:summary.environment,costs:summary.costs};
-  const record={track:'evaluation',mode:prep.mode,preparation_id:prep.id,protocol:'awf-evaluation/3.0',annotation_policy:'evaluation_only',context_hash:prep.context_hash,public_input:prep.public_input,summary:cleanSummary,artifact_ref,...questions(cleanSummary,prep.mode)};
+  const record={track:'evaluation',mode:prep.mode,preparation_id:prep.id,protocol:'awf-evaluation/4.0',method_ids:[...prep.methods],annotation_policy:'evaluation_only',context_hash:prep.context_hash,public_input:prep.public_input,summary:cleanSummary,artifact_ref,...questions(cleanSummary,prep.mode)};
   check(Buffer.byteLength(JSON.stringify(record))<900000,'评测摘要过大',502);
   const study=await store.recordOnce('research_study',session.session_id,`research-study:${prep.id}`,record);return {study:publicStudy(store,study)};
  };
@@ -166,15 +166,15 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
   const pending=store.rows.findLast(row=>row.kind==='research_job'&&row.session_id===session.session_id&&(!mode||row.mode===mode));
   const completed=pending&&store.rows.find(row=>row.kind==='research_study'&&row.preparation_id===pending.preparation_id);
   if(completed){send(200,{study:publicStudy(store,completed),full_comparison_available:!!backend&&!!archive});return true;}
-  if(pending){const prep=store.rows.find(row=>row.kind==='research_preparation'&&row.id===pending.preparation_id);check(backend&&prep,'五系统后端尚未配置',503);let job;try{job=await backend.poll(prep.id);}catch(error){if(error.status===404)job=await backend.start(payload(prep));else check(false,'五系统计算后端暂不可用，请稍后重新连接',503);}send(200,{...await finish(prep,job),full_comparison_available:!!backend&&!!archive});return true;}
+  if(pending){const prep=store.rows.find(row=>row.kind==='research_preparation'&&row.id===pending.preparation_id);check(backend&&prep,'参评系统后端尚未配置',503);let job;try{job=await backend.poll(prep.id);}catch(error){if(error.status===404)job=await backend.start(payload(prep));else check(false,'参评系统计算后端暂不可用，请稍后重新连接',503);}send(200,{...await finish(prep,job),full_comparison_available:!!backend&&!!archive});return true;}
   const study=store.rows.findLast(row=>row.kind==='research_study'&&row.session_id===session.session_id&&(!mode||row.mode===mode));send(200,{study:publicStudy(store,study),full_comparison_available:!!backend&&!!archive});return true;
  }
  if(req.method==='POST'&&path==='/api/research/prepare'){
   exact(input,['sessionId','mode']);check(user.type==='human','本轮只开放人工评测');check(['rating','blind'].includes(input.mode),'评测类型无效');
   const info=await capabilities(),shared=await context(info),ready=!!info&&!!archive?.put&&!!archive?.get&&shared.sources.length>0;
   const previous=store.rows.findLast(row=>row.kind==='research_preparation'&&row.session_id===session.session_id&&row.mode===input.mode&&row.fingerprint===shared.fingerprint&&row.backend_ready===ready&&!store.rows.some(job=>job.kind==='research_job'&&job.preparation_id===row.id));
-  const preparation=previous||await store.record('research_preparation',session.session_id,{track:'evaluation',user_id:user.id,mode:input.mode,captured_at:shared.snapshot.captured_at,context_hash:hash(shared.snapshot),backend_ready:ready,methods:METHODS,sources:shared.sources,backend_info:info,...shared});
-  const visible=Object.fromEntries(['id','mode','captured_at','context_hash','public_input','methods','sources','unavailable_sources','backend_ready'].map(key=>[key,preparation[key]]));send(previous?200:201,{preparation:visible});return true;
+  const preparation=previous||await store.record('research_preparation',session.session_id,{track:'evaluation',user_id:user.id,mode:input.mode,captured_at:shared.snapshot.captured_at,context_hash:hash(shared.snapshot),backend_ready:ready,methods:info?.methods||[],deferred_methods:info?.methods?METHODS.filter(id=>!info.methods.includes(id)):[],sources:shared.sources,backend_info:info,...shared});
+  const visible=Object.fromEntries(['id','mode','captured_at','context_hash','public_input','methods','deferred_methods','sources','unavailable_sources','backend_ready'].map(key=>[key,preparation[key]]));send(previous?200:201,{preparation:visible});return true;
  }
  if(req.method==='POST'&&path==='/api/research/curate'){
   exact(input,['sessionId','studyId','disposition']);check(['keep','exclude','pending'].includes(input.disposition),'数据保留状态无效');
@@ -191,10 +191,10 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
   exact(input,['sessionId','mode','preparationId']);check(typeof input.preparationId==='string','请先查看并确认本组共同输入',400);check(['rating','blind'].includes(input.mode),'评测类型无效');check(user.type==='human','本轮只开放人工评测');
   const prep=store.rows.find(row=>row.kind==='research_preparation'&&row.id===input.preparationId&&row.session_id===session.session_id&&row.user_id===user.id&&row.mode===input.mode);check(prep,'共同输入准备记录不存在',404);
   const existing=store.rows.find(row=>row.kind==='research_study'&&row.preparation_id===prep.id);if(existing){send(200,{study:publicStudy(store,existing)});return true;}
-  check(prep.backend_ready&&backend&&archive?.put,'五系统计算后端或私有归档暂不可用',503);
+  check(prep.backend_ready&&backend&&archive?.put,'参评系统计算后端或私有归档暂不可用',503);
   const already=store.rows.find(row=>row.kind==='research_job'&&row.preparation_id===prep.id);
-  if(!already){const info=await capabilities();check(info,'五系统计算后端暂不可用',503);const current=await context(info);check(current.fingerprint===prep.fingerprint,'共同输入已变化，请重新查看并确认',409);await store.recordOnce('research_job',session.session_id,`research-job:${prep.id}`,{track:'evaluation',mode:prep.mode,preparation_id:prep.id,status:'queued',context_hash:prep.context_hash});}
-  let job;try{job=await backend.start(payload(prep));}catch{check(false,'五系统任务连接失败，可重新连接同一任务',503);}const response=await finish(prep,job);send(response.study?201:202,response);return true;
+  if(!already){const info=await capabilities();check(info,'参评系统计算后端暂不可用',503);const current=await context(info);check(current.fingerprint===prep.fingerprint,'共同输入已变化，请重新查看并确认',409);await store.recordOnce('research_job',session.session_id,`research-job:${prep.id}`,{track:'evaluation',mode:prep.mode,preparation_id:prep.id,status:'queued',context_hash:prep.context_hash});}
+  let job;try{job=await backend.start(payload(prep));}catch{check(false,'参评系统任务连接失败，可重新连接同一任务',503);}const response=await finish(prep,job);send(response.study?201:202,response);return true;
  }
  check(req.method==='POST'&&['/api/research/present','/api/research/answer','/api/research/interaction'].includes(path),'地址不存在',404);
  const study=store.rows.find(row=>row.kind==='research_study'&&row.id===input.studyId&&row.session_id===session.session_id);

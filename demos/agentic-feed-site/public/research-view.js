@@ -19,7 +19,7 @@ export function createResearchView({api,getSession,notice,onPreparing}){
  const request=(path,data)=>api('/api/research/'+path,{sessionId:getSession()?.session_id,...data});
  const current=(token,sid,expectedMode)=>active&&token===generation&&getSession()?.session_id===sid&&mode===expectedMode;
  const clearPoll=()=>{clearTimeout(pollTimer);pollTimer=null;};
- const unavailable='五系统计算后端暂不可用，无法开始本组评测。请稍后重试；不会切换到旧双系统或单系统。';
+ const unavailable='参评系统计算后端暂不可用，无法开始本组评测。请稍后重试；不会切换到旧双系统或单系统。';
  async function recordVisible(){
   if(!active||!study||study.stopped||!question||root.hidden||document.visibilityState!=='visible'||!document.hasFocus())return;
   const token=generation,sid=getSession()?.session_id,expectedMode=mode,studyId=study.id,questionId=question.id;
@@ -34,8 +34,8 @@ export function createResearchView({api,getSession,notice,onPreparing}){
  function render(){
   observer?.disconnect();
   const blind=mode==='blind';el('researchTitle').textContent=blind?'匿名盲选':'内容评分';
-  el('researchIntro').textContent=blind?'请比较两组匿名推荐，选择此刻更想看的内容；每侧最多 5 条。':'同一份共同输入下，评价五个系统的实际推荐；内容去重后打乱，逐条作答。可以持续做题。';
-  el('researchProgress').textContent=error||(pending?'五系统正在生成本组内容，完成后会自动显示。可以离开本页，稍后回来继续。':busy?'正在读取本组信息，请稍候…':study?`已完成 ${study.completed} / ${study.total}${study.incomplete_methods?` · ${study.incomplete_methods} 个系统缺席或未完整交付，缺失与失败单列；本组不能视为完整五系统比较。`:""}`:'开始前请先查看并确认本组实际使用的共同输入。');
+  el('researchIntro').textContent=blind?'请比较两组匿名推荐，选择此刻更想看的内容；每侧最多 5 条。':'同一份共同输入下，评价本轮各系统的实际推荐；内容去重后打乱，逐条作答。可以持续做题。';
+  el('researchProgress').textContent=error||(pending?'参评系统正在生成本组内容，完成后会自动显示。可以离开本页，稍后回来继续。':busy?'正在读取本组信息，请稍候…':study?`已完成 ${study.completed} / ${study.total}${study.incomplete_methods?` · ${study.incomplete_methods} 个系统缺席或未完整交付，缺失与失败单列；本组不能视为完整参评系统比较。`:""}`:'开始前请先查看并确认本组实际使用的共同输入。');
   const previousQuestion=question?.id;question=study&&!study.stopped?(blind?study.pairs:study.items)?.find(item=>!item.answered):null;
   if(previousQuestion&&question?.id!==previousQuestion)window.scrollTo?.({top:0,behavior:'instant'});
   el('researchStop').hidden=!study||study.stopped||!question;el('researchStop').disabled=busy;
@@ -45,7 +45,7 @@ export function createResearchView({api,getSession,notice,onPreparing}){
   el('researchPreparation').hidden=!preparation;
   el('researchConfirm').hidden=!preparation||!!pending;
   el('researchConfirm').disabled=busy||!backendReady;
-  el('researchPreparation').innerHTML=preparation?`<h2>开始前确认共同输入</h2><p>共同输入截止时间：<time>${esc(preparation.captured_at)}</time></p>${sharedInput(preparation.public_input)}<h3>参与方法（不展示题目对应关系）</h3><p>${(preparation.methods||[]).map(method=>esc(typeof method==='string'?method:method.id||method.name)).join('、')}</p><h3>本组实际可检索来源</h3>${preparation.unavailable_sources?.length?`<p role="status">本组未使用的已选来源：${preparation.unavailable_sources.map(esc).join("、")}。它们不在本次五系统共同检索范围内。</p>`:""}<p>${(preparation.sources||[]).map(source=>esc(typeof source==='string'?source:[source.id,source.name].filter(Boolean).join(' · '))).join('、')}</p><details><summary>查看完整来源信息</summary><pre tabindex="0">${json(preparation.sources)}</pre></details><p class="research-policy">确认后冻结这份共同用户输入。各系统另用自己的状态、提示词和工具结果决策，完整调用可在评测结束后下载。过去评分、盲选及评价区事件不进入推荐输入。</p>`:'';
+  el('researchPreparation').innerHTML=preparation?`<h2>开始前确认共同输入</h2><p>共同输入截止时间：<time>${esc(preparation.captured_at)}</time></p>${sharedInput(preparation.public_input)}<h3>参与方法（不展示题目对应关系）</h3><p>${(preparation.methods||[]).map(method=>esc(typeof method==='string'?method:method.id||method.name)).join('、')}</p>${preparation.deferred_methods?.length?`<p>本轮暂不参与：${preparation.deferred_methods.map(id=>esc(id==='fixed-retrieval'?'BM25＋BGE（耗时过长，暂缓）':id)).join('、')}。</p>`:''}<h3>本组实际可检索来源</h3>${preparation.unavailable_sources?.length?`<p role="status">本组未使用的已选来源：${preparation.unavailable_sources.map(esc).join("、")}。它们不在本次参评系统共同检索范围内。</p>`:""}<p>${(preparation.sources||[]).map(source=>esc(typeof source==='string'?source:[source.id,source.name].filter(Boolean).join(' · '))).join('、')}</p><details><summary>查看完整来源信息</summary><pre tabindex="0">${json(preparation.sources)}</pre></details><p class="research-policy">确认后冻结这份共同用户输入。各系统另用自己的状态、提示词和工具结果决策，完整调用可在评测结束后下载。过去评分、盲选及评价区事件不进入推荐输入。</p>`:'';
   if(!question){el('researchContent').innerHTML=study?'<p class="research-finished">已保留本次记录。可在“我的数据”查看本人答案；完成或结束后可查看方法结果与下载原始记录。</p>':'';el('researchChoices').innerHTML='';return;}
   if(blind){
    el('researchContent').innerHTML=`${question.unavailable?'<p role="status">本题有一方未完整交付，保留为无法判断。</p>':''}<div class="research-lists"><section><h2>推荐 A</h2>${question.A.map(preview).join('')}</section><section><h2>推荐 B</h2>${question.B.map(preview).join('')}</section></div>`;
@@ -78,7 +78,7 @@ export function createResearchView({api,getSession,notice,onPreparing}){
   try{
    const result=await request('prepare',{sessionId:sid,mode:expectedMode});if(!current(token,sid,expectedMode))return;
    if(!result.preparation?.id||result.preparation.mode!==expectedMode||!result.preparation.public_input)throw new Error('服务未返回本组共同输入，尚未开始评测。');
-   preparation=result.preparation;study=null;backendReady=preparation.backend_ready===true&&preparation.methods?.length===5;
+   preparation=result.preparation;study=null;backendReady=preparation.backend_ready===true&&preparation.methods?.length>=2;
    if(!backendReady)error=unavailable;
   }catch(cause){if(current(token,sid,expectedMode)){preparation=null;error=`无法准备评测：${cause.message}`;notice(error,true);}}
   finally{if(current(token,sid,expectedMode)){busy=false;onPreparing(false);render();}}
@@ -87,7 +87,7 @@ export function createResearchView({api,getSession,notice,onPreparing}){
   if(busy||!preparation||!backendReady)return;const token=++generation,sid=getSession()?.session_id,expectedMode=mode;clearPoll();busy=true;error='';onPreparing(true);render();
   try{
    const result=await request('start',{sessionId:sid,mode:expectedMode,preparationId:preparation.id});if(!current(token,sid,expectedMode))return;
-   if(!result.study&&!result.pending)throw new Error('五系统后端未返回任务，尚未开始评测。');receive(result);
+   if(!result.study&&!result.pending)throw new Error('参评系统后端未返回任务，尚未开始评测。');receive(result);
   }catch(cause){if(current(token,sid,expectedMode)){error=`评测未开始：${cause.message}`;if(cause.status===409)preparation=null;notice(error,true);}}
   finally{if(current(token,sid,expectedMode)){busy=!!pending;onPreparing(busy);render();if(pending)schedulePoll(token,sid,expectedMode);}}
  }
@@ -134,7 +134,7 @@ export function createResearchDataView({api,getSession,notice}){
  const current=(token,sid)=>active&&token===generation&&getSession()?.session_id===sid;
  function render(result){
   studies=result.studies||[];el('dataStatus').textContent=studies.length?`共 ${studies.length} 组评测记录`:'还没有评测记录。';
-  el('dataStorage').hidden=!result.storage;el('dataStorage').innerHTML=result.storage?`<h2>${result.storage.kind==='sqlite+files'?'本机私有存储':result.storage.kind==='d1+r2'?'云端私有存储':'数据保存与下载'}</h2><p>可在这里查看本账号所有会话的评测；完整记录自动保存在${result.storage.kind==='sqlite+files'?'本机':'云端'}，完成或结束一组后可下载。五系统评测的本组输入与运行归档也会保存在云端计算后端。排除仅影响正式数据包，不删除原始记录。人工组默认待审核，测试与合成组默认排除。</p><p>顶部“导出数据”只包含当前会话，历史组在下方单独下载。</p>`:'';
+  el('dataStorage').hidden=!result.storage;el('dataStorage').innerHTML=result.storage?`<h2>${result.storage.kind==='sqlite+files'?'本机私有存储':result.storage.kind==='d1+r2'?'云端私有存储':'数据保存与下载'}</h2><p>可在这里查看本账号所有会话的评测；完整记录自动保存在${result.storage.kind==='sqlite+files'?'本机':'云端'}，完成或结束一组后可下载。参评系统评测的本组输入与运行归档也会保存在云端计算后端。排除仅影响正式数据包，不删除原始记录。人工组默认待审核，测试与合成组默认排除。</p><p>顶部“导出数据”只包含当前会话，历史组在下方单独下载。</p>`:'';
   el('dataStudies').innerHTML=studies.map(study=>{const unable=(study.answers||[]).filter(answer=>[answer.status,answer.grade_status,answer.choice].some(value=>['unable','insufficient'].includes(value))).length;return `<article class="research-data-group"><h2>${study.legacy?'旧版盲选':study.mode==='blind'?'匿名盲选':'内容评分'} · ${esc(study.created_at)}</h2><p>已答 ${esc(study.completed)} / ${esc(study.total)} · 未答 ${Math.max(0,study.total-study.completed)} · 无法判断 ${unable} · ${study.stopped?'已结束':study.sealed?'已完成':'进行中'}</p><details><summary>本组输入</summary><pre tabindex="0">${json(study.input)}</pre></details><details><summary>本人答案</summary><pre tabindex="0">${json(study.answers)}</pre></details>${curationControls(study)}${study.can_stop&&!study.sealed?`<button class="secondary" type="button" data-study-stop="${esc(study.id)}">${study.legacy?'结束旧版评测并保留未答':'结束并保留未答'}</button>`:''}${study.sealed?`<button class="secondary" type="button" data-study-details="${esc(study.id)}">查看方法结果与下载</button>`:'<p class="research-policy">完成或结束本组后显示方法对应关系及原始记录下载。</p>'}</article>`;}).join('');
   const href=downloadUrl(result.export_url),sessions=[...new Set([getSession()?.session_id,...studies.map(study=>study.session_id)].filter(Boolean))];
   el('dataExport').innerHTML=(href&&studies.every(study=>study.sealed)?`<p><a class="export-link" href="${esc(href)}" download>下载当前会话数据</a></p>`:'')+sessions.map(sid=>`<p><a class="export-link" href="/api/export?sessionId=${esc(encodeURIComponent(sid))}&amp;format=release" download>下载正式数据包 · ${sid===getSession()?.session_id?'当前会话':esc(sid)}</a></p>`).join('')+'<p>正式数据包只包含明确保留的已完成或已结束人工组；未保留任何组时不会生成。</p>';

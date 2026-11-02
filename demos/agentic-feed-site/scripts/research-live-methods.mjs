@@ -10,7 +10,7 @@ import {sourceCatalog as configuredSources,acquireSource as liveAcquire} from '.
 
 const here=dirname(fileURLToPath(import.meta.url));
 const hash=value=>createHash('sha256').update(Buffer.isBuffer(value)||typeof value==='string'?value:JSON.stringify(value)).digest('hex');
-const methods=['waterfall','clawrec','i2agent','generic-agent','fixed-retrieval'];
+import {RESEARCH_METHODS,validResearchMethods} from '../lib/waterfall/research-methods.mjs';
 const protocol=Object.freeze({mode:'acquire',top_k:5,max_model_calls:20,max_tool_calls:20,max_acquired_items:1000,max_items_per_request:50,max_output_tokens:8192});
 const methodProtocols={waterfall:{initial_history:'normal demo snapshot window; complete natural prefix remains available through lookup_history'},clawrec:{display_order:'author Display Plan section order, then card order; a repeated acquired page retains its first occurrence',content_identity:'exact acquired href'},i2agent:{candidate_cap:20,chosen_history_cap:15,candidate_selection:'independent live acquisition arrival order',contrast:'independently acquired unobserved neutral alternative'}};
 const authorFiles=['i2agent/adapter.py','i2agent/live_smoke.py','i2agent/source-snapshot/model.py','fixed-retrieval/retrieval.py','clawrec/source-snapshot/clawrec-synthesizing-user-state/scripts/build_update_packets.py','clawrec/source-snapshot/clawrec-synthesizing-user-state/SKILL.md','clawrec/source-snapshot/clawrec-making-content-plan/SKILL.md','clawrec/source-snapshot/clawrec-making-content-plan/references/input-contract.md','clawrec/source-snapshot/clawrec-making-content-plan/references/planning-rubric.md','clawrec/source-snapshot/clawrec-curating-display-data/SKILL.md'];
@@ -38,14 +38,15 @@ function pythonBridge(python,root,timeoutMs){
 }
 
 // Only natural feed evidence is projected; each method owns its retrieval pool and state.
-export function createResearchRunner({researchRoot,config={},sourceConfig,catalog,acquireSource=liveAcquire,modelCall,pythonCall,archive,stateStore}={}){
+export function createResearchRunner({researchRoot,config={},sourceConfig,catalog,acquireSource=liveAcquire,modelCall,pythonCall,archive,stateStore,methodIds=RESEARCH_METHODS}={}){
  if(!researchRoot)throw Error('researchRoot is required');
+ if(!validResearchMethods(methodIds))throw Error('invalid method roster');const methods=[...methodIds];
  const root=resolve(researchRoot),read=name=>readFileSync(resolve(root,name),'utf8');
  const capabilities=structuredClone(catalog||configuredSources(sourceConfig));
  const call=modelCall||demoModelCall(config),python=pythonCall||pythonBridge(config.pythonPath||resolve(root,'fixed-retrieval/.venv/bin/python'),root,config.pythonTimeoutMs||900000);
  const hashes=Object.fromEntries(authorFiles.map(name=>[name,hash(readFileSync(resolve(root,name)))]));
  for(const name of ['research-live-methods.mjs','research-python.py'])hashes[name]=hash(readFileSync(resolve(here,name)));
- for(const name of ['waterfall-core.mjs','unified-demo.mjs','unified-input.mjs','research-input.mjs','sources.mjs'])hashes[name]=hash(readFileSync(resolve(here,'../lib/waterfall',name)));
+ for(const name of ['waterfall-core.mjs','unified-demo.mjs','unified-input.mjs','research-input.mjs','sources.mjs','research-methods.mjs'])hashes[name]=hash(readFileSync(resolve(here,'../lib/waterfall',name)));
  const states=new Map();let queue=Promise.resolve();
  async function execute({snapshot,history=[],session={},userId,job_id,data_origin}){
   if(!snapshot?.id||!Number.isFinite(Date.parse(snapshot.captured_at))||!Array.isArray(history))throw Error('invalid research snapshot or history');
@@ -63,10 +64,10 @@ export function createResearchRunner({researchRoot,config={},sourceConfig,catalo
   const explicitQueries=[evidence.filter(x=>x.type==='command').at(-1)?.text,...provided_profile.interests,...provided_profile.entries.map(x=>x.value)].filter(x=>typeof x==='string'&&x.trim());
   const fallbackQueries=provided_profile.profile?[provided_profile.profile]:evidence.filter(x=>x.title).slice(-3).map(x=>x.title);
   const sourceQueries=[...new Set((explicitQueries.length?explicitQueries:fallbackQueries).map(x=>x.trim().slice(0,120)))];
-  for(const method of methods){
+  async function executeMethod(method){
    const key=JSON.stringify([user,method]),prior=states.get(key)||stateStore?.get(user,method)||null,trace=[],acquired=new Map(),pages=new Map();
    let nextState=prior||{state:null},models=0,requests=0,captureError;
-   const result={method_id:method,method_version:'online-five-method-v1',implementation:method==='clawrec'?'ClawRec-adapted: author update packets, canonical state/planner and curation with shared live-source transport':method==='i2agent'?'i2Agent-adapted: pinned author five-stage ranker with independent live-source acquisition':method==='fixed-retrieval'?'Independent live-source acquisition then full BM25+BGE-M3 RRF(60)+BGE reranker':method==='generic-agent'?'Autonomous generic tool Agent with independent state and repeated live acquisition':'Current shared Waterfall core',status:'failed',slate:[],trace,data_origin:origin,protocol:{...protocol}};
+   const result={method_id:method,method_version:'online-method-v2',implementation:method==='clawrec'?'ClawRec-adapted: author update packets, canonical state/planner and curation with shared live-source transport':method==='i2agent'?'i2Agent-adapted: pinned author five-stage ranker with independent live-source acquisition':method==='fixed-retrieval'?'Independent live-source acquisition then full BM25+BGE-M3 RRF(60)+BGE reranker':method==='generic-agent'?'Autonomous generic tool Agent with independent state and repeated live acquisition':'Current shared Waterfall core',status:'failed',slate:[],trace,data_origin:origin,protocol:{...protocol}};
    trace.push({phase:'method_context',runtime:{prior_state:structuredClone(prior)}});
    if(methodProtocols[method])result.adapter_protocol={...methodProtocols[method]};
    persist('method_start',method,{prior_state:prior,implementation:result.implementation});
@@ -182,10 +183,17 @@ export function createResearchRunner({researchRoot,config={},sourceConfig,catalo
    result.acquired_ids=[...acquired.keys()];result.content_snapshot={id:randomUUID(),hash:hash([...acquired.values()]),items:[...acquired.values()]};result.state_after=nextState.state;result.resources={model_calls:models,source_requests:requests,acquired_items:acquired.size};
    const stateHash=hash(nextState);persist('method_complete',method,{result:{...result,trace:undefined},next_state:nextState,state_sha256:stateHash});
    try{stateStore?.set(user,method,nextState,{run_id:runId,state_sha256:stateHash});states.set(key,nextState);}catch(error){throw Error(`research_state_failed: ${error.message}`);}
-   results.push(result);
+   return result;
+  }
+  const method_scheduling=methods.includes('fixed-retrieval')?'serial':'parallel';
+  if(method_scheduling==='serial')for(const method of methods)results.push(await executeMethod(method));
+  else{
+   const completed=await Promise.allSettled(methods.map(executeMethod));
+   const failed=completed.find(entry=>entry.status==='rejected');if(failed)throw failed.reason;
+   results.push(...completed.map(entry=>entry.value));
   }
   persist('run_complete',null,{methods:results.map(({method_id,status,error})=>({method_id,status,error}))});
-  return {run_id:runId,methods:results,data_origin:origin,input_snapshot:snapshot,environment:{data_origin:origin,runtime:'linux_or_local_python_and_node',network_sources:true,training:false,active_sources:sources.map(x=>x.id),unavailable_sources:[...requested].filter(id=>!bySource.has(id)),source_sha256:hashes,public_input:{provided_profile,evidence},protocol,method_protocols:structuredClone(methodProtocols),method_state_scope:stateStore?'persistent_per_user_per_method':'runner_instance_per_user_per_method'}};
+  return {run_id:runId,methods:results,data_origin:origin,input_snapshot:snapshot,environment:{method_scheduling,method_ids:[...methods],data_origin:origin,runtime:'linux_or_local_python_and_node',network_sources:true,training:false,active_sources:sources.map(x=>x.id),unavailable_sources:[...requested].filter(id=>!bySource.has(id)),source_sha256:hashes,public_input:{provided_profile,evidence},protocol,method_protocols:structuredClone(methodProtocols),method_state_scope:stateStore?'persistent_per_user_per_method':'runner_instance_per_user_per_method'}};
  }
  const runner=request=>{const result=queue.then(()=>execute(request));queue=result.catch(()=>{});return result;};
  runner.info={methods:[...methods],model:config.model||null,network_sources:true,source_sha256:hashes,protocol,method_protocols:structuredClone(methodProtocols),sources:capabilities.filter(x=>x.allowed!==false&&x.configured!==false)};
