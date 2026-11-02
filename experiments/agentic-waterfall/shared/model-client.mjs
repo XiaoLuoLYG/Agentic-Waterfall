@@ -74,6 +74,38 @@ function rateLimitHeaders(response){
  return Object.fromEntries([...(response.headers?.entries?.()||[])].filter(([key,value])=>/^(x-)?ratelimit-(limit|remaining|reset)(-(requests|tokens))?$/.test(key)&&/^[0-9:.TZ+ -]+$/.test(value)).map(([key,value])=>[key,value.slice(0,100)]));
 }
 
+export async function readModelResponse(response) {
+  if(!response.headers?.get?.('content-type')?.includes('text/event-stream'))return response.json();
+  const result={choices:[{message:{content:'',reasoning_content:''},finish_reason:null}],usage:null};
+  const decoder=new TextDecoder();let buffer='',done=false,events=0,firstEventAt=null;
+  const consume=frame=>{
+    const data=frame.split('\n').filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');
+    if(!data)return;
+    if(data.trim()==='[DONE]'){done=true;return;}
+    const chunk=JSON.parse(data);events++;firstEventAt??=new Date().toISOString();
+    if(chunk.error)throw Object.assign(Error('model_transport_error'),{streamError:chunk.error});
+    if(chunk.model)result.model=chunk.model;
+    if(chunk.usage)result.usage=chunk.usage;
+    const choice=chunk.choices?.find(c=>c.index===0||c.index===undefined);
+    if(choice){
+      for(const field of ['content','reasoning_content'])if(typeof choice.delta?.[field]==='string')result.choices[0].message[field]+=choice.delta[field];
+      if(choice.finish_reason)result.choices[0].finish_reason=choice.finish_reason;
+    }
+  };
+  try {
+    for await(const bytes of response.body){
+      buffer=(buffer+decoder.decode(bytes,{stream:true})).replace(/\r\n/g,'\n');
+      let end;while((end=buffer.indexOf('\n\n'))>=0){consume(buffer.slice(0,end));buffer=buffer.slice(end+2);}
+      if(done)break;
+    }
+    buffer+=decoder.decode();if(buffer.trim())consume(buffer.replace(/\r\n/g,'\n'));
+    if(!done||!result.choices[0].finish_reason)throw Error('model_stream_incomplete');
+    result.stream_metadata={received:true,events,first_event_at:firstEventAt,complete:true};return result;
+  } catch(error){
+    throw Object.assign(Error('model_transport_error'),{partialResponse:result,streamError:error.streamError,streamDiagnostic:{reason:error.message,events,first_event_at:firstEventAt,complete:false}});
+  }
+}
+
 async function httpError(response,key) {
   let body;
   try { body=typeof response.text==='function'?await response.text():await response.json(); } catch {}
@@ -91,7 +123,7 @@ async function httpError(response,key) {
 async function callOnce(request, {experiment}={}, config, deadline) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
   const timeoutMs=modelTimeoutMs();
-  const body={model:config.model,messages:request.messages,temperature:request.temperature??0.3,max_tokens:request.max_tokens??4096,...config.parameters,...(request.response_format?{response_format:request.response_format}:{})};
+  const body={model:config.model,messages:request.messages,temperature:request.temperature??0.3,max_tokens:request.max_tokens??4096,...config.parameters,...(request.response_format?{response_format:request.response_format}:{}),...(request.stream===true?{stream:true,stream_options:{include_usage:true}}:{})};
   if (!Number.isSafeInteger(body.max_tokens)||body.max_tokens<1) throw new Error('invalid_max_tokens');
   const gate=createRequestGate(config);
   const latestStart=deadline-timeoutMs-10000;
@@ -102,14 +134,15 @@ async function callOnce(request, {experiment}={}, config, deadline) {
     httpStartedAt=new Date().toISOString();
     const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
     if (!response.ok) { http=await httpError(response,config.key);if(response.status===429&&http.retryable)await gate.cooldown(http.retry_after_seconds??60);throw new Error(`model_http_${response.status}`); }
-    const result=await response.json();
+    const result=await readModelResponse(response);
     const content=result.choices?.[0]?.message?.content;
     if (typeof content!=='string') throw new Error('model_missing_content');
-    receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,...(typeof result.choices?.[0]?.message?.reasoning_content==='string'?{reasoning_content:result.choices[0].message.reasoning_content}:{}),usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters},rate_limit_headers:rateLimitHeaders(response),request_gate_wait_ms:gateWaitMs,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
+    receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,...(typeof result.choices?.[0]?.message?.reasoning_content==='string'?{reasoning_content:result.choices[0].message.reasoning_content}:{}),...(result.stream_metadata?{stream_metadata:result.stream_metadata}:{}),usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters,...(body.stream?{stream:true}:{})},rate_limit_headers:rateLimitHeaders(response),request_gate_wait_ms:gateWaitMs,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
     return receipt;
   } catch(e) {
     const code=/^model_http_\d+$/.test(e.message)||e.message==='model_missing_content'||e.message?.startsWith('request_gate_')?e.message:e.name==='TimeoutError'?'model_timeout':'model_transport_error';
-    receipt={attempt_id:attempt.id,status:'failed',requested_model:config.model,error:code,...(http?{http_error:http}:{}),request_gate_wait_ms:gateWaitMs??Date.now()-started,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
+    if(e.streamError)http=await httpError({status:200,json:async()=>({error:e.streamError})},config.key);
+    receipt={attempt_id:attempt.id,status:'failed',requested_model:config.model,error:code,...(http?{http_error:http}:{}),...(e.partialResponse?{partial_response:e.partialResponse,stream_diagnostic:e.streamDiagnostic}:{}),request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters,...(body.stream?{stream:true}:{})},request_gate_wait_ms:gateWaitMs??Date.now()-started,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
     const error=new Error(code); error.receipt=receipt; throw error;
   } finally {
     await withLedger(ledger=>{
