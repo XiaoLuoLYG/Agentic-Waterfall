@@ -192,7 +192,9 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
         if(!waitsForAcquire(action.depends_on))validateRecommendation(action.arguments);
         else if(!['append','replace_pending'].includes(action.arguments.delivery))rankingError('invalid_delivery',{allowed_deliveries:['append','replace_pending']});
       }
-      else if(action?.kind==='update_state'&&Array.isArray(action.arguments?.edits)){
+      else if(action?.kind==='update_state'){
+        if(!Array.isArray(action.arguments.edits)||action.arguments.edits.some(edit=>!edit||!['upsert','set_status'].includes(edit.op)))
+          rankingError('invalid_actions',{action_id:action.action_id,required:'update_state edits must be an array of {op:"upsert",record:{id,kind,key,value,scope,scope_id,status,basis,evidence_refs}} or {op:"set_status",id,status} objects.'});
         const dependencies=new Set();
         const visit=ids=>{for(const id of Array.isArray(ids)?ids:[])if(!dependencies.has(id)){dependencies.add(id);visit(byId.get(id)?.depends_on);}};
         visit(action.depends_on);

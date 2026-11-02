@@ -162,3 +162,20 @@ test('a refused excess request is shown to the agent before its final recommenda
  }});
  assert.equal(result.status,'submitted');assert.equal(acquired,1);assert.equal(result.model_calls.length,3);
 });
+
+test('malformed state edits reject all actions before delivery and let the model correct them',async()=>{
+ for(const edits of [[{...record}],[{op:'unknown'}],[null],null]){
+  let calls=0,executed=0;
+  const result=await runEpisode(input(),{onAction:()=>executed++,decide:async(observation,context)=>{
+   calls++;
+   if(calls===1)return decision([action('bad-state','update_state',{base_version:1,edits}),action('premature-rank','recommend',{ordered_item_ids:['A'],delivery:'replace_pending'})]);
+   assert.equal(executed,0);assert.equal(observation.user_state.version,1);
+   assert.equal(context.previous_output_error.error,'invalid_actions');
+   assert.match(context.previous_output_error.error_details.required,/op.*upsert/);
+   return decision([action('corrected-state','update_state',{base_version:1,edits:[{op:'upsert',record}]}),action('rank','recommend',{ordered_item_ids:['A'],delivery:'replace_pending'})]);
+  }});
+  assert.equal(calls,2);assert.equal(result.status,'submitted');assert.equal(result.state_after.version,2);
+  assert.equal(result.model_calls[0].error,'invalid_actions');assert.equal(result.trace.length,1);
+  assert(result.trace[0].execution_results.every(receipt=>receipt.status==='success'));
+ }
+});
