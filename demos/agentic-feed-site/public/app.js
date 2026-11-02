@@ -4,6 +4,7 @@ import { formatProfile, parseProfile } from './profile-format.js';
 import { RefreshQueue } from './refresh-queue.js';
 import { plainSummary } from './content-text.js';
 import { chooseColumn } from './feed-layout.js';
+import { createResearchView, createResearchDataView } from './research-view.js';
 import { createBrowserSourceWorker } from './browser-source.js';
 
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -13,9 +14,11 @@ const sourceIcon = id => { const brand=brands[id]; return brand ? `<span class="
 function fillIcons(root=document) { root.querySelectorAll('[data-icon]').forEach(el => el.innerHTML=icon(el.dataset.icon)); }
 let user=null, session=null, state=null, run=null, config=null, view='feed', queue=null, observer=null, endObserver=null;
 let blindComparison=null, blindBatch=null, blindAuto=false, blindPreparing=false, blindOutbound=null, restoredFeed=[], generation=0, working=false, agentRunning=false, agentIndex=0, prefetchAllowed=true, retryCount=0, adaptiveTimer=null, adaptivePending=false, noticeTimer=null, outbound=null;
-let commandWrites=Promise.resolve(), lastScrollAt=0, feedRevision=0;
+let commandWrites=Promise.resolve(), lastScrollAt=0, feedRevision=0, feedScrollY=null, navigation=0;
 let selectedInterests=new Set(), setupInterests=new Set(), extras=[], profileDirty=false, profileInterestsAtLoad=[], modelCallsRequest=0, modelCallsSignature='';
 const traceView=createTraceView();
+const researchView=createResearchView({api,getSession:()=>session,notice,onPreparing:value=>{blindPreparing=value;}});
+const researchDataView=createResearchDataView({api,getSession:()=>session,notice});
 const feedbackById=new Map(), savedById=new Map(), observations=new Map(), pendingWrites=new Set(), dwellEvidence=new Set();
 const groups={ '科技与数码':['人工智能','电脑','手机','编程','数码产品','机器人','互联网','游戏开发'], '艺术与创作':['设计','摄影','视频剪辑','绘画','音乐','电影','写作','手工'], '科学与知识':['科学','天文','自然','历史','心理学','经济','哲学','语言学习'], '生活与休闲':['阅读','游戏','旅行','美食','咖啡','宠物','家居','时尚'], '运动与健康':['跑步','健身','徒步','骑行','足球','篮球','瑜伽','健康'], '工作与成长':['职场','创业','效率','教育','投资','产品','商业','个人成长'] };
 
@@ -34,8 +37,18 @@ function screen(id) { for(const name of ['auth','setup','app','boot']) $(`#${nam
 function sourceName(id) { return config?.sources?.find(x=>x.id===id)?.name || ({local:'演示内容',wikipedia:'维基百科',hackernews:'Hacker News'})[id] || id; }
 function safeURL(raw, image=false) { try { const u=new URL(raw); return (image?u.protocol==='https:':['http:','https:'].includes(u.protocol))&&!u.username&&!u.password?u.href:''; } catch { return ''; } }
 function settings() { return { interests:[], sources:[], contentTypes:['text','video'], ...user?.settings }; }
-function renderAccount() { const name=user?.displayName||user?.username||''; $('#accountName').textContent=name; $('#avatar').textContent=[...name][0]||''; if(session) $('#exportData').href=`/api/export?sessionId=${encodeURIComponent(session.session_id)}&format=json`; }
-function resetAccount() { traceView.leave();generation++; queue?.stop(); queue=null; clearTimeout(adaptiveTimer); adaptivePending=false; agentRunning=false; agentIndex=0; outbound=null; observer?.disconnect(); endObserver?.disconnect(); observations.clear(); dwellEvidence.clear(); feedbackById.clear(); savedById.clear(); user=null;session=null;state=null;run=null;blindComparison=null;blindBatch=null;blindAuto=false;blindPreparing=false;blindOutbound=null;restoredFeed=[];profileDirty=false;profileInterestsAtLoad=[];modelCallsRequest++;modelCallsSignature='';working=false;view='feed';prefetchAllowed=true;retryCount=0;$('#loadStatus').hidden=true;$('#retryFeed').hidden=true; $('#feed').innerHTML=''; $('#agentLog').innerHTML=''; }
+function renderAccount() { const name=user?.displayName||user?.username||''; $('#accountName').textContent=name; $('#avatar').textContent=[...name][0]||''; if(session){$('#exportData').href=`/api/export?sessionId=${encodeURIComponent(session.session_id)}&format=json`;$('#exportDataset').href=`/api/export?sessionId=${encodeURIComponent(session.session_id)}&format=dataset`;} }
+async function loadDatasetStatus(retry=false){
+ if(!user||!session)return;const owner=user.id,sid=session.session_id;
+ try{const data=await api(`/api/dataset/${retry?'retry':'status'}?sessionId=${encodeURIComponent(sid)}`,retry?{}:undefined);if(user?.id!==owner||session?.session_id!==sid)return;
+  const place=data.storage==='sqlite+files'?'本机服务器':'云端服务器',pending=data.captures.pending+data.captures.incomplete;
+  $('#datasetStatus').textContent=`${place}自动保存 · ${data.captures.total} 次在线获取，${data.returned_items} 条返回内容。${data.archive_ready?'私有归档已就绪':pending?`${pending} 次归档待重试或未完成`:'私有归档尚未配置'}。五系统评测会把本组输入发送到云端计算后端并保存运行归档；正式数据包由你选择保留后导出。`;
+  $('#datasetRetry').hidden=!data.captures.pending;
+ }catch(error){if(user?.id===owner&&session?.session_id===sid)$('#datasetStatus').textContent=`保存状态读取失败：${error.message}`;}
+}
+$('#datasetRefresh').addEventListener('click',()=>loadDatasetStatus());
+$('#datasetRetry').addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await loadDatasetStatus(true);}finally{button.disabled=false;}});
+function resetAccount() { navigation++;feedScrollY=null;researchView.reset();researchDataView.reset();traceView.leave();generation++; queue?.stop(); queue=null; clearTimeout(adaptiveTimer); adaptivePending=false; agentRunning=false; agentIndex=0; outbound=null; observer?.disconnect(); endObserver?.disconnect(); observations.clear(); dwellEvidence.clear(); feedbackById.clear(); savedById.clear(); user=null;session=null;state=null;run=null;blindComparison=null;blindBatch=null;blindAuto=false;blindPreparing=false;blindOutbound=null;restoredFeed=[];profileDirty=false;profileInterestsAtLoad=[];modelCallsRequest++;modelCallsSignature='';working=false;view='feed';prefetchAllowed=true;retryCount=0;$('#loadStatus').hidden=true;$('#retryFeed').hidden=true; $('#feed').innerHTML=''; $('#agentLog').innerHTML=''; }
 function newQueue() { queue?.stop(); queue=new RefreshQueue(task=>generateFeed(task.command,task.reason,task.commandId), error=>notice(error.message,true)); }
 async function enterAccount(data) {
   await flushExposures(); resetAccount(); user=data.user; const info=data.sessionInfo;
@@ -51,7 +64,7 @@ $('#identityForm').addEventListener('submit',async e=>{ e.preventDefault();const
   try { await enterAccount(await api('/api/identity',{username:$('#username').value.trim(),type:$('#identityType').value})); }
   catch(error){$('#identityError').textContent=error.message;$('#identityError').hidden=false;} finally{button.disabled=false;}
 });
-async function logout(){ if(!user)return; queue?.stop();agentRunning=false;generation++;await flushExposures();try{if(session)await api('/api/leave',{sessionId:session.session_id,reason:'logout'});await api('/api/logout',{});resetAccount();screen('auth');}catch(error){notice(error.message,true);} }
+async function logout(){ if(!user)return; navigation++;researchView.leave();researchDataView.leave();queue?.stop();agentRunning=false;generation++;await flushExposures();try{if(session)await api('/api/leave',{sessionId:session.session_id,reason:'logout'});await api('/api/logout',{});resetAccount();screen('auth');}catch(error){notice(error.message,true);} }
 $('#switchAccount').addEventListener('click',logout);$('#setupLogout').addEventListener('click',logout);
 
 function interestHTML(selected){ const known=new Set(Object.values(groups).flat());const other=[...new Set([...extras,...selected])].filter(x=>!known.has(x));const all=Object.entries(groups);if(other.length)all.push(['其他',other]);return all.map(([title,items])=>`<div class="interest-group"><strong>${esc(title)}</strong><div>${items.map(item=>`<label class="interest"><input type="checkbox" value="${esc(item)}"${selected.has(item)?' checked':''}>${esc(item)}</label>`).join('')}</div></div>`).join(''); }
@@ -61,7 +74,7 @@ for(const [target,kind] of [['setupInterests','setup'],['profileInterests','prof
 $('#addInterest').addEventListener('click',()=>addInterest($('#customInterest'),setupInterests,'setupInterests'));
 $('#addProfileInterest').addEventListener('click',()=>addInterest($('#newInterest'),selectedInterests,'profileInterests'));
 for(const id of ['customInterest','newInterest']) $(`#${id}`).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$(`#${id==='customInterest'?'addInterest':'addProfileInterest'}`).click();}});
-function prepareSetup(){ const agent=user.type==='agent';setupInterests=new Set(settings().interests);extras=[...(config?.interests||[]),...setupInterests];renderInterests('setupInterests',setupInterests);$('#humanSetup').hidden=agent;$('#agentSetup').hidden=!agent;$('#skipSetup').hidden=agent;$('#setupTitle').textContent=agent?'创建一个 Agent':'从喜欢的开始';$('#setupIntro').textContent=agent?'给它一个身份，再开始模拟浏览。':'选一些兴趣，或者写下你的想法。也可以先跳过。';$('#consent').checked=false;$('#setupError').hidden=true;$('#generatedProfile').value='';$('#initialProfile').value=''; }
+function prepareSetup(){ $('#recordStorage').textContent=config?.storage==='sqlite+files'?'保存在本机':'保存在云端';const agent=user.type==='agent';setupInterests=new Set(settings().interests);extras=[...(config?.interests||[]),...setupInterests];renderInterests('setupInterests',setupInterests);$('#humanSetup').hidden=agent;$('#agentSetup').hidden=!agent;$('#skipSetup').hidden=agent;$('#setupTitle').textContent=agent?'创建一个 Agent':'从喜欢的开始';$('#setupIntro').textContent=agent?'给它一个身份，再开始模拟浏览。':'选一些兴趣，或者写下你的想法。也可以先跳过。';$('#consent').checked=false;$('#setupError').hidden=true;$('#generatedProfile').value='';$('#initialProfile').value=''; }
 $('#generateProfile').addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;button.textContent='正在生成…';try{const data=await api('/api/generate-profile',{prompt:$('#profileRequest').value});$('#generatedProfile').value=data.profile;button.textContent='重新生成';}catch(error){$('#setupError').textContent=error.message;$('#setupError').hidden=false;button.textContent='重新生成';}finally{button.disabled=false;}});
 let skipSetup=false;
 $('#skipSetup').addEventListener('click',()=>{if(!$('#setupForm').reportValidity())return;skipSetup=true;$('#setupForm').requestSubmit();});
@@ -71,13 +84,16 @@ $('#setupForm').addEventListener('submit',async e=>{e.preventDefault();const but
 });
 
 async function switchView(next,scroll=true){
-  if(!user||!session)return;if(view==='blind'&&next==='blind')return;if(view==='blind'&&next!=='blind'&&blindPreparing){notice('正在准备盲选，请稍候。');return;}const previous=view;
-  if(next==='blind'&&previous!=='blind'){prefetchAllowed=false;queue?.cancelRetry();if(queue)queue.prefetch=false;clearTimeout(adaptiveTimer);adaptivePending=false;await commandWrites.catch(()=>{});if(agentRunning){agentRunning=false;$('#agentToggle').disabled=true;$('#agentToggle').textContent='正在暂停…';syncAgentToggle();}}
-  await flushExposures();if(view==='trace'&&next!=='trace')traceView.leave();view=next;for(const name of ['feed','profile','sources','trace','blind']) $(`#${name}View`).hidden=name!==next;
+  if(!user||!session)return;const token=++navigation,sid=session.session_id,owner=user.id,previous=view,research=['rating','blind'].includes(next);if(previous==='feed'&&scroll)feedScrollY=window.scrollY;
+  researchView.leave();researchDataView.leave();
+  if(research){prefetchAllowed=false;queue?.cancelRetry();if(queue)queue.prefetch=false;clearTimeout(adaptiveTimer);adaptivePending=false;await commandWrites.catch(()=>{});if(agentRunning){agentRunning=false;$('#agentToggle').disabled=true;$('#agentToggle').textContent='正在暂停…';syncAgentToggle();}queue?.stop();}
+  await flushExposures();if(token!==navigation||session?.session_id!==sid||user?.id!==owner)return;if(view==='trace'&&next!=='trace')traceView.leave();view=next;const panel=research?'research':next;for(const name of ['feed','profile','sources','trace','blind','research','data']) $(`#${name}View`).hidden=name!==panel;
   $$('[data-view]').forEach(button=>{const active=button.dataset.view===next;button.classList.toggle('active',active);if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});
-  if(previous==='blind'&&next!=='blind'){blindAuto=false;if(queue?.stopped)newQueue();prefetchAllowed=true;}if(next==='blind')loadBlind();if(next==='profile'){renderProfile();loadModelCalls();}if(next==='sources')renderSources();if(next==='trace'){syncAgentToggle();traceView.enter(session.session_id,user.type);}if(scroll)window.scrollTo({top:0,behavior:'instant'});refreshVisibility();if(next==='feed'){if(adaptivePending){adaptivePending=false;queue?.changed();}else maybePrefetch();}
+  if(['blind','rating'].includes(previous)&&!research){blindAuto=false;if(queue?.stopped)newQueue();prefetchAllowed=true;}if(research)researchView.enter(next);if(next==='data')researchDataView.enter();if(next==='profile'){renderProfile();loadModelCalls();loadDatasetStatus();}if(next==='sources')renderSources();if(next==='trace'){syncAgentToggle();traceView.enter(session.session_id,user.type);}if(next==='feed')window.scrollTo({top:feedScrollY??unreadTop(),behavior:'instant'});else if(scroll)window.scrollTo({top:0,behavior:'instant'});refreshVisibility();if(next==='feed'){if(adaptivePending){adaptivePending=false;queue?.changed();}else maybePrefetch();}
 }
 $$('[data-view]').forEach(button=>button.addEventListener('click',()=>switchView(button.dataset.view).catch(e=>notice(e.message,true))));
+function unreadTop(){const cards=$$('#feed .feed-item[data-seen="false"]');return cards.length?Math.max(0,Math.min(...cards.map(card=>card.getBoundingClientRect().top+window.scrollY))-20):Math.max(0,document.documentElement.scrollHeight-window.innerHeight);}
+$('#jumpUnread').addEventListener('click',()=>{window.scrollTo({top:unreadTop(),behavior:'instant'});feedScrollY=window.scrollY;maybePrefetch();});
 async function loadModelCalls(){
   if(!session||!user)return;const serial=++modelCallsRequest,sid=session.session_id,owner=user.id;
   try{

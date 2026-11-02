@@ -3,15 +3,20 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {timingSafeEqual} from 'node:crypto';
+import {gzipSync,gunzipSync} from 'node:zlib';
 import { Store, VERSION, INTERESTS, check, short, exact, id, hash, startSession, inputSnapshot, executePolicy, comparisonAssignment } from './core.mjs';
 import { AccountStore, settingsPatch } from './accounts.mjs';
 
 import { buildEpisode } from './research-episode.mjs';
-import { fixedRetrieval } from './blind.mjs';
-import { DEFAULT_SOURCE_CONFIG_PATH, loadSourceConfig, sourceCatalog } from './sources.mjs';
+import { DEFAULT_SOURCE_CONFIG_PATH, loadSourceConfig, sourceCatalog, nextSourcePage } from './sources.mjs';
 import { requestBrowserSource, pendingBrowserSources, completeBrowserSource, pendingRelaySources, completeRelaySource } from './browser-source.mjs';
 import { executeUnifiedPolicy } from './unified-demo.mjs';
 import { lookupDemoHistory } from './unified-input.mjs';
+import {handleResearch,assertResearchExportable,researchExportRows,researchStopped,researchReleaseRows,readResearchArtifact} from './research.mjs';
+import {buildDataset} from './dataset-format.mjs';
+import datasetFormatPin from '../../.openai/dataset-format.json' with {type:'json'};
+import {SOURCE_SHA256} from './waterfall-version.mjs';
+import {captureDataset,datasetStatus,retryDatasetArchives,readDatasetCaptures,datasetArtifactRefs} from './dataset-store.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export function loadConfig(env = process.env) {
@@ -42,7 +47,7 @@ function publicBlind(row) {
   return { id:row.id, created_at:row.available_at, ...(row.batch_id ? { batch_id:row.batch_id, question:row.question, total:row.total } : {}), cards, same_content:!!cards.A && !!cards.B && (cards.A.id === cards.B.id || !!cards.A.url && cards.A.url === cards.B.url), unavailable:!cards.A || !cards.B };
 }
 
-export function createCloudHandler({ db, config = null, sourceConfig = {}, relayToken = null }) {
+export function createCloudHandler({ db, config = null, sourceConfig = {}, relayToken = null, researchBackend = null, researchArchive = null, researchStorage = 'd1+r2', datasetArchive = null, datasetStorage = 'cloud-d1+r2' }) {
   const store = new CloudStore(db); const accounts = new CloudAccounts(db); const busy = new Set(); const blindRunning = new Set(); const progress = new Map();
   const authRates = new Map(); const retrievalPages = new Map(); let activeHashes = 0;
   sourceConfig = config ? sourceConfig ?? loadSourceConfig(config.sourceConfigPath) : null;
@@ -51,7 +56,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
     if (config) return sourceCatalog(sourceConfig);
     return [['local', '本地演示'], ['wikipedia', '维基百科'], ['hackernews', 'Hacker News']].map(([id, name]) => ({ id, name, modes: id === 'local' ? ['search', 'explore'] : ['search'], modalities: ['text'], configured: true, allowed: true, status: id === 'local' ? 'ok' : 'unverified' }));
   }
-  function configInfo() { return { version: VERSION, mode, model: config?.model || null, interests: INTERESTS, sources: catalog() }; }
+  function configInfo() { return { version: VERSION, mode, model: config?.model || null, storage:datasetStorage, interests: INTERESTS, sources: catalog(), research:{fullComparison:!!researchBackend&&!!researchArchive,annotationPolicy:'evaluation_only'} }; }
   function availableSources(user) {
     return catalog().filter(source => source.configured && source.allowed !== false && (!user.settings.sources.length || user.settings.sources.includes(source.id)))
       .map(source => ({ ...source, modalities: source.modalities.filter(type => user.settings.contentTypes.includes(type)), modes: source.modes.filter(mode => source.mode_checks?.[mode]?.status !== 'failed') }))
@@ -101,7 +106,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
   }
   function send(res, status, data, type = 'application/json; charset=utf-8') {
     res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' https: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
-    res.end(typeof data === 'string' ? data : JSON.stringify(data));
+    res.end(typeof data === 'string' || data instanceof Uint8Array ? data : JSON.stringify(data));
   }
   function identifyReference(input) {
     check(['feed', 'blind'].includes(input.track), '记录轨道无效');
@@ -139,7 +144,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
       }
       const eventInput=user&&req.method==='POST'&&path==='/api/event'?await body(req):null;
       const runInput=user&&req.method==='POST'&&path==='/api/run'?await body(req):null;
-      if(user){if(eventInput)await store.loadEvent(user.id,eventInput);else await store.load(user.id,{compact:!['/api/export','/api/trace','/api/analysis','/api/model-calls','/api/compare'].includes(path)&&!runInput?.frozenSnapshotId});}
+      if(user){if(eventInput)await store.loadEvent(user.id,eventInput);else if(path.startsWith('/api/dataset/')||path==='/api/export'&&['dataset','release'].includes(url.searchParams.get('format')))await store.loadDataset(user.id,url.searchParams.get('sessionId'),{full:path==='/api/export',retry:path==='/api/dataset/retry'});else await store.load(user.id,{compact:!path.startsWith('/api/research/')&&!['/api/export','/api/trace','/api/analysis','/api/model-calls','/api/compare'].includes(path)&&!runInput?.frozenSnapshotId});}
       if (req.method === 'GET' && path === '/api/me') return send(res, 200, authInfo(user));
       if (req.method === 'POST' && path === '/api/identity') {
         const result = await accounts.selectIdentity(await body(req));
@@ -147,13 +152,25 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
       }
       if (req.method === 'POST' && path === '/api/logout') { await accounts.logout(token); cookie(res, null); return send(res, 200, { user: null, sessionInfo: null }); }
       if (path.startsWith('/api/')) check(user, '请先登录', 401);
-      const guarded=['/api/run','/api/compare','/api/blind/round','/api/blind/simulate','/api/agent-step','/api/state','/api/settings','/api/session'];
+      if(path.startsWith('/api/dataset/')){
+        const sessionId=url.searchParams.get('sessionId');ownSession(sessionId,user);
+        if(req.method==='GET'&&path==='/api/dataset/status')return send(res,200,datasetStatus(store,datasetArchive,sessionId,{storage:datasetStorage}));
+        if(req.method==='POST'&&path==='/api/dataset/retry'){await retryDatasetArchives(store,datasetArchive,sessionId);return send(res,200,datasetStatus(store,datasetArchive,sessionId,{storage:datasetStorage}));}
+      }
+      const guarded=['/api/run','/api/compare','/api/blind/round','/api/blind/simulate','/api/blind/present','/api/evaluate','/api/agent-step','/api/research/start','/api/research/prepare','/api/research/stop','/api/research/answer','/api/state','/api/settings','/api/session'];
       if(req.method==='POST' && guarded.includes(path)) {
         const priority=path==='/api/run'&&['command','feedback'].includes(runInput?.trigger);if(priority)ownSession(runInput.sessionId,user);
         const lock=await db.prepare("INSERT INTO active_operations (user_id,owner,kind,expires_at) VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET owner=excluded.owner,kind=excluded.kind,expires_at=excluded.expires_at WHERE active_operations.expires_at<? OR (active_operations.kind='/api/run' AND excluded.kind='/api/run' AND ?=1) RETURNING owner").bind(user.id,id(),path,Date.now()+300000,Date.now(),priority?1:0).first();
         check(lock,'已有操作正在进行，请稍后再试',409);lockUser=user.id;lockOwner=lock.owner;
+        if(['/api/blind/present','/api/evaluate','/api/blind/simulate'].includes(path))await store.load(user.id,{compact:true});
+        if(path.startsWith('/api/research/'))await store.load(user.id);
       }
-      if(req.method==='GET' && path==='/api/export') { const active=await db.prepare('SELECT kind FROM active_operations WHERE user_id=? AND expires_at>?').bind(user.id,Date.now()).first();check(!active || !active.kind.startsWith('/api/blind/'),'盲选准备中，请稍后导出',409); }
+      if(req.method==='GET' && path==='/api/export'&&url.searchParams.get('format')!=='release') { assertResearchExportable(store,url.searchParams.get('sessionId'));const active=await db.prepare('SELECT kind FROM active_operations WHERE user_id=? AND expires_at>?').bind(user.id,Date.now()).first();check(!active || (!active.kind.startsWith('/api/blind/')&&active.kind!=='/api/research/start'),'盲选准备中，请稍后导出',409); }
+      if(path.startsWith('/api/research/')) {
+        const handled=await handleResearch({req,url,store,user,send:(status,value,type,headers={})=>{for(const [key,entry]of Object.entries(headers))res.setHeader(key,entry);send(res,status,value,type);},body,backend:researchBackend,archive:researchArchive,storage:researchStorage,
+          snapshot:sessionId=>{const value=inputSnapshot(store,sessionId,'',user.settings,availableSources(user),[],[]);if(store.rows.some(row=>row.kind==='input'&&row.session_id===sessionId&&row.synthetic===true&&row.data_origin==='test_only'))value.qa_environment={data_origin:'test_only',normal_feed_mode:mode};return value;}});
+        if(handled)return;
+      }
       if (req.method === 'POST' && path === '/api/generate-profile') {
         check(user.type === 'agent', '只有 Agent 账号可以生成模拟画像', 403);
         const input = await body(req); exact(input, ['prompt']);
@@ -325,44 +342,13 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
       }
       if (req.method === 'GET' && path === '/api/blind/current') {
         const sessionId=url.searchParams.get('sessionId');ownSession(sessionId,user);
-        const row=store.rows.findLast(r=>r.kind==='comparison' && r.session_id===sessionId && r.study_protocol==='blind-next-v1' && !store.rows.some(v=>v.kind==='evaluation' && v.comparison_id===r.id));
+        const row=store.rows.findLast(r=>r.kind==='comparison' && r.session_id===sessionId && r.study_protocol==='blind-next-v1' && !researchStopped(store,r.id) && !store.rows.some(v=>v.kind==='evaluation' && v.comparison_id===r.id));
         return send(res,200,{comparison:row?publicBlind(row):null,batch:blindBatch(sessionId)});
       }
-      if (req.method === 'POST' && path === '/api/blind/round') {
-        const input=await body(req);exact(input,['sessionId','renderedIds','pending']);ownSession(input.sessionId,user);check(!busy.has(input.sessionId),'本轮处理中，请稍后开始盲选',409);
-        const requestSources=sourceConfig?{...sourceConfig,browserAcquire:action=>requestBrowserSource(db,user.id,input.sessionId,action,config?.signal)}:null;
-        check(!store.rows.some(r=>r.kind==='comparison' && r.session_id===input.sessionId && r.study_protocol==='blind-next-v1' && !store.rows.some(v=>v.kind==='evaluation' && v.comparison_id===r.id)),'请先完成当前盲选',409);
-        const renderedIds=input.renderedIds || [];check(Array.isArray(renderedIds) && renderedIds.length<=300 && renderedIds.every(x=>typeof x==='string' && x.length>0 && x.length<=100) && new Set(renderedIds).size===renderedIds.length,'已展示内容列表无效');
-        const refs=input.pending || [];check(Array.isArray(refs) && refs.length<=100,'待展示内容格式无效');
-        const pending=refs.map(ref=>{exact(ref,['referenceId','contentId','position']);return identifyReference({...ref,sessionId:input.sessionId,track:'feed'});});
-        check(new Set(pending.map(item=>item.id)).size===pending.length,'待展示内容重复');
-        let batch=blindBatch(input.sessionId);if(!batch || batch.completed>=batch.total){const created=await store.record('blind_batch',input.sessionId,{track:'blind',study_protocol:'blind-next-v1',total:5});batch={id:created.id,total:created.total,completed:0};}
-        const previousIds=[...new Set(store.rows.filter(row=>row.kind==='blind_presentation' && store.rows.some(trial=>trial.id===row.comparison_id && trial.batch_id===batch.id)).flatMap(row=>Object.values(row.candidate_ids || {})).filter(Boolean))];
-        const excludedIds=[...new Set([...renderedIds,...previousIds])];
-        const cutoff=store.rows.at(-1)?.sequence || 0, snapshot=inputSnapshot(store,input.sessionId,'',user.settings,availableSources(user),pending,excludedIds);
-        snapshot.blind_excluded_ids=previousIds;delete snapshot.hash;snapshot.hash=hash(snapshot);
-        const batchInfo={batch_id:batch.id,question:batch.completed+1,total:batch.total};
-        const baselineSnapshot=structuredClone(snapshot);baselineSnapshot.state.entries=baselineSnapshot.state.entries.filter(entry=>entry.origin==='user_edit');delete baselineSnapshot.hash;baselineSnapshot.hash=hash(baselineSnapshot);
-        const assignment=comparisonAssignment(['joint-v1','fixed-retrieval-v1']);
-        const ownerSessions=new Set(store.rows.filter(r=>r.kind==='session' && r.user_id===user.id).map(r=>r.session_id));
-        const historyEventIds=store.rows.filter(r=>ownerSessions.has(r.session_id) && r.track==='feed' && ['command','feedback','exposure','open','return'].includes(r.kind) && r.sequence<=cutoff).map(r=>r.id);
-        busy.add(input.sessionId);blindRunning.add(input.sessionId);await recordProgress(input.sessionId,{phase:'planning',label:'正在准备两条推荐',sources:[]});
-        try {
-          const attempt=await store.record('blind_attempt',input.sessionId,{track:'blind',study_protocol:'blind-next-v1',...batchInfo,input_snapshot:snapshot,cutoff_sequence:cutoff,history_event_ids:historyEventIds,environment:'live_sources_not_frozen',...assignment});
-          const seenBilibili=new Set(snapshot.behavior.filter(event=>event.source==='bilibili' && event.content_id).map(event=>event.content_id)).size;
-          // shortcut: in-memory Bilibili cursors wrap at 50 pages; persist source cursors for a frozen experiment.
-          const nextPage=(method,action)=>{const key=`${input.sessionId}:blind:${method}:${action.source}:${action.query}`;const page=retrievalPages.get(key) || 1+(Math.floor(seenBilibili/6)+batch.completed)%50;retrievalPages.set(key,page%50+1);return page;};
-          const methods=[['joint-v1',()=>executePolicy(structuredClone(snapshot),'joint-v1',config,null,requestSources,()=>{},()=>{},action=>nextPage('joint',action))],['fixed-retrieval-v1',()=>fixedRetrieval(baselineSnapshot,requestSources,undefined,action=>nextPage('fixed',action))]];
-          const outcomes=await Promise.allSettled(methods.map(([,run])=>run()));
-          check(!config?.signal?.aborted,'请求已取消',499);
-          const results=Object.fromEntries(methods.map(([method],index)=>{const outcome=outcomes[index];return [method,outcome.status==='fulfilled'?outcome.value:{policy_id:method,mode:method==='joint-v1'?(config?'llm':'rules'):'fixed-retrieval',input_snapshot:method==='joint-v1'?snapshot:baselineSnapshot,slate:[],error:outcome.reason?.message || '本方法未能提供内容',trace:outcome.reason?.partial_trace || []}];}));
-          const comparison=await store.record('comparison',input.sessionId,{track:'blind',study_protocol:'blind-next-v1',...batchInfo,attempt_id:attempt.id,input_snapshot:snapshot,cutoff_sequence:cutoff,history_event_ids:historyEventIds,environment:'live_sources_not_frozen',...assignment,results});
-          await recordProgress(input.sessionId,{phase:'complete',label:'盲选已准备好'});return send(res,201,{comparison:publicBlind(comparison)});
-        } finally { blindRunning.delete(input.sessionId);busy.delete(input.sessionId); }
-      }
+      if (req.method === 'POST' && path === '/api/blind/round') { return send(res,410,{error:'新盲选已迁移到五系统评测，请先查看并确认共同输入',next:'/api/research/prepare'}); }
       if (req.method === 'POST' && path === '/api/blind/present') {
         const input=await body(req);exact(input,['sessionId','comparisonId','eventTime']);ownSession(input.sessionId,user);
-        const comparison=store.rows.find(r=>r.id===input.comparisonId && r.session_id===input.sessionId && r.kind==='comparison' && r.study_protocol==='blind-next-v1');check(comparison,'盲选不存在',404);
+        const comparison=store.rows.find(r=>r.id===input.comparisonId && r.session_id===input.sessionId && r.kind==='comparison' && r.study_protocol==='blind-next-v1');check(comparison,'盲选不存在',404);check(!researchStopped(store,comparison.id),'本次旧版评测已结束，未答题保留为空',409);
         check(!store.rows.some(r=>r.kind==='evaluation' && r.comparison_id===comparison.id),'该轮已评价',409);
         check(typeof input.eventTime==='string' && Number.isFinite(Date.parse(input.eventTime)) && Math.abs(Date.now()-Date.parse(input.eventTime))<86400000,'事件时间无效');
         if(store.rows.some(r=>r.kind==='blind_presentation' && r.comparison_id===comparison.id))return send(res,200,{saved:true});
@@ -372,7 +358,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
       if (req.method === 'POST' && path === '/api/blind/simulate') {
         const input=await body(req);exact(input,['sessionId','comparisonId']);ownSession(input.sessionId,user);
         check(user.type==='agent','仅 Agent 账号可自动作答',403);check(!busy.has(input.sessionId),'本轮处理中，请稍后再试',409);
-        const comparison=store.rows.find(r=>r.id===input.comparisonId && r.session_id===input.sessionId && r.kind==='comparison' && r.study_protocol==='blind-next-v1');check(comparison,'盲选不存在',404);
+        const comparison=store.rows.find(r=>r.id===input.comparisonId && r.session_id===input.sessionId && r.kind==='comparison' && r.study_protocol==='blind-next-v1');check(comparison,'盲选不存在',404);check(!researchStopped(store,comparison.id),'本次旧版评测已结束，未答题保留为空',409);
         const humanChoice=store.rows.find(r=>r.kind==='evaluation' && r.comparison_id===comparison.id);
         check(!humanChoice,'该轮已评价',409);
         check(store.rows.some(r=>r.kind==='blind_presentation' && r.comparison_id===comparison.id),'请先展示盲选内容');
@@ -396,7 +382,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
       if (req.method === 'POST' && ['/api/run', '/api/compare'].includes(path)) {
         const input = runInput || await body(req); exact(input, ['sessionId', 'command', 'commandId', 'trigger', 'frozenSnapshotId', 'pending', 'renderedIds']);
         ownSession(input.sessionId, user); check(!busy.has(input.sessionId), '已有一轮正在运行', 409);
-        const requestSources=sourceConfig?{...sourceConfig,browserAcquire:action=>requestBrowserSource(db,user.id,input.sessionId,action,config?.signal)}:null;
+        const requestSources=sourceConfig?{...sourceConfig,browserAcquire:action=>requestBrowserSource(db,user.id,input.sessionId,action,config?.signal),onCapture:capture=>captureDataset(store,datasetArchive,input.sessionId,{...capture,input_snapshot_id:snapshot.id})}:null;
         let pending = null;
         if (input.pending !== undefined) {
           check(path === '/api/run' && Array.isArray(input.pending) && input.pending.length <= 100, '待展示内容格式无效');
@@ -422,7 +408,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
           if (path === '/api/run') {
             const nextPage=action=>{
               // shortcut: cycle through 50 Bilibili pages per query; use provider cursors if the source supports them.
-              const key = `${input.sessionId}:${action.source}:${action.query}`; const page = retrievalPages.get(key) || 1+store.rows.filter(row=>row.kind==='run'&&row.session_id===input.sessionId).length%50; retrievalPages.set(key, page % 50 + 1); return page; };
+              const key = JSON.stringify([input.sessionId,action.source,action.mode,action.query]); const page = retrievalPages.get(key) || nextSourcePage(store.rows,input.sessionId,action); retrievalPages.set(key, page % 50 + 1); return page; };
             const onTrace=async trace=>await store.record('decision_trace',input.sessionId,{track:'feed',input_snapshot_id:snapshot.id,trace});
             const early=[];
             const onAction=(receipt,content)=>{
@@ -442,7 +428,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
           const results = {};
           // Both policies receive the exact same immutable input. Their state proposals are never committed.
           for (const policy of ['joint-v1', 'command-v1']) {
-            results[policy] = await executePolicy(structuredClone(snapshot), policy, config, frozen, requestSources, step => recordProgress(input.sessionId, { ...step, label: `${Object.keys(results).length + 1}/2 · ${step.label}` }));
+            results[policy] = policy==='joint-v1'&&config?await executeUnifiedPolicy(structuredClone(snapshot),config,requestSources,{userId:user.id,sessionId:input.sessionId,frozen}):await executePolicy(structuredClone(snapshot), policy, config, frozen, requestSources, step => recordProgress(input.sessionId, { ...step, label: `${Object.keys(results).length + 1}/2 · ${step.label}` }));
             completedPolicies[policy] = results[policy];
           }
           const comparison = await store.record('comparison', input.sessionId, { track: 'blind', input_snapshot: snapshot, ...comparisonAssignment(), frozen: Boolean(frozen), results });
@@ -483,7 +469,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
       if (req.method === 'POST' && path === '/api/evaluate') {
         const input = await body(req); exact(input, ['sessionId', 'comparisonId', 'choice', 'eventTime']); ownSession(input.sessionId, user);
         const comparison = store.rows.find(r => r.id === input.comparisonId && r.session_id === input.sessionId && r.kind === 'comparison');
-        check(comparison, '盲测轮次不存在', 404); check(['A', 'B', 'tie', 'neither', 'insufficient'].includes(input.choice), '评价选项无效');
+        check(comparison, '盲测轮次不存在', 404);check(!researchStopped(store,comparison.id),'本次旧版评测已结束，未答题保留为空',409); check(['A', 'B', 'tie', 'neither', 'insufficient'].includes(input.choice), '评价选项无效');
         check(!store.rows.some(r => r.kind === 'evaluation' && r.comparison_id === input.comparisonId), '该轮已评价', 409);
         if (comparison.study_protocol === 'blind-next-v1') {
           check(user.type !== 'agent' || input.choice === 'insufficient', 'Agent 账号请使用模拟作答');
@@ -507,10 +493,36 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, relay
           return send(res, 200, { revision, metadata:ep.metadata, decisions:ep.decisions, event_log:[...ep.event_log,...ep.blind_event_log], dialogue_log:ep.dialogue_log, simulator_decisions:ep.simulator_decisions, state_records:rows.filter(r => r.kind === 'state') });
         }
         if (path === '/api/export') {
+          const release=url.searchParams.get('format')==='release';
           check(!blindRunning.has(sessionId), '盲选准备中，请稍后导出',409);
-          check(!rows.some(r=>r.kind==='comparison' && r.study_protocol==='blind-next-v1' && !rows.some(v=>v.kind==='evaluation' && v.comparison_id===r.id)), '请先完成当前盲选后导出',409);
+          if(!release)check(!rows.some(r=>r.kind==='comparison' && r.study_protocol==='blind-next-v1' && !researchStopped(store,r.id) && !rows.some(v=>v.kind==='evaluation' && v.comparison_id===r.id)), '请先完成当前盲选后导出',409);
+          if(release||url.searchParams.get('format')==='dataset'){
+            const selected=release?researchReleaseRows(store,sessionId):rows;
+            const sourceRows=[];
+            for(const row of selected){
+              if(row.kind==='dataset_capture_chunk')continue;
+              if(row.kind==='research_study'&&row.artifact_ref){
+                const result=JSON.parse(gunzipSync(await readResearchArtifact(researchArchive,row.artifact_ref,user.id)));
+                check(Array.isArray(result.methods),'研究原始记录缺少方法结果',502);
+                const prep=selected.find(entry=>entry.kind==='research_preparation'&&entry.id===row.preparation_id);
+                sourceRows.push({...row,result,input_snapshot:prep?.snapshot||row.input_snapshot||result.input_snapshot});
+              }else sourceRows.push(row.kind==='dataset_archive'?{...row,capture:undefined}:row);
+            }
+            const contextRows=release?sourceRows:await store.datasetContext(sessionId);
+            const episode=buildEpisode(researchExportRows(sourceRows),{session:store.session(sessionId),exportedAt:new Date().toISOString(),contextRows});
+            episode.research_studies=sourceRows.filter(row=>row.kind==='research_study');
+            episode.research_preparations=sourceRows.filter(row=>row.kind==='research_preparation');
+            const datasetStore={rows:sourceRows,db:store.db,userId:store.userId};
+            episode.artifact_refs=datasetArtifactRefs(datasetStore,sessionId);
+            const dataset=buildDataset(episode,{captureRecords:await readDatasetCaptures(datasetStore,datasetArchive,sessionId)});
+            dataset.manifest.collection_archive=datasetStatus(datasetStore,datasetArchive,sessionId,{storage:datasetStorage});
+            dataset.manifest.implementation={waterfall_core_sha256:SOURCE_SHA256,dataset_format:datasetFormatPin,capture_protocol:'online-lightweight/v1'};
+            if(release)dataset.manifest.selection={kind:'explicit_kept_sealed_human',study_ids:dataset.tables.studies.map(row=>row.study_id)};
+            res.setHeader('Content-Disposition',`attachment; filename="waterfall-${sessionId.slice(0,8)}-${release?'release':'dataset'}.json.gz"`);
+            return send(res,200,gzipSync(JSON.stringify(dataset)),'application/gzip');
+          }
           const jsonl = url.searchParams.get('format') === 'jsonl'; const ownedIds = new Set(store.rows.filter(r => r.kind === 'session' && r.user_id === user.id).map(r => r.session_id)); res.setHeader('Content-Disposition', `attachment; filename="waterfall-${sessionId.slice(0, 8)}.${jsonl ? 'jsonl' : 'json'}"`);
-          return send(res, 200, jsonl ? rows.map(r => JSON.stringify(r)).join('\n') + '\n' : buildEpisode(rows, { session: store.session(sessionId), exportedAt: new Date().toISOString(), contextRows: store.rows.filter(r => ownedIds.has(r.session_id)) }), jsonl ? 'application/x-ndjson; charset=utf-8' : 'application/json; charset=utf-8');
+          return send(res, 200, jsonl ? researchExportRows(rows).map(r => JSON.stringify(r)).join('\n') + '\n' : buildEpisode(researchExportRows(rows), { session: store.session(sessionId), exportedAt: new Date().toISOString(), contextRows: store.rows.filter(r => ownedIds.has(r.session_id)) }), jsonl ? 'application/x-ndjson; charset=utf-8' : 'application/json; charset=utf-8');
         }
         const votes = rows.filter(r => r.kind === 'evaluation'); const ended = rows.filter(r => r.kind === 'exposure' && r.phase === 'end');
         const voteCounts = Object.fromEntries(['A', 'B', 'tie', 'neither', 'insufficient'].map(k => [k, votes.filter(v => v.choice === k).length]));

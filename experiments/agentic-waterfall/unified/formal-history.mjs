@@ -13,12 +13,12 @@ function fitsHistory(observation, byteLimit = BYTE_LIMIT) {
   const compact = candidates.map(item => Object.fromEntries(compactFields.filter(key => item[key] !== undefined).map(key => [key, item[key]])));
   const merge = {...observation, environment: {...observation.environment, candidate_pool: compact}};
   const mergeBytes = messageBytes(merge, {...context, batch_stage: 'merge', batch_rankings: [candidates.map(item => item.id)]},
-    ' Merge the batch rankings into one recommendation using the candidate titles and batch rankings. Do not add candidates.');
+    ' 根据候选标题和各批排名合并为当前候选集合的推荐顺序。');
   const largest = candidates.reduce((best, item) => Buffer.byteLength(JSON.stringify(item)) > Buffer.byteLength(JSON.stringify(best)) ? item : best, {});
   const single = {...observation, environment: {...observation.environment, candidate_pool: candidates.length ? [largest] : [],
     recommendation_constraints: {...observation.environment.recommendation_constraints, mode: 'fixed_candidates', require_full_ranking: true, top_k: 1, acquire_enabled: false}}};
   const singleBytes = messageBytes(single, {...context, batch_stage: 'rank', batch_index: 9999},
-    ' Rank every candidate in this batch exactly once. Return one recommend action and no other actions.');
+    ' 将本批候选完整排序，每个恰好一次，只返回一个recommend动作。');
   return Math.max(mergeBytes, singleBytes) <= byteLimit;
 }
 
@@ -35,7 +35,7 @@ export function prepareHistory(source) {
   observation.environment = {...observation.environment, sources: [...(observation.environment?.sources || []), {
     id: 'waterfall-history-archive', modes: [], tool: 'lookup_history', total_count: history.length,
     visible_count: available.length, initial_count: observation.behavior_events.length,
-    description: 'Complete original behavior is retained. Initially only the latest 60 visible events are supplied. Use lookup_history(query,offset,limit) for older events; empty query pages newest to oldest, and query matches event JSON case-insensitively. Empty returned IDs with unchanged next_offset means this round context is full: recommend from current evidence. It does not mean history was deleted. This archive is not an acquire source.',
+    description: '完整原始行为保留。初始提供最近60条可见事件。更早记录可通过lookup_history查询；空query按由新到旧分页，非空query对事件JSON做忽略大小写的匹配。返回ID为空且next_offset未变，表示当前上下文已满，可根据当前证据推荐；不表示历史被删除。该归档通过lookup_history使用。',
   }]};
   input.protocol = {...input.protocol, max_tool_calls: Math.max(input.protocol?.max_tool_calls || 0, 20)};
   input.run_meta = {...input.run_meta, history_protocol: {version: 'recent60-with-original-history-lookup-v1',
@@ -44,8 +44,8 @@ export function prepareHistory(source) {
 
   if (!fitsHistory(observation)) {
     const archive = observation.environment.sources.at(-1);
-    archive.description = archive.description.replace('Initially only the latest 60 visible events are supplied.',
-      'Initially a byte-bounded suffix of the latest 60 visible events is supplied; initial_count gives its size, which may be zero.');
+    archive.description = archive.description.replace('初始提供最近60条可见事件。',
+      '初始提供最近60条可见事件中可装入上下文的部分，数量见initial_count，也可能为0。');
     const empty = {...observation, behavior_events: []};
     if (!fitsHistory(empty)) throw Error('history_context_byte_budget_exceeded');
     for (const row of available) {

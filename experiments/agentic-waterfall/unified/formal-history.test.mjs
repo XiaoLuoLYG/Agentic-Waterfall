@@ -14,7 +14,7 @@ function fixture(count = 65) {
 
 test('recent window retains original input, commands and state; archive remains visible to core', () => {
   const source = fixture(), before = structuredClone(source), {input, lookupHistory} = prepareHistory(source);
-  assert.equal(createHash('sha256').update(JSON.stringify(input)).digest('hex'), '454ef203536bb68d729e840fb89bb8a504a05a3a66bd71882326bb953bb3a321');
+  assert.equal(createHash('sha256').update(JSON.stringify(input)).digest('hex'), 'dc62a93c9416da00f7f3553e9f608527d4e684b7a7c1887948863a46156a3f2c');
   assert.deepEqual(source, before);
   assert.deepEqual(input.observation.behavior_events.map(row => row.id), before.observation.behavior_events.slice(-60).map(row => row.id));
   assert.deepEqual(input.observation.dialogue, before.observation.dialogue);

@@ -185,7 +185,9 @@ test('cloud handler persists a user session, choices, and export across requests
   async function req(path,body){const r=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{cookie,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});cookie=r.headers.get('set-cookie')?.split(';')[0]||cookie;return {status:r.status,body:await r.json()};}
   assert.equal((await req('/api/identity',{username:'alice',type:'human'})).status,200);
   const session=await req('/api/session',{consent:true,recordKind:'human',interests:[],profile:'阅读'});assert.equal(session.status,201);const sid=session.body.session.session_id;
-  const round=await req('/api/blind/round',{sessionId:sid,renderedIds:[],pending:[]});assert.equal(round.status,201);const trial=round.body.comparison;
+  assert.equal((await req('/api/blind/round',{sessionId:sid,renderedIds:[],pending:[]})).status,410);
+  const records=new CloudStore(db);await records.load(session.body.session.user_id);const card={id:'historic',title:'Recorded item',url:'https://example.test/item'};
+  const trial=await records.record('comparison',sid,{track:'blind',study_protocol:'blind-next-v1',mapping:{A:'joint-v1',B:'fixed-retrieval-v1'},input_snapshot:{id:'historical'},results:{'joint-v1':{slate:[card]},'fixed-retrieval-v1':{slate:[card]}}});trial.same_content=true;
   assert.equal((await req('/api/blind/present',{sessionId:sid,comparisonId:trial.id,eventTime:new Date().toISOString()})).status,201);
   const choice=trial.unavailable?'insufficient':trial.same_content?'tie':'A';assert.equal((await req('/api/evaluate',{sessionId:sid,comparisonId:trial.id,choice,eventTime:new Date().toISOString()})).status,201);
   const output=await req(`/api/export?sessionId=${sid}&format=json`);assert.equal(output.status,200);assert.equal(output.body.blind_trials[0].choice.choice,choice);

@@ -1,7 +1,7 @@
 import {demoInput} from './unified-input.mjs';
 import {runEpisode} from './waterfall-core.mjs';
 import {randomUUID} from 'node:crypto';
-import {acquire,id,hash} from './core.mjs';
+import {acquire,id,hash,check} from './core.mjs';
 
 export function demoModelCall(config,signal){
  return async request=>{
@@ -11,19 +11,23 @@ export function demoModelCall(config,signal){
    const timeout=AbortSignal.timeout(config.timeoutMs||60000);
    const signals=[signal,config.signal,timeout].filter(Boolean);
    const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:signals.length>1?AbortSignal.any(signals):timeout});
-   if(!response.ok)throw Error(`model_http_${response.status}`);
+   if(!response.ok){
+    const response_body=(await response.text()).split(config.key).join('[REDACTED]').replace(/Bearer\s+[^\s"']+/gi,'Bearer [REDACTED]');
+    throw Object.assign(Error(`model_http_${response.status}`),{http_status:response.status,response_body});
+   }
    const result=await response.json(),content=result.choices?.[0]?.message?.content,finish_reason=result.choices?.[0]?.finish_reason||null;
    if(typeof content!=='string')throw Error('model_missing_content');
    return {attempt_id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason,request_settings:{...config.requestParameters,temperature:body.temperature,max_tokens:body.max_tokens},started_at,completed_at:new Date().toISOString()};
   }catch(error){
-   error.receipt={attempt_id,status:'failed',error:error.message,requested_model:config.model,started_at,completed_at:new Date().toISOString()};throw error;
+   error.receipt={attempt_id,status:'failed',error:error.message,requested_model:config.model,...(error.http_status?{http_status:error.http_status,response_body:error.response_body}:{}),started_at,completed_at:new Date().toISOString()};throw error;
   }
  };
 }
 
-export async function runDemo(snapshot,{userId,sessionId,modelCall,acquireSource,lookupHistory,onAction}){
+export async function runDemo(snapshot,{userId,sessionId,modelCall,acquireSource,lookupHistory,onAction,topK=1000}){
+ check(Number.isInteger(topK)&&topK>0&&topK<=1000,'topK must be an integer from 1 to 1000');
  const input=demoInput(snapshot,{userId,sessionId});
- input.protocol={mode:'acquire',top_k:1000,max_model_calls:20,max_tool_calls:20,max_acquired_items:1000,max_output_tokens:8192};
+ input.protocol={mode:'acquire',top_k:topK,max_model_calls:20,max_tool_calls:20,max_acquired_items:1000,max_output_tokens:8192};
  const original=new Map(input.observation.user_state.records.map(record=>[record.id,JSON.stringify(record)]));
  const items=new Map((snapshot.candidate_pool||[]).map(item=>[item.id,structuredClone(item)]));
  const acquire=async(args,context)=>{

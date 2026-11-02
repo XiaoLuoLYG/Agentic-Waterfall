@@ -26,7 +26,7 @@ test('personal history and persistent memory follow their owner across sessions,
   const prior = { ...store.state(first), profile: '初学者', entries: [{ lifetime: 'persistent', value: '电脑已购买' }, { lifetime: 'session', value: '今天在地铁' }] };
   const current = create('alice', prior); const snapshot = inputSnapshot(store, current, '', settings, sources);
   assert.equal(snapshot.behavior.length, 1); assert.equal(snapshot.behavior[0].title, '剪辑教程');
-  assert.equal(snapshot.state.profile, '初学者'); assert.equal(snapshot.state.entries.length, 1);
+  assert.equal(snapshot.state.profile, '初学者'); assert.equal(snapshot.state.entries.length, 2);
   assert.deepEqual(snapshot.recent_commands.map(x => x.command), ['电脑已经买好了']);
   assert(!JSON.stringify(snapshot).includes('other-account-secret'));
 });
@@ -87,7 +87,7 @@ test('a temporary goal does not erase the persistent goal carried into the next 
   const changed = applyUpdates(state, [{ ...persistent, lifetime: 'session', value: '今天想看短篇', version: 2 }], 'input2');
   assert.equal(changed.entries.length, 2);
   const next = create('alice', changed);
-  assert.deepEqual(store.state(next).entries.map(e => e.value), ['每月读一本书']);
+  assert.deepEqual(store.state(next).entries.map(e => e.value), ['每月读一本书','今天想看短篇']);
 });
 
 test('xuanji request parameters reach both model calls; progress and traces retain no key or reasoning', async t => {

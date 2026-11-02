@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/XiaoLuoLYG/agentic-waterfall-dataset",
+  "source": "src/format.mjs",
+  "commit": "94f6df5ebdf73af9ad5defa3f13ef04cd05f7c80",
+  "schema_version": "awf-dataset/1.0",
+  "sha256": "6d7e36ff6c24068663b797c962dfe43a17b3f5a21ca8ecc28f9e3e9a550841fd"
+}

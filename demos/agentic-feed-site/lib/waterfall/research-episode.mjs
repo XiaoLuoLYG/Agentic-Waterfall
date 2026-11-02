@@ -1,3 +1,4 @@
+import {researchMetrics,researchExportRows} from './research.mjs';
 import { hash } from './core.mjs';
 
 // This projection preserves what the demo actually ran; it does not invent the paper's action protocol.
@@ -96,6 +97,16 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
     run_meta:{ io_contract:'demo-controller-two-phase/0.2', collection_protocol:{ version:'awf-collection/1.0', exposure_rule:'foreground + focused, at least 50% visible for 1 second; immediate on card interaction', external_time:'open and return only; external playback is not measured', simulated_exposure:'simulated action, not actual viewing' }, note:'Original model calls and demo actions are retained as executed; no hypothetical actions or evaluation labels are added.' },
     environment_snapshot:{ source_catalog:inputs.size ? [...inputs.values()].at(-1).input_snapshot.available_sources || [] : [], corpus:[...corpus.values()], note:'Content and source snapshots are also preserved per decision.' },
     initial_snapshot:{ user_state:rows.find(r=>r.kind==='state')?.state || null, settings:session.initial_settings ?? null },
+    research_studies:researchExportRows(rows.filter(row=>['research_study','research_legacy_artifact'].includes(row.kind))).filter(row=>row.kind==='research_study'),
+    research_preparations:researchExportRows(rows.filter(row=>row.kind==='research_preparation')),
+    research_artifacts:[...new Map(rows.filter(row=>row.artifact_ref).map(row=>[row.study_id||row.id,{study_id:row.study_id||row.id,session_id:row.session_id,artifact_ref:row.artifact_ref,download_url:`/api/research/artifact?sessionId=${encodeURIComponent(row.session_id)}&studyId=${encodeURIComponent(row.study_id||row.id)}`}])).values()],
+    archive_policy:'This export contains research indices and labels. Full method records are private gzip artifacts available only through authenticated sealed-study downloads.',
+    research_stops:rows.filter(row=>row.kind==='research_stop'),
+    content_ratings:rows.filter(row=>row.kind==='evaluation'&&row.label_type==='content_rating'),
+    research_blind_choices:rows.filter(row=>row.kind==='evaluation'&&row.label_type==='blind_choice'),
+    research_presentations:rows.filter(row=>row.kind==='research_presentation'),
+    research_events:rows.filter(row=>row.kind==='research_event'),
+    content_rating_metrics:researchMetrics(rows),
     decisions, event_log:eventLog, blind_event_log:blindEventLog, dialogue_log:dialogue,
     slates:runs.map(r=>({ slate_id:r.id, item_ids:(r.result?.slate || []).map(i=>i.id), available_at:r.available_at, content_snapshot:r.result?.content_snapshot || null })),
     feedback_windows:windows, simulator_decisions:rows.filter(r=>['agent_attempt','agent_decision','agent_failure'].includes(r.kind)),
@@ -109,6 +120,6 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
       events:rows.filter(r=>r.track==='blind' && (r.comparison_id===comparison.id || r.reference_id===comparison.id) && !['blind_presentation','evaluation','blind_simulated_choice'].includes(r.kind))
     })),
     blind_attempts_incomplete:rows.filter(r=>r.kind==='blind_attempt' && !rows.some(c=>c.kind==='comparison' && c.attempt_id===r.id)).map(attempt=>({attempt,status:'interrupted_or_in_progress'})),
-    source_records:rows.filter(r=>r.track !== 'blind' && !['evaluation','comparison'].includes(r.kind))
+    source_records:researchExportRows(rows.filter(r=>r.track !== 'blind' && !['evaluation','comparison'].includes(r.kind)))
   };
 }

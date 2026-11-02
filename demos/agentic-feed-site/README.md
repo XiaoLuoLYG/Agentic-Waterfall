@@ -2,6 +2,22 @@
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
 
+## Private online dataset capture
+
+The deployed collector requires the private R2 binding `DATASET_ARCHIVE`; the existing `DB` binding remains the source event log. No new SQL migration is required. `createCloudHandler` also accepts `datasetArchive` and `datasetStorage: 'sqlite+files'` for an isolated local SQLite/files preview. The normal feed continues to search online.
+
+Every acquisition archives all public fields returned by the source adapter before feed exclusions and result limits. This is the adapter's lightweight public projection, not raw HTTP bytes. It includes returned text and metadata, never original media, provider credentials or auth headers. The pinned `lib/waterfall/dataset-format.mjs` is copied exactly from the independent dataset repository; it supplies content/version identity, text bounds and export normalization.
+
+Private gzip objects use `dataset/<account-id>/contents/<stored-content-sha256>.json.gz` and `dataset/<account-id>/captures/<capture-id>.json.gz`. Observation order/times remain in the capture artifact; equal stored content is written once per account. D1 keeps a small capture intent and archive receipt. An R2 failure preserves sanitized content in append-only D1 fallback events (large fallbacks use bounded chunks), and remains `pending`. A process interrupted between intent and receipt remains visibly `incomplete`; it is never marked ready or silently reconstructed. A new acquisition retries one pending capture; the owner's explicit retry drains the backlog. Archive exceptions preserve the original acquisition/feed result.
+
+- `GET /api/dataset/status?sessionId=...` reports server storage, capture counts, private archive bytes and readiness. It returns no method mapping.
+- `POST /api/dataset/retry?sessionId=...` retries retained pending captures.
+- `GET /api/export?sessionId=...&format=dataset` downloads gzip JSON `{schema_version,manifest,tables,artifact_refs}`. This uses current-account ownership and the existing unfinished evaluation/blind export seals. Existing JSON and JSONL routes remain available.
+
+Dataset export loads the selected session plus explicitly referenced historical context. Missing/corrupt ready artifacts return an error; pending fallback content remains exportable with its pending artifact reference. Capture history begins with this integration; older unrecorded returns cannot be recovered. A localhost preview writes only to its local server files. Hosted use saves to D1/private R2 automatically; a browser download creates the user's separate dataset file. Production exports must stay private and outside Git.
+
+Run `node --test test/*.test.mjs` for synthetic integration checks. These tests prove collection and isolation mechanics, not recommendation effectiveness.
+
 ## Prerequisites
 
 - Node.js `>=22.13.0`

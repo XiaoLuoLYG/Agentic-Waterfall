@@ -4,6 +4,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
+export function nextSourcePage(records,sessionId,action,maxPage=50){
+  const inputs=new Set(records.filter(row=>row.kind==='input'&&row.session_id===sessionId&&row.track==='feed').map(row=>row.input_snapshot?.id));
+  const issued=records.filter(row=>row.kind==='dataset_capture'&&row.session_id===sessionId&&inputs.has(row.input_snapshot_id)&&row.returned_count>0&&row.capture_status!=='failed'&&row.request?.source===action.source&&row.request?.mode===action.mode&&String(row.request?.query||'').trim()===String(action.query||'').trim()&&Number.isInteger(row.request?.page)&&row.request.page>0);
+  const at=row=>Date.parse(row.request_started_at||row.available_at)||0;
+  issued.sort((a,b)=>at(a)-at(b)||(a.sequence||0)-(b.sequence||0)||a.request.page-b.request.page);
+  return issued.length?issued.at(-1).request.page%maxPage+1:1;
+}
 export const DEFAULT_SOURCE_CONFIG_PATH = resolve(here, '../../HyperAgent/.worktrees/xuanji-device-latest-20261021/entry/src/main/resources/rawfile/hyperagent_config.local.json');
 const DEFINITIONS = [
   ['youtube', 'YouTube', ['search', 'explore'], ['video'], 'Composio YouTube'],
@@ -230,7 +237,8 @@ function parseFeed(xml, author) {
 
 export async function acquireSource(action, config, { page = 1, excludedIds = [], limit = 6 } = {}) {
   const result = { source: action?.source, query: typeof action?.query === 'string' ? action.query : '', mode: action?.mode, modality: action?.modality, status: 'failed', items: [] };
-  let attempted = false, retryable = false;
+  let attempted = false, retryable = false, returned = [];
+  const started_at = new Date().toISOString();
   try {
     const entry = sourceCatalog(config).find(s => s.id === action?.source);
     if (!entry) throw failure('unsupported_source');
@@ -241,6 +249,7 @@ export async function acquireSource(action, config, { page = 1, excludedIds = []
     attempted = true;
     if(!Number.isInteger(limit)||limit<1||limit>1000)throw failure('invalid_source_limit');
     const rows = await getSource({ ...action, query: action.query.trim(), page, limit }, config);
+    returned = rows.map(raw=>({...raw,...item(action.source,action.query.trim(),raw),source:action.source,source_item_id:String(raw.id||raw.url||''),title:raw.title??'',summary:raw.summary??'',text:raw.text??raw.content_text??'',published_at:raw.published??raw.published_at}));
     if (action.source === 'bilibili') result.page = page;
     const items = rows.map(x => item(action.source, action.query.trim(), x)).filter(Boolean);
     result.items = [...new Map(items.map(x => [x.url, x])).values()].filter(x => !excludedIds.includes(x.id)).slice(0, limit);
@@ -250,6 +259,7 @@ export async function acquireSource(action, config, { page = 1, excludedIds = []
     if (rows.warnings?.length) result.warnings = rows.warnings;
   } catch (e) { result.error = e.sourceCode || 'source_request_failed'; retryable = retryableFailure(e); }
   result.completed_at = new Date().toISOString();
+  if(config?.onCapture&&attempted){try{await config.onCapture({source:action.source,request:{...action,page,limit},results:returned,started_at,completed_at:result.completed_at,status:result.status,...(result.error?{error:result.error}:{})});}catch{console.error('dataset_capture_record_failed');}}
   if (config && attempted) { const h = health.get(config) || {}; const last = { status: result.status, mode: result.mode, count: result.items.length, at: result.completed_at, ...(result.error ? { error: result.error } : {}), ...(retryable ? { retry_after: new Date(Date.now() + RETRY_DELAY_MS).toISOString() } : {}) }; h[action.source] = { last, checks: { ...h[action.source]?.checks, [result.mode]: last } }; health.set(config, h); }
   return result;
 }

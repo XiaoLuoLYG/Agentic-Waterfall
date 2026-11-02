@@ -16,3 +16,10 @@ test('demo transport preserves truncated output so the common core can correct i
   assert.equal(result.status,'submitted');assert.equal(calls,2);assert.equal(result.model_calls[0].content,'{"actions":[');assert.equal(result.model_calls[0].error,'model_output_truncated');assert.deepEqual(result.ordered_item_ids,['one']);
  }finally{globalThis.fetch=previous;}
 });
+
+test('HTTP failures retain status and a redacted provider explanation',async t=>{
+ t.mock.method(globalThis,'fetch',async()=>Response.json({error:'invalid max_tokens',echo:'private-test-key'},{status:400}));
+ await assert.rejects(()=>demoModelCall({endpoint:'https://model.invalid',key:'private-test-key',model:'fixture'})({messages:[]}),error=>{
+  assert.equal(error.receipt.http_status,400);assert.match(error.receipt.response_body,/invalid max_tokens/);assert(!error.receipt.response_body.includes('private-test-key'));return true;
+ });
+});

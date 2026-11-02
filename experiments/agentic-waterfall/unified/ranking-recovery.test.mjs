@@ -28,7 +28,7 @@ test('invalid raw video numbers are reported and the agent independently supplie
   assert.deepEqual(result.model_calls[0].parsed_output.actions[0].arguments.ordered_candidate_indices,[1,1059,1]);
   assert.equal(result.trace[0].execution_results[0].status,'failed');
   assert.deepEqual(result.trace[0].decision.actions[0].arguments.ordered_candidate_indices,[1,1059,1]);
-  assert.match(SYSTEM_PROMPT,/new action_id/);assert.match(SYSTEM_PROMPT,/numbers extracted from item IDs/);
+  assert.match(SYSTEM_PROMPT,/新动作ID/);assert.match(SYSTEM_PROMPT,/填写实际 candidate_index/);
 });
 
 test('incomplete and duplicate rankings expose missing and repeated indices without filling them',async()=>{
@@ -80,7 +80,7 @@ test('truncated or invalid JSON gets a short diagnostic and a fresh agent respon
       calls++;const {observation,context}=JSON.parse(request.messages[1].content);
       assert.deepEqual(observation.environment.recommendation_constraints.allowed_candidate_indices,Array.from({length:101},(_,i)=>i+1));
       assert.equal(context.output_requirements.candidate_count,101);
-      assert.match(context.output_requirements.recommendation,/numbers extracted from item IDs/);
+      assert.match(context.output_requirements.recommendation,/只填写.*候选序号/);
       if(calls===1)return {attempt_id:'broken',finish_reason,content:broken};
       assert.equal(context.previous_output_error.error,expectedError);
       assert(request.messages.every(message=>!message.content.includes('UNTRUSTED_REPEAT')));

@@ -47,7 +47,7 @@ export async function buildFormalAdapter(task, previous = null) {
   if (createHash('sha256').update(raw).digest('hex') !== manifest.catalog_sha256) throw Error('snapshot_hash_mismatch');
   const coverage = sourceCoverage(data.case.allowed_sources, manifest);
   const input = {observation: {...data.observation, environment: {...data.observation.environment,
-    sources: coverage.active.map(id => ({id, modes: ['search'], description: 'Frozen BM25 catalog; each source query returns at most 10 items published by the observation cutoff.'})),
+    sources: coverage.active.map(id => ({id, modes: ['search'], description: '冻结BM25目录；每个来源的查询最多返回10条观察截止前发布的内容。'})),
     content_version: manifest.catalog_sha256,
   }}, protocol: {mode: 'acquire', top_k: 20, max_model_calls: 4, max_tool_calls: 10, max_acquired_items: 100, max_output_tokens: 8192},
   run_meta: {case_id: data.case.case_id, event: data.case.event, as_of_ms: data.case.as_of_ms,

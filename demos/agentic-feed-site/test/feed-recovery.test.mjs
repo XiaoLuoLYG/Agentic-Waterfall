@@ -26,6 +26,13 @@ test('hidden feed distributes new cards between both columns instead of filling 
   assert.equal(chooseColumn([column(1),column(4)],true),0);
 });
 
+test('unread priority does not keep adding cards to an already much taller column',async()=>{
+ const {chooseColumn}=await import('../public/feed-layout.js');
+ const column=(height,unread)=>({offsetHeight:height,getClientRects:()=>[{}],querySelector:()=>unread?{}:null,querySelectorAll:()=>[]});
+ assert.equal(chooseColumn([column(1800,true),column(120,false)],true),1);
+ assert.equal(chooseColumn([column(120,false),column(1800,true)],true),0);
+});
+
 test('a repeated invalid model ranking fails without fabricating a recommendation',async t=>{
  let rankCalls=0;const model=http.createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;const data=JSON.parse(raw);const plan=data.messages[0].content.includes('Phase plan.');if(!plan)rankCalls++;const output=plan?{actions:[{type:'acquire',source:'local',query:'science',mode:'search',modality:'text'}]}:{actions:[{type:'recommend',candidate_ids:['never-fetched'],reason:'test'}]};res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(output)},finish_reason:'stop'}]}));});await new Promise(r=>model.listen(0,'127.0.0.1',r));t.after(()=>{model.closeAllConnections();model.close();});
  const snapshot={id:'snapshot',command:'',state:{version:1,profile:'',memory:'',context:'',entries:[],interests:[]},behavior:[],recent_commands:[],candidate_pool:[],previous_slate_ids:[],available_sources:[{id:'local',modes:['search'],modalities:['text']}],settings:{sources:[],contentTypes:['text']}};

@@ -101,9 +101,10 @@ test('progress exposes bounded phases and blocks settings while a run is active'
   let announce; const started = new Promise(resolve => { announce = resolve; });
   let release; const gate = new Promise(resolve => { release = resolve; });
   const model = http.createServer(async (req, res) => {
-    for await (const ignored of req) void ignored;
+    let raw='';for await (const chunk of req)raw+=chunk;
+    const {observation}=JSON.parse(JSON.parse(raw).messages[1].content);
     announce(); await gate;
-    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ actions: [{ type: 'keep', text: '保持' }] }) }, finish_reason: 'stop' }] }));
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({decision_id:observation.decision_id,actions:[{action_id:'keep',kind:'idle',arguments:{mode:'keep'},evidence_refs:[],depends_on:[]}]}) }, finish_reason: 'stop' }] }));
   });
   const endpoint = await listen(t, model);
   const { base } = await setup(t, { config: { key: 'fixture-key', model: 'fixture', endpoint }, sourceConfig: {} });
@@ -125,8 +126,8 @@ test('live catalog refreshes health and snapshots filter source, modality and fa
   const inputs = [];
   const model = http.createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk;
-    inputs.push(JSON.parse(JSON.parse(raw).messages[1].content).input);
-    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ actions: [{ type: 'keep', text: '保持' }] }) }, finish_reason: 'stop' }] }));
+    const {observation}=JSON.parse(JSON.parse(raw).messages[1].content);inputs.push(observation);
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({decision_id:observation.decision_id,actions:[{action_id:'keep',kind:'idle',arguments:{mode:'keep'},evidence_refs:[],depends_on:[]}]}) }, finish_reason: 'stop' }] }));
   });
   const endpoint = await listen(t, model);
   const sourceConfig = { providers: { ZHIHU_API_KEY: 'fixture-provider-secret' }, composio: { apiKey: 'fixture-composio-secret', userId: 'fixture', baseUrl: 'https://invalid.example/api/v3' }, allowed: { github: { allowed: false } } };
@@ -137,14 +138,14 @@ test('live catalog refreshes health and snapshots filter source, modality and fa
   const visible = await request(base, '/api/config'); assert(!JSON.stringify(visible.body).includes('fixture-provider-secret')); assert(!JSON.stringify(visible.body).includes('fixture-composio-secret')); assert(!JSON.stringify(visible.body).includes('fixture-model-key'));
   await request(base, '/api/settings', a.cookie, { settings: { sources: ['youtube', 'zhihu'], contentTypes: ['text'] } });
   assert.equal((await request(base, '/api/run', a.cookie, { sessionId: sid, command: '保持' })).status, 200);
-  assert.deepEqual(inputs.at(-1).available_sources.map(x => x.id), ['zhihu']);
+  assert.deepEqual(inputs.at(-1).environment.sources.map(x => x.id), ['zhihu']);
   await request(base, '/api/settings', a.cookie, { settings: { sources: ['youtube'], contentTypes: ['video'] } });
   const failed = await acquireSource({ source: 'youtube', query: '', mode: 'explore', modality: 'video' }, sourceConfig);
   assert.equal(failed.status, 'failed'); assert.equal(failed.error, 'composio_endpoint_not_allowed');
   const refreshed = (await request(base, '/api/config')).body.sources.find(x => x.id === 'youtube');
   assert.equal(refreshed.mode_checks.explore.status, 'failed');
   await request(base, '/api/run', a.cookie, { sessionId: sid, command: '保持' });
-  assert.deepEqual(inputs.at(-1).available_sources[0].modes, ['search']);
+  assert.deepEqual(inputs.at(-1).environment.sources[0].modes, ['search']);
   await acquireSource({ source: 'youtube', query: 'test', mode: 'search', modality: 'video' }, sourceConfig);
   const calls = inputs.length;
   assert.equal((await request(base, '/api/run', a.cookie, { sessionId: sid, command: '保持' })).status, 400);
