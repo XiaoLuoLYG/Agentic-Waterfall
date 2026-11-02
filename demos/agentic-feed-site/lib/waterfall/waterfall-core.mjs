@@ -135,12 +135,24 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
         rankingError('unsupported_content_types',{source_id:sourceId,allowed_content_types:source.content_types||[],message:'content_types selects media formats; put topics in query.'});
     }
   }
-  function validateAcquisitions(decision){
+  function validateStateEvidence(record,dependencies=new Set()){
+    const refs=record?.evidence_refs;
+    const unknown=Array.isArray(refs)?refs.filter(ref=>!allowedRefs.has(ref)&&!receipts.has(ref)&&!dependencies.has(ref)):[];
+    if(!Array.isArray(refs)||!refs.length||unknown.length)rankingError('state_evidence_missing',{record_id:record?.id,unknown_evidence_refs:unknown,message:'Use exact visible evidence IDs, or retrieve the supporting history before citing it.'});
+  }
+  function validateDecision(decision){
     let requested=0;
-    for(const action of Array.isArray(decision?.actions)?decision.actions:[]){
+    const actions=Array.isArray(decision?.actions)?decision.actions:[],byId=new Map(actions.map(action=>[action?.action_id,action]));
+    for(const action of actions){
       if(actionHashes.has(action?.action_id))continue;
       if(action?.kind==='acquire'&&action.arguments){validateAcquire(action.arguments);requested+=action.arguments.source_ids.length;}
       else if(action?.kind==='lookup_history')requested++;
+      else if(action?.kind==='update_state'&&Array.isArray(action.arguments?.edits)){
+        const dependencies=new Set();
+        const visit=ids=>{for(const id of Array.isArray(ids)?ids:[])if(!dependencies.has(id)){dependencies.add(id);visit(byId.get(id)?.depends_on);}};
+        visit(action.depends_on);
+        for(const edit of action.arguments.edits)if(edit?.op==='upsert')validateStateEvidence(edit.record,dependencies);
+      }
     }
     if(requested>remainingToolCalls())rankingError('tool_budget_exhausted',{requested_tool_calls:requested,remaining_tool_calls:remainingToolCalls(),message:'This response was not executed. Use completed results and issue only requests that fit the remaining allowance.'});
   }
@@ -226,7 +238,7 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
           check(['active','completed','expired','superseded'].includes(r.status),'invalid_record_status');
           for(const field of ['key','value','scope','scope_id','basis','evidence_refs'])check(r[field]!==undefined,`record_${field}_required`);
           if(r.scope==='session'&&r.scope_id===null&&o.session_id)r.scope_id=o.session_id;
-          check(Array.isArray(r.evidence_refs)&&r.evidence_refs.length&&r.evidence_refs.every(ref=>allowedRefs.has(ref)||receipts.has(ref)),'state_evidence_missing');
+          validateStateEvidence(r);
           const channels=new Set();
           for(const ref of r.evidence_refs)for(const channel of evidenceChannels(ref))channels.add(channel);
           r.source_channels=[...channels];r.updated_at=o.observed_at||new Date().toISOString();
@@ -285,7 +297,7 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
     }
     const step={decision:clone(decision),dispatch_groups:groups,execution_results:actions.map(a=>clone(receipts.get(a.action_id))),state_after:clone(o.user_state),new_actions:newActions};trace.push(step);return step;
   }
-  return {snapshot,execute,validateAcquisitions,protocol:p,get result(){return {ordered_item_ids:[...ranking],state_after:clone(o.user_state),candidate_pool_after:[...pool.values()].map(clone),pending_queue:[...o.environment.pending_queue],trace:clone(trace),tool_calls:toolCalls,acquired_items:acquired.size,ended};}};
+  return {snapshot,execute,validateDecision,protocol:p,get result(){return {ordered_item_ids:[...ranking],state_after:clone(o.user_state),candidate_pool_after:[...pool.values()].map(clone),pending_queue:[...o.environment.pending_queue],trace:clone(trace),tool_calls:toolCalls,acquired_items:acquired.size,ended};}};
 }
 
 export const SYSTEM_PROMPT=`You are Agentic Waterfall, the decision maker for a continuing personalized feed. Use the user's expression, actual behavior, and persistent memory to find useful content and adapt as their needs change. Optimize recommendation quality and a coherent browsing experience. Choose actions according to the evidence; updating memory, fetching, and ranking are available capabilities, not a mandatory sequence.
@@ -432,8 +444,8 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       rankingEvidence.set(action.action_id,evidence);registered.push(action.action_id);
     }
     let step;
-    try{runtime.validateAcquisitions(normalized.decision);step=await runtime.execute(normalized.decision,{phase,waitForAcquisitions:observation.environment.pending_acquisitions.length>0});}catch(e){
-      if(!['action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted'].includes(e.message))throw e;
+    try{runtime.validateDecision(normalized.decision);step=await runtime.execute(normalized.decision,{phase,waitForAcquisitions:observation.environment.pending_acquisitions.length>0});}catch(e){
+      if(!['action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing'].includes(e.message))throw e;
       for(const id of registered)rankingEvidence.delete(id);
       const call=modelCalls.findLast(x=>x.context?.call_index===executionIndex);if(call){call.error=e.message;call.error_details=e.details;}
       formatFeedback={error:e.message,call_index:executionIndex,...(e.details?{error_details:e.details}:{}),message:'No actions from this response were executed. Correct the reported issue and regenerate the decision with new action IDs.'};

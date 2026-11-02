@@ -23,6 +23,34 @@ const action=(action_id,kind,arguments_)=>({action_id,kind,arguments:arguments_,
 const input=()=>({observation:{decision_id:'contract',user_id:'u',session_id:'s',observed_at:'2026-11-02T00:00:00Z',dialogue:[],behavior_events:[],user_state:{version:1,records:[structuredClone(record)]},environment:{candidate_pool:[{id:'A'}],sources:[{id:'metadata',modes:['browse']}]}},protocol:{max_model_calls:3,max_tool_calls:4,max_acquired_items:1}});
 const decision=actions=>({decision_id:'contract',actions});
 
+test('unread state evidence rejects the whole decision before actions and allows an explicit correction',async()=>{
+ const fixture=input();let calls=0,executed=0;
+ const result=await runEpisode(fixture,{onAction:()=>executed++,decide:async(observation,context)=>{
+  calls++;
+  const remember=action('remember-'+calls,'update_state',{base_version:1,edits:[{op:'upsert',record:{...record,id:'new-memory',evidence_refs:calls===1?['unread-event']:['old-save']}}]});
+  if(calls===1)return decision([action('must-not-run','respond',{kind:'explain',text:'Updating memory'}),remember]);
+  assert.equal(executed,0);assert.equal(observation.user_state.version,1);
+  assert.equal(context.previous_output_error.error,'state_evidence_missing');
+  assert.deepEqual(context.previous_output_error.error_details.unknown_evidence_refs,['unread-event']);
+  return decision([remember,action('rank','recommend',{ordered_item_ids:['A'],delivery:'replace_pending'})]);
+ }});
+ assert.equal(calls,2);assert.equal(result.status,'submitted');assert.equal(result.state_after.version,2);
+ assert.equal(result.model_calls[0].error,'state_evidence_missing');assert.equal(result.trace.length,1);
+ assert(result.trace[0].execution_results.every(receipt=>receipt.status==='success'));
+});
+
+test('preflight permits state evidence from a transitive successful dependency',async()=>{
+ const fixture=input();let calls=0;
+ const result=await runEpisode(fixture,{lookupHistory:async()=>({dialogue:[],behavior_events:[]}),decide:async()=>{
+  calls++;const fetched=action('history','lookup_history',{query:'',offset:0,limit:1});
+  const explained={...action('explain','respond',{kind:'explain',text:'Review history'}),depends_on:['history']};
+  const remembered={...action('remember','update_state',{base_version:1,edits:[{op:'upsert',record:{...record,evidence_refs:['history']}}]}),depends_on:['explain']};
+  return decision([fetched,explained,remembered,action('rank','recommend',{ordered_item_ids:['A'],delivery:'replace_pending'})]);
+ }});
+ assert.equal(calls,1);assert.equal(result.status,'submitted');assert.equal(result.state_after.version,2);
+ assert(result.trace[0].execution_results.every(receipt=>receipt.status==='success'));
+});
+
 test('persisted evidence remains usable across decisions while invented references stay rejected',async()=>{
  const runtime=createRuntime(input());
  const kept=await runtime.execute(decision([action('keep','update_state',{base_version:1,edits:[{op:'upsert',record}]})]));
