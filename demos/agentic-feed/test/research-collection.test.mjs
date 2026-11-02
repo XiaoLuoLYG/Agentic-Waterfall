@@ -67,6 +67,25 @@ test('model failure retains the actual model response and input without credenti
   assert(!JSON.stringify(ep).includes('secret-fixture-key'));
 });
 
+test('legacy local blind entry uses the same Waterfall core as the normal feed', async t => {
+  const originalFetch=globalThis.fetch;
+  t.mock.method(globalThis,'fetch',(address,options)=>new URL(address).hostname==='hn.algolia.com'?Promise.resolve(Response.json({hits:[{objectID:'123',title:'Science practice',url:'https://example.org/science'}]})):originalFetch(address,options));
+  const model=http.createServer(async(req,res)=>{
+    let raw='';for await(const chunk of req)raw+=chunk;
+    const observation=JSON.parse(JSON.parse(raw).messages[1].content).observation;
+    const items=observation?.environment.candidate_pool||[];
+    const action=items.length?{kind:'recommend',arguments:{ordered_item_ids:[items[0].id],delivery:'replace_pending'}}:{kind:'acquire',arguments:{source_ids:['hackernews'],mode:'search',query:'science',content_types:['text'],limit:10}};
+    res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({decision_id:observation?.decision_id||'legacy-detected',actions:[{action_id:items.length?'rank':'fetch',...action,evidence_refs:[],depends_on:[]}]})},finish_reason:'stop'}]}));
+  });
+  await new Promise(resolve=>model.listen(0,'127.0.0.1',resolve));t.after(()=>{model.closeAllConnections();model.close();});
+  const {req,sid,store}=await fixture(t,{key:'fixture',model:'fixture',endpoint:`http://127.0.0.1:${model.address().port}`,timeoutMs:5000});
+  await req('/api/settings',{settings:{sources:['hackernews'],contentTypes:['text']}});
+  assert.equal((await req('/api/blind/round',{sessionId:sid})).status,201);
+  const result=store.rows.findLast(row=>row.kind==='comparison').results['joint-v1'];
+  assert.equal(result.runtime_source_sha256,(await import('../../agentic-feed-site/lib/waterfall/waterfall-version.mjs')).SOURCE_SHA256,result.error);
+  assert.equal(result.slate.length,1);assert(result.trace.every(step=>step.phase==='unified'));
+});
+
 test('cross-session history includes only the owner’s cited behavior and content', async t => {
   const { req, sid: first } = await fixture(t);
   const oldRun = (await req('/api/run', { sessionId:first, command:'过去的兴趣' })).body.run;
