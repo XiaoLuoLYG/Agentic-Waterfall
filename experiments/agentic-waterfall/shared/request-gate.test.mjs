@@ -136,6 +136,7 @@ test('JSON and SQLite clients in separate roots share one gate and meter each HT
   const root=join(options.directory,variant),shared=join(root,'shared');mkdirSync(shared,{recursive:true});mkdirSync(join(root,'method-deployment'));
   const source=variant==='json'?new URL('./model-client.mjs',import.meta.url):new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/model-client.mjs',import.meta.url);
   writeFileSync(join(shared,'model-client.mjs'),readFileSync(source,'utf8').replace("resolve(ROOT, '../../../../formal-20261029-224252/experiments/agentic-waterfall/shared/model-ledger.json')","resolve(ROOT, 'shared/model-ledger.json')"));
+  copyFileSync(new URL('./model-response.mjs',import.meta.url),join(shared,'model-response.mjs'));
   copyFileSync(new URL('./request-gate.mjs',import.meta.url),join(shared,'request-gate.mjs'));
   if(variant==='sqlite')copyFileSync(new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/archive.mjs',import.meta.url),join(shared,'archive.mjs'));
   writeFileSync(join(shared,'model-ledger.json'),JSON.stringify({limit:10,attempts:[]}));

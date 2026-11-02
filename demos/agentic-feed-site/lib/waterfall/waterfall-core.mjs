@@ -371,7 +371,10 @@ Action IDs identify actions and dependencies. depends_on can reference earlier s
 - update_state: {base_version:current version,edits:[edit]}. An edit is {op:"upsert",record:{id,kind,key,value,scope,scope_id,status,basis,evidence_refs}} or {op:"set_status",id,status}. Record kind is fact, preference, task, constraint, or episode; status is active, completed, expired, or superseded.
 - respond: {kind:"answer" or "explain" or "clarify",text:"concise user-facing text in the user's language"}. Answer or explain when useful, and ask only for missing information that materially affects the recommendation.
 - idle: {mode:"keep" or "wait" or "end_task",task_id:"associated task ID or null"}.
-Ground recommendations in the actual content and available evidence. Hidden future interactions and evaluation labels are not inputs. No self-assigned evaluation score is required.`;
+Ground recommendations in the actual content and available evidence. Hidden future interactions and evaluation labels are not inputs. No self-assigned evaluation score is required.
+
+Evidence-conditioned acquisition: Treat a search query as a hypothesis about useful content. When the catalog is unfamiliar, obtain an initial set and inspect the actual returned content before deciding the remaining queries and quantities. Leave acquisition capacity available for decisions informed by those returns. Compare the first matches with the user evidence, refine weak or repetitive matches, and seek alternatives to weak prospective recommendations. Choose the initial quantity, subsequent quantities, and whether another round is useful from the observed evidence; there is no fixed topic quota or fixed number of rounds. Independent metadata reads may still run together. When the current candidates support the requested decision, deliver the ranking.
+`;
 
 export async function runEpisode(input,{experiment,variant='full',decide,acquire,lookupHistory,onAction,modelCall,systemPrompt=SYSTEM_PROMPT,taskInstructions}={}) {
   const start=Date.now(),modelCalls=[],normalizations=[];let error=null,callsIssued=0,partialTask=null,partialAttempted=false,formatFeedback=null,runtime;

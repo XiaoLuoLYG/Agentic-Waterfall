@@ -2,24 +2,26 @@ import {demoInput} from './unified-input.mjs';
 import {runEpisode} from './waterfall-core.mjs';
 import {randomUUID} from 'node:crypto';
 import {acquire,id,hash,check} from './core.mjs';
+import {readModelResponse} from './model-response.mjs';
 
-export function demoModelCall(config,signal){
+export function demoModelCall(config,signal,{thinkingMode}={}){
  return async request=>{
   const attempt_id=randomUUID(),started_at=new Date().toISOString();
-  const body={model:config.model,...config.requestParameters,...request};
+  const parameters={...config.requestParameters,...(thinkingMode==='enabled'&&config.requestParameters?.thinking?{enable_thinking:true,thinking:{type:'enabled'},extra_body:{...config.requestParameters.extra_body,thinking:{type:'enabled'}}}:{}),stream:true,stream_options:{include_usage:true}};
+  const body={model:config.model,...parameters,...request};
   try{
-   const timeout=AbortSignal.timeout(config.timeoutMs||60000);
+   const timeout=AbortSignal.timeout(Math.max(config.timeoutMs||60000,600000));
    const signals=[signal,config.signal,timeout].filter(Boolean);
    const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify(body),signal:signals.length>1?AbortSignal.any(signals):timeout});
    if(!response.ok){
     const response_body=(await response.text()).split(config.key).join('[REDACTED]').replace(/Bearer\s+[^\s"']+/gi,'Bearer [REDACTED]');
     throw Object.assign(Error(`model_http_${response.status}`),{http_status:response.status,response_body});
    }
-   const result=await response.json(),content=result.choices?.[0]?.message?.content,finish_reason=result.choices?.[0]?.finish_reason||null;
+   const result=await readModelResponse(response),content=result.choices?.[0]?.message?.content,finish_reason=result.choices?.[0]?.finish_reason||null;
    if(typeof content!=='string')throw Error('model_missing_content');
-   return {attempt_id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason,request_settings:{...config.requestParameters,temperature:body.temperature,max_tokens:body.max_tokens},started_at,completed_at:new Date().toISOString()};
+   return {attempt_id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,...(typeof result.choices?.[0]?.message?.reasoning_content==='string'?{reasoning_content:result.choices[0].message.reasoning_content}:{}),...(result.stream_metadata?{stream_metadata:result.stream_metadata}:{}),usage:result.usage||null,finish_reason,request_settings:{...parameters,temperature:body.temperature,max_tokens:body.max_tokens},started_at,completed_at:new Date().toISOString()};
   }catch(error){
-   error.receipt={attempt_id,status:'failed',error:error.message,requested_model:config.model,...(error.http_status?{http_status:error.http_status,response_body:error.response_body}:{}),started_at,completed_at:new Date().toISOString()};throw error;
+   error.receipt={attempt_id,status:'failed',error:error.message,requested_model:config.model,...(error.http_status?{http_status:error.http_status,response_body:error.response_body}:{}),...(error.partialResponse?{partial_response:error.partialResponse,stream_diagnostic:error.streamDiagnostic}:{}),request_settings:{...parameters,temperature:body.temperature,max_tokens:body.max_tokens},started_at,completed_at:new Date().toISOString()};throw error;
   }
  };
 }
@@ -37,7 +39,7 @@ export async function runDemo(snapshot,{userId,sessionId,modelCall,acquireSource
    check(Number.isInteger(page.next_offset)&&page.next_offset>offset,'invalid_history_pagination');offset=page.next_offset;
   }
  }
- input.protocol={mode:'acquire',top_k:topK,max_model_calls:20,max_tool_calls:20,max_acquired_items:1000,max_output_tokens:8192};
+ input.protocol={mode:'acquire',top_k:topK,max_model_calls:20,max_tool_calls:20,max_acquired_items:1000,max_output_tokens:32768};
  const original=new Map(input.observation.user_state.records.map(record=>[record.id,JSON.stringify(record)]));
  const items=new Map((snapshot.candidate_pool||[]).map(item=>[item.id,structuredClone(item)]));
  const acquire=async(args,context)=>{
@@ -87,7 +89,7 @@ export async function executeUnifiedPolicy(snapshot,config,sourceConfig,{userId,
   return acquire(action,sourceConfig,{excludedIds:snapshot.rendered_ids||[],limit:args.limit,...(source==='bilibili'?{page:nextPage(action)}:{})});
  };
  let result;
- try{result=await runDemo(frozen?{...snapshot,candidate_pool:frozen.items}:snapshot,{userId,sessionId,modelCall:demoModelCall(config,signal),acquireSource,lookupHistory,onAction});}
+ try{result=await runDemo(frozen?{...snapshot,candidate_pool:frozen.items}:snapshot,{userId,sessionId,modelCall:demoModelCall(config,signal,{thinkingMode:'enabled'}),acquireSource,lookupHistory,onAction});}
  catch(error){if(error.runtime){error.partial_trace=runtimeTrace(error.runtime);if(error.partial_trace.length)error.partial_trace.at(-1).error=error.message;error.partial_trace.push({phase:'failure',failed_phase:'unified',error:error.message,model_metadata:error.runtime.model_calls.at(-1)||null,at:new Date().toISOString()});for(const entry of error.partial_trace)await onTrace(entry);}throw error;}
  const trace=runtimeTrace(result.runtime);
  for(const entry of trace)await onTrace(entry);

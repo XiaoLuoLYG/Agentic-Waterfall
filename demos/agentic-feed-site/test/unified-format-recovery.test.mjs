@@ -23,3 +23,24 @@ test('HTTP failures retain status and a redacted provider explanation',async t=>
   assert.equal(error.receipt.http_status,400);assert.match(error.receipt.response_body,/invalid max_tokens/);assert(!error.receipt.response_body.includes('private-test-key'));return true;
  });
 });
+
+test('demo uses the validated thinking configuration and preserves streamed usage',async t=>{
+ let body,wait;
+ t.mock.method(AbortSignal,'timeout',ms=>{wait=ms;return new AbortController().signal;});
+ t.mock.method(globalThis,'fetch',async(_,options)=>{
+  body=JSON.parse(options.body);
+  return new Response('data: '+JSON.stringify({model:'fixture',choices:[{index:0,delta:{reasoning_content:'synthetic',content:'{}'},finish_reason:'stop'}],usage:{completion_tokens:9,completion_tokens_details:{reasoning_tokens:7}}})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}});
+ });
+ const result=await demoModelCall({endpoint:'https://model.invalid',key:'synthetic',model:'fixture',timeoutMs:60000,requestParameters:{enable_thinking:false,thinking:{type:'disabled'},extra_body:{thinking:{type:'disabled'}}}},undefined,{thinkingMode:'enabled'})({messages:[],max_tokens:32768});
+ assert.equal(wait,600000);assert.equal(body.stream,true);assert.equal(body.stream_options.include_usage,true);
+ assert.equal(body.enable_thinking,true);assert.equal(body.thinking.type,'enabled');assert.equal(body.extra_body.thinking.type,'enabled');
+ assert.equal(result.content,'{}');assert.equal(result.reasoning_content,'synthetic');assert.equal(result.stream_metadata.complete,true);assert.equal(result.usage.completion_tokens_details.reasoning_tokens,7);
+ assert.equal(result.request_settings.thinking.type,'enabled');assert.equal(result.request_settings.max_tokens,32768);
+});
+
+test('demo preserves an interrupted stream as a failed receipt',async t=>{
+ t.mock.method(globalThis,'fetch',async()=>new Response('data: '+JSON.stringify({choices:[{index:0,delta:{content:'{"partial"'}}]})+'\n\n',{headers:{'Content-Type':'text/event-stream'}}));
+ await assert.rejects(demoModelCall({endpoint:'https://model.invalid',key:'synthetic',model:'fixture'})({messages:[]}),error=>{
+  assert.equal(error.receipt.status,'failed');assert.equal(error.receipt.partial_response.choices[0].message.content,'{"partial"');assert.equal(error.receipt.stream_diagnostic.complete,false);return true;
+ });
+});

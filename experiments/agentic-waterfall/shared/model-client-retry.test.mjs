@@ -13,6 +13,7 @@ for(const variant of ['json','sqlite'])test(`${variant}: retry the identical thr
  mkdirSync(join(root,'shared'));mkdirSync(join(root,'method-deployment'));
  const source=variant==='json'?new URL('./model-client.mjs',import.meta.url):new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/model-client.mjs',import.meta.url);
  writeFileSync(join(root,'shared/model-client.mjs'),readFileSync(source,'utf8').replace("resolve(ROOT, '../../../../formal-20261029-224252/experiments/agentic-waterfall/shared/model-ledger.json')","resolve(ROOT, 'shared/model-ledger.json')"));
+ copyFileSync(new URL('./model-response.mjs',import.meta.url),join(root,'shared/model-response.mjs'));
  if(variant==='sqlite')copyFileSync(new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/archive.mjs',import.meta.url),join(root,'shared/archive.mjs'));
  // Shared gate timing/locking has its own real-process tests; this seam never sleeps or uses a real endpoint.
  writeFileSync(join(root,'shared/request-gate.mjs'),'export const createRequestGate=()=>({admit:async()=>Date.now(),cooldown:async seconds=>globalThis.stageRetryCooldowns.push(seconds)});');

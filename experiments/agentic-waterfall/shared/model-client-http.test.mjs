@@ -17,6 +17,7 @@ for(const variant of ['json','sqlite']) test(`${variant}: HTTP refusals distingu
   await mkdir(join(root,'shared'));await mkdir(join(root,'kuairec'));
   const source=variant==='json'?new URL('./model-client.mjs',import.meta.url):new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/model-client.mjs',import.meta.url);
   await writeFile(join(root,'shared/model-client.mjs'),(await readFile(source,'utf8')).replace("resolve(ROOT, '../../../../formal-20261029-224252/experiments/agentic-waterfall/shared/model-ledger.json')","resolve(ROOT, 'shared/model-ledger.json')"));
+ await copyFile(new URL('./model-response.mjs',import.meta.url),join(root,'shared/model-response.mjs'));
   if(variant==='sqlite')await copyFile(new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/archive.mjs',import.meta.url),join(root,'shared/archive.mjs'));
   await copyFile(new URL('./request-gate.mjs',import.meta.url),join(root,'shared/request-gate.mjs'));
   const config=join(root,'config.json');

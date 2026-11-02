@@ -21,7 +21,7 @@ async function fixture(t,maxConcurrent,holdResponses=true){
     rmSync(root,{recursive:true,force:true});
   });
   mkdirSync(join(root,'shared'));mkdirSync(join(root,'mind'));
-  for(const file of ['model-client.mjs','request-gate.mjs'])copyFileSync(new URL(file,import.meta.url),join(root,'shared',file));
+  for(const file of ['model-client.mjs','request-gate.mjs','model-response.mjs'])copyFileSync(new URL(file,import.meta.url),join(root,'shared',file));
   const config=join(root,'config.json'),ledgerPath=join(root,'shared/model-ledger.json');
   writeFileSync(config,JSON.stringify({apiKey:'test-only',apiBase:'https://example.invalid',modelName:'test-model'}));
   for(const name of names)delete process.env[name];

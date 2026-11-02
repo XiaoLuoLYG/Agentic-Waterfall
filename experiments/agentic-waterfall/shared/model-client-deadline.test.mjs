@@ -13,6 +13,7 @@ for(const variant of ['json','sqlite'])test(`${variant}: one deadline covers all
  mkdirSync(join(root,'shared'));mkdirSync(join(root,'method-deployment'));
  const source=variant==='json'?new URL('./model-client.mjs',import.meta.url):new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/model-client.mjs',import.meta.url);
  writeFileSync(join(root,'shared/model-client.mjs'),readFileSync(source,'utf8').replace("resolve(ROOT, '../../../../formal-20261029-224252/experiments/agentic-waterfall/shared/model-ledger.json')","resolve(ROOT, 'shared/model-ledger.json')"));
+ copyFileSync(new URL('./model-response.mjs',import.meta.url),join(root,'shared/model-response.mjs'));
  if(variant==='sqlite')copyFileSync(new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/archive.mjs',import.meta.url),join(root,'shared/archive.mjs'));
  writeFileSync(join(root,'shared/request-gate.mjs'),`export const createRequestGate=()=>({admit:async({deadline=Infinity}={})=>{if(Date.now()+80000>deadline)throw Error('request_gate_call_deadline_exceeded');globalThis.deadlineClock+=80000;return Date.now();},cooldown:async()=>{}});`);
  writeFileSync(join(root,'shared/model-ledger.json'),JSON.stringify({limit:50,attempts:[]}));
@@ -48,6 +49,7 @@ for(const variant of ['json'])test(`${variant}: the 180-second response mode sti
  mkdirSync(join(root,'shared'));mkdirSync(join(root,'method-deployment'));
  const source=variant==='json'?new URL('./model-client.mjs',import.meta.url):new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/model-client.mjs',import.meta.url);
  writeFileSync(join(root,'shared/model-client.mjs'),readFileSync(source,'utf8').replace("resolve(ROOT, '../../../../formal-20261029-224252/experiments/agentic-waterfall/shared/model-ledger.json')","resolve(ROOT, 'shared/model-ledger.json')"));
+ copyFileSync(new URL('./model-response.mjs',import.meta.url),join(root,'shared/model-response.mjs'));
  if(variant==='sqlite')copyFileSync(new URL('../../../methods/agentic-waterfall/full-expansion/runtime/experiments/agentic-waterfall/shared/archive.mjs',import.meta.url),join(root,'shared/archive.mjs'));
  writeFileSync(join(root,'shared/request-gate.mjs'),`let retry=false;export const createRequestGate=()=>({admit:async({deadline=Infinity}={})=>{const wait=retry?60000:0;if(Date.now()+wait>deadline)throw Error('request_gate_call_deadline_exceeded');globalThis.cooldownClock(wait);retry=false;return Date.now();},cooldown:async()=>{retry=true;}});`);
  writeFileSync(join(root,'shared/model-ledger.json'),JSON.stringify({limit:10,attempts:[]}));

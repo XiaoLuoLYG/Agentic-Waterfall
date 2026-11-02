@@ -9,7 +9,7 @@ test('thinking mode is explicit per call and receipts preserve reasoning evidenc
  const root=await mkdtemp(join(tmpdir(),'waterfall-thinking-')),keys=['MODEL_CONFIG_FILE','OPENAI_API_KEY','OPENAI_BASE_URL','OPENAI_MODEL','WATERFALL_REQUEST_GATE_DIR'],before=Object.fromEntries(keys.map(k=>[k,process.env[k]])),fetchBefore=globalThis.fetch;
  t.after(async()=>{globalThis.fetch=fetchBefore;for(const k of keys)if(before[k]===undefined)delete process.env[k];else process.env[k]=before[k];await rm(root,{recursive:true,force:true});});
  await mkdir(join(root,'shared'));await mkdir(join(root,'kuairec'));
- for(const name of ['model-client.mjs','request-gate.mjs'])await copyFile(new URL(name,import.meta.url),join(root,'shared',name));
+ for(const name of ['model-client.mjs','request-gate.mjs','model-response.mjs'])await copyFile(new URL(name,import.meta.url),join(root,'shared',name));
  await writeFile(join(root,'config.json'),JSON.stringify({apiKey:'test',apiBase:'https://example.invalid',recommendationModelName:'test'}));
  await writeFile(join(root,'shared/model-ledger.json'),JSON.stringify({limit:3,attempts:[]}));await writeFile(join(root,'kuairec/CONTROL.json'),JSON.stringify({model_calls_enabled:true,model_request_limit:3}));
  process.env.MODEL_CONFIG_FILE=join(root,'config.json');process.env.WATERFALL_REQUEST_GATE_DIR=join(root,'gates');for(const k of ['OPENAI_API_KEY','OPENAI_BASE_URL','OPENAI_MODEL'])delete process.env[k];
