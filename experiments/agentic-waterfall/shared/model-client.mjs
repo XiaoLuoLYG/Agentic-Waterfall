@@ -12,7 +12,7 @@ const CONFIG = resolve(ROOT, '../../HyperAgent/.worktrees/xuanji-device-latest-2
 export const digest = data => createHash('sha256').update(typeof data === 'string' ? data : JSON.stringify(data)).digest('hex');
 export function modelTimeoutMs() {
   const value=Number(process.env.WATERFALL_MODEL_TIMEOUT_MS || 60000);
-  if(!Number.isSafeInteger(value)||value<1000||value>180000)throw new Error('invalid_model_timeout');
+  if(!Number.isSafeInteger(value)||value<1000||value>600000)throw new Error('invalid_model_timeout');
   return value;
 }
 
@@ -92,7 +92,7 @@ async function callOnce(request, {experiment}={}, config, deadline) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
   const timeoutMs=modelTimeoutMs();
   const body={model:config.model,messages:request.messages,temperature:request.temperature??0.3,max_tokens:request.max_tokens??4096,...config.parameters,...(request.response_format?{response_format:request.response_format}:{})};
-  if (!Number.isInteger(body.max_tokens)||body.max_tokens<1||body.max_tokens>8192) throw new Error('invalid_max_tokens');
+  if (!Number.isSafeInteger(body.max_tokens)||body.max_tokens<1) throw new Error('invalid_max_tokens');
   const gate=createRequestGate(config);
   const latestStart=deadline-timeoutMs-10000;
   const attempt=await reserve(experiment,body,config.model,latestStart);
@@ -105,7 +105,7 @@ async function callOnce(request, {experiment}={}, config, deadline) {
     const result=await response.json();
     const content=result.choices?.[0]?.message?.content;
     if (typeof content!=='string') throw new Error('model_missing_content');
-    receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters},rate_limit_headers:rateLimitHeaders(response),request_gate_wait_ms:gateWaitMs,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
+    receipt={attempt_id:attempt.id,status:'success',requested_model:config.model,provider_response_model:result.model||null,content,...(typeof result.choices?.[0]?.message?.reasoning_content==='string'?{reasoning_content:result.choices[0].message.reasoning_content}:{}),usage:result.usage||null,finish_reason:result.choices?.[0]?.finish_reason||null,request_settings:{temperature:body.temperature,max_tokens:body.max_tokens,...config.parameters},rate_limit_headers:rateLimitHeaders(response),request_gate_wait_ms:gateWaitMs,http_request_started_at:httpStartedAt,duration_ms:Date.now()-started};
     return receipt;
   } catch(e) {
     const code=/^model_http_\d+$/.test(e.message)||e.message==='model_missing_content'||e.message?.startsWith('request_gate_')?e.message:e.name==='TimeoutError'?'model_timeout':'model_transport_error';
@@ -123,6 +123,10 @@ export async function callModel(request, options={}) {
   if (!Array.isArray(request?.messages) || request.messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')) throw new Error('invalid_messages');
   // Keep 200 seconds for shared queue/backoff plus HTTP and accounting; the default fits 300-second callers.
   const deadline=Date.now()+modelTimeoutMs()+210000,config=loadModelConfig(),frozen=structuredClone(request),failures=[];
+  if(options.thinkingMode!==undefined){
+    if(!['enabled','disabled'].includes(options.thinkingMode))throw Error('invalid_thinking_mode');
+    config.parameters={...config.parameters,enable_thinking:options.thinkingMode==='enabled',thinking:{type:options.thinkingMode},extra_body:{thinking:{type:options.thinkingMode}}};
+  }
   for(let index=0;index<3;index++) {
     try {
       const receipt=await callOnce(frozen,options,config,deadline);

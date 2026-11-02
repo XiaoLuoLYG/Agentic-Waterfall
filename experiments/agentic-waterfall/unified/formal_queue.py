@@ -253,7 +253,7 @@ def main():
         nonlocal stop
         stop=True
     signal.signal(signal.SIGTERM,stopping);signal.signal(signal.SIGINT,stopping)
-    env=dict(os.environ,MODEL_CONFIG_FILE=plan['model_config_file'],WATERFALL_MODEL_TIMEOUT_MS='180000',NODE_OPTIONS='--max-old-space-size=384',OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',VECLIB_MAXIMUM_THREADS='1',TOKENIZERS_PARALLELISM='false',PYTHONDONTWRITEBYTECODE='1')
+    env=dict(os.environ,MODEL_CONFIG_FILE=plan['model_config_file'],WATERFALL_MODEL_TIMEOUT_MS=str(plan.get('protocol',{}).get('model_timeout_ms',180000)),NODE_OPTIONS='--max-old-space-size=384',OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',VECLIB_MAXIMUM_THREADS='1',TOKENIZERS_PARALLELISM='false',PYTHONDONTWRITEBYTECODE='1')
     if plan.get('model_name'):env['OPENAI_MODEL']=plan['model_name']
     counts=collections.Counter();start=time.time();peak_rss=0;new_tasks=0;failed_lineage=set();blocked_count=0
     policy=plan.get('method_outcome_policy')

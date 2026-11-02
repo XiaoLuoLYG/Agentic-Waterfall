@@ -6,6 +6,7 @@ import {runEpisode} from '../../../demos/agentic-feed/waterfall-core.mjs';
 import {callModel} from '../shared/model-client.mjs';
 import {buildFormalAdapter} from './formal-adapters.mjs';
 import {prepareHistory} from './formal-history.mjs';
+import {taskInstructions} from './task-instructions.mjs';
 
 export function serial(fn,stopOnError=false){
   let tail=Promise.resolve(),failure;
@@ -59,9 +60,9 @@ async function main(){
     }
   }
   // Match the demo decision allowance; this is a new protocol, not the old one-call MIND run.
-  input.protocol={...input.protocol,max_model_calls:20,max_output_tokens:8192};
+  input.protocol={...input.protocol,max_model_calls:20,max_output_tokens:task.max_output_tokens??8192};
   const history=prepareHistory(input);input=history.input;
-  const result=await runEpisode(input,{experiment:task.dataset,modelCall:serial(callModel,true),lookupHistory:history.lookupHistory,...(acquire?{acquire:serial(acquire)}:{})});
+  const result=await runEpisode(input,{experiment:task.dataset,modelCall:serial((request,options)=>callModel(request,{...options,thinkingMode:task.thinking_mode}),true),lookupHistory:history.lookupHistory,...(task.adapter_instructions===false?{}:{taskInstructions:taskInstructions(task,input)}),...(task.system_prompt_path?{systemPrompt:readFileSync(task.system_prompt_path,'utf8')}:{}),...(acquire?{acquire:serial(acquire)}:{})});
   result.preparation_tool_calls=(input.run_meta.candidate_details?.preloaded_requests||0)+(input.run_meta.user_evidence?.preloaded_requests||0);
   result.total_tool_calls=result.tool_calls+result.preparation_tool_calls;
   const temporary=output+'.tmp';

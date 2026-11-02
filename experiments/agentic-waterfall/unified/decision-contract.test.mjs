@@ -28,3 +28,14 @@ test('actual requests expose one complete recommendation contract and record the
  }});
  assert.equal(result.status,'submitted');assert.equal(result.model_calls[0].messages[0].content,prompt);
 });
+
+test('adapter instructions reach the actual request without entering the general system prompt',async()=>{
+ const input={observation:{decision_id:'adapter',environment:{candidate_pool:[{id:'9876'}]}},protocol:{mode:'fixed_candidates',top_k:1,require_full_ranking:true,max_model_calls:1}};
+ const taskInstructions={dataset:'fixture',output:'Return one candidate index; content IDs are opaque.'};
+ const result=await runEpisode(input,{systemPrompt:'General ranking guidance.',taskInstructions,modelCall:async({messages})=>{
+  assert.equal(messages[0].content,'General ranking guidance.');
+  assert.deepEqual(JSON.parse(messages[1].content).context.task_instructions,taskInstructions);
+  return {content:JSON.stringify({decision_id:'adapter',actions:[{action_id:'rank',kind:'recommend',arguments:{ordered_candidate_indices:[1],delivery:'replace_pending'}}]})};
+ }});
+ assert.equal(result.status,'submitted');assert.deepEqual(result.ordered_item_ids,['9876']);
+});
