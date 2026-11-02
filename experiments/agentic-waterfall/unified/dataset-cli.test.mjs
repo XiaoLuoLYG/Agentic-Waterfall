@@ -94,6 +94,17 @@ test('ClawRec evaluator accepts exactly one valid judge label per pooled card',a
  assert.throws(()=>judgeLabels(pool,{evaluation_id:'test',card_relevance:[{card_id:'a',rel:0},{card_id:'b',rel:5}]}),/invalid_judge_output/);
 });
 
+test('shared judge covers the entire union even when it exceeds ranking cutoff',async()=>{
+ const {judgeMessage,judgeLabels}=await import('../clawrec/scripts/judge_waterfall.mjs');
+ const pool={evaluation_id:'union',cards:Array.from({length:34},(_,i)=>({card_id:`pool_${i}`,text:`content ${i}`}))};
+ const message=judgeMessage(pool,2);assert.equal(message.k,20);assert.equal(message.candidate_card_count,34);
+ assert.deepEqual(message.candidate_cards.map(({rank,...card})=>card),pool.cards);
+ assert.match(message.coverage_instruction,/all 34/);
+ const entries=pool.cards.map(card=>({card_id:card.card_id,rel:3}));
+ assert.throws(()=>judgeLabels(pool,{evaluation_id:'union',card_relevance:entries.slice(0,20)}),/invalid_judge_output/);
+ assert.equal(Object.keys(judgeLabels(pool,{evaluation_id:'union',card_relevance:entries})).length,34);
+});
+
 test('ClawRec converts saved acquired items and ranking into evaluator inputs',t=>{
  const dir=temp(t),result=join(dir,'result.json'),catalog=join(dir,'catalog.json'),ranking=join(dir,'ranking.json');
  writeFileSync(result,JSON.stringify({result:{status:'submitted',ordered_item_ids:['item'],candidate_pool_after:[{id:'item',title:'title',url:'https://example.test/item',source_id:'bilibili'}]}}));
