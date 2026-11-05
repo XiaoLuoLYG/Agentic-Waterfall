@@ -1,0 +1,27 @@
+{
+  "source": "https://arxiv.org/pdf/2605.14401v2",
+  "pages": [
+    17,
+    18
+  ],
+  "source_pdf_sha256": "165bf17237a3820749da75cc0b154abd91a56848e012d8c04f8901ae10828a4d",
+  "extraction": "macOS PDFKit; page numbers removed; original template wording retained",
+  "templates": {
+    "extract": {
+      "system": "You are analyzing user engagement to understand their preferences.",
+      "body": "Given these recent engagements with {item_noun}:\n{engagements_table}\nCurrent known preferences:\n{existing_preferences}\nExtract or update preference statements. For each preference:\n1. category: {category_list}\n2. text: Natural language statement (be specific, not generic)\n3. strength:−1.0 (strong dislike) to 1.0 (strong like)\n4. action: “create” |“strengthen” |“weaken”\nRules:\n– Be specific: “Enjoys cerebral sci-fi with philosophical themes” > “Likes sci-fi”\n– Look for patterns: 3 similar engagements →preference, 1 →too early\n– Maximum 5 preferences per response\nOutput as JSON array only, no other text."
+    },
+    "synthesize": {
+      "system": "You are a user preference analyst. Write concise, coherent profiles.",
+      "body": "Group these preferences into a coherent 150–300 word profile paragraph that captures this user’s taste. Write in third person (“This\nuser...”).\nPreference statements:\n{chunks_text}\nPrevious profile (maintain continuity):\n{previous_profile}\nWrite a single coherent paragraph (150–300 words). Do NOT use bullet points. Output ONLY the profile paragraph."
+    },
+    "plan": {
+      "system": "You are a memory manager for a recommendation system. Analyze preferences against new items. Output ONLY valid JSON.",
+      "body": "User Profile: {full_profile}\nCurrent Preferences ({pref_count} chunks): {preference_list}\nNew Items ({pending_count} pending): {items_with_descriptions}\nMemory Health: {health_section}\nAvailable Actions:\n1. extract – Create new preferences\n2. merge – Merge similar preferences\n3. boost – Reinforce a preference\n4. demote – Weaken a preference\n5. forget – Delete a preference\nGuidelines:\n– Skip is the default. If new items match existing preferences, output {“actions”: []}\n– Only extract when items reveal genuinely NEW interests\n– Be selective: at most 3 actions per response\nOutput: {“actions”: [...]} or {“actions”: []}"
+    },
+    "rank": {
+      "system": "",
+      "body": "You are a recommendation engine. Score how well each item matches this user’s preferences.\n{user_profile_section}\n{session_memory_section}\n{instruction_section}\nItems to Score:\n{items_table}\nInstructions: Score each item on a 0–10 scale:\n– 8–10: strong match – high confidence user will enjoy\n– 4–7: maybe – moderate match\n– 0–3: weak – poor match\nUse the full 0–10 range. Spread scores apart. Best match should score 9+, worst should score 2 or below.\nOutput Format (one line per item, no extra text):\nITEM_ID | SCORE | TIER | brief_reason"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "data_rows": 8,
+  "metric_columns": 8,
+  "all_numeric_cells_match_current_main_table": true,
+  "only_table_visible": true,
+  "png_pixels": [
+    4432,
+    1472
+  ],
+  "sha256": "688be2b597ce79c5e8c1392f82fbfedfae20562db3403452cbef2bd942caf129"
+}

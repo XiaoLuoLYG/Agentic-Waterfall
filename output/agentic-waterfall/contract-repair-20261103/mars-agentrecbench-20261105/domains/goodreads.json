@@ -1,0 +1,12 @@
+{
+  "name": "goodreads",
+  "item_noun": "books",
+  "categories": [
+    "genre",
+    "target audience",
+    "format",
+    "themes",
+    "tone",
+    "illustration style"
+  ]
+}

@@ -1,5 +1,7 @@
 # RecBot 作者代码与第三方复现检索
 
+2026-11-05 批次说明：无 AIA 语义变体已获用户批准，617 题当前输入对齐、计分和验收完成；不因 AIA 缺失继续等待。源码见[本批快照](../../../output/agentic-waterfall/contract-repair-20261103/README.md)。以下保留原日期的历史检索记录，本次没有重新检索、下载或训练。
+
 核查日期：2026-10-29。目标是 [Interactive Recommendation Agent with Active User Commands](https://arxiv.org/abs/2509.21317)（论文提交 2025-09-25）。
 
 - [第一作者主页](https://tangjiakai.github.io/) 的 RecBot 条目只链接论文；该主页其他工作有独立 Code 链接，但 RecBot 条目没有。

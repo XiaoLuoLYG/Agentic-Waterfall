@@ -1,0 +1,2 @@
+import {registerHooks} from 'node:module';
+registerHooks({load(url,context,next){if(url!=="file:///Users/luoyige/Documents/ChatGPT/waterfall/output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/experiments/agentic-waterfall/shared/model-client.mjs")return next(url,context);return {format:'module',shortCircuit:true,source:"export async function callModel(){throw Error('approved_offline_boundary');}"};}});

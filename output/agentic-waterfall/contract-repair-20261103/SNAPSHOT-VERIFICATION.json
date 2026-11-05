@@ -1,0 +1,160 @@
+{
+  "schema": 1,
+  "at_beijing": "2026-11-05T21:01:42.073451+08:00",
+  "scope": "Source-only snapshot checks; not new model inference, dataset evaluation or an end-to-end full-run reproduction.",
+  "node_version": "v22.22.1",
+  "network_denied_for_all_executed_tests": true,
+  "model_API_requests": 0,
+  "GPU_inference": false,
+  "training": false,
+  "copied_real_experiment_fixtures": false,
+  "targeted_tests_passed": 61,
+  "monitor_self_check_groups_passed": 7,
+  "final_targeted_suites_all_passed": true,
+  "suites": [
+    {
+      "name": "SQLite ledger, model transport, three credentials, rolling RPM, SSE parser",
+      "cwd": ".",
+      "command": "/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' node --test --test-reporter=spec transport-retry/ledger-store.test.mjs transport-retry/model-client.test.mjs transport-retry/model-client-three.test.mjs transport-retry/request-gate-burst.test.mjs full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/model-stream.test.mjs",
+      "tests_passed": 14,
+      "exit_code": 0,
+      "detail": "Ledger 8/8; 48 child processes reached 48 mocked HTTP in flight with 43000 synthetic prior records unchanged."
+    },
+    {
+      "name": "replay hook boundaries",
+      "cwd": ".",
+      "command": "/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' node --test --test-reporter=spec --test-name-pattern='recovery preserves' transport-retry/register.test.mjs",
+      "tests_passed": 3,
+      "exit_code": 0
+    },
+    {
+      "name": "MARS AR projection, five-case category repair and pinned native method",
+      "cwd": ".",
+      "command": "/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' node --test --test-reporter=spec mars-agentrecbench-20261105/adapter.test.mjs mars-agentrecbench-20261105/category-format-repair-20261105/category.test.mjs frozen/v6/code/methods/agentic-waterfall/mars/mars.test.mjs frozen/v6/code/methods/agentic-waterfall/mars/prompts.test.mjs frozen/v6/code/methods/agentic-waterfall/mars/sequence.test.mjs",
+      "tests_passed": 27,
+      "exit_code": 0,
+      "detail": "AR projection 5, category 3, pinned native MARS 19."
+    },
+    {
+      "name": "RecBot controller pure scheduling/admission checks",
+      "cwd": ".",
+      "command": "/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' node --test --test-reporter=spec --test-name-pattern='36 planner slots|all 72 planner|infrastructure failures|freeze admission' recbot-input-equivalence-20261105/controller.test.mjs",
+      "tests_passed": 4,
+      "exit_code": 0
+    },
+    {
+      "name": "RecBot official and independent scorer",
+      "cwd": "recbot-input-equivalence-20261105",
+      "command": "PYTHONDONTWRITEBYTECODE=1 /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' python3 test-score.py",
+      "tests_passed": 3,
+      "exit_code": 0
+    },
+    {
+      "name": "AR resume pure ordering, concurrency and stop checks",
+      "cwd": "agentrecbench-fixed-controls-20261103",
+      "command": "PYTHONDONTWRITEBYTECODE=1 /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' python3 -m unittest test_resume.ResumeTests.test_full_freeze_order_is_the_fixed_assignment_order test_resume.ResumeTests.test_full_queue_runs_more_than_one_pair_concurrently test_resume.ResumeTests.test_failure_stops_dispatching_new_full_cases",
+      "tests_passed": 3,
+      "exit_code": 0
+    },
+    {
+      "name": "MARS input hash guard before subprocess",
+      "cwd": ".",
+      "command": "PYTHONDONTWRITEBYTECODE=1 /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' python3 mars-agentrecbench-20261105/test_run.py",
+      "tests_passed": 1,
+      "exit_code": 0
+    },
+    {
+      "name": "fixed queue synthetic resume/data-preservation checks",
+      "cwd": "baseline-fidelity",
+      "command": "PYTHONDONTWRITEBYTECODE=1 /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' python3 -m unittest test_fixed_full_queue.QueueTest.test_resume_never_reexecutes_completed test_fixed_full_queue.QueueTest.test_successful_orphan_is_recovered_without_episode test_fixed_full_queue.QueueTest.test_failed_episode_retained_and_never_retried test_fixed_full_queue.QueueTest.test_input_drift_blocks_before_process test_fixed_full_queue.QueueTest.test_unresolved_started_case_is_not_launched test_fixed_full_queue.QueueTest.test_resume_rejects_altered_result",
+      "tests_passed": 6,
+      "exit_code": 0
+    },
+    {
+      "name": "monitor synthetic self-checks",
+      "cwd": ".",
+      "command": "PYTHONDONTWRITEBYTECODE=1 /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' python3 test-monitor.py",
+      "self_check_groups_passed": 7,
+      "exit_code": 0
+    }
+  ],
+  "earlier_unsuccessful_selection_attempts": [
+    {
+      "suite": "transport broad negative-name selection",
+      "exit_code": 1,
+      "reason": "The selection also ran register.test.mjs frozen plan verification; excluded kuairec replay plan.json was absent. The 17 pure cases in that command passed. Rerun separated pure core (14) and positive-name hook selection (3). No source changed."
+    },
+    {
+      "suite": "RecBot broad negative-name selection",
+      "exit_code": 1,
+      "reason": "The selection also ran the real calibration/cache check; excluded local-calibration/calibration.json was absent. The 4 pure cases passed and were rerun using a positive-name selection. No source changed."
+    }
+  ],
+  "not_executed_because_sidecar_data_or_runtime_policy_is_excluded": [
+    {
+      "path": "recbot-input-equivalence-20261105/test.mjs",
+      "tests": 7,
+      "requires": "617-row real audit, source inputs and original parser/planner receipts; publishing these is forbidden."
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/controller.test.mjs",
+      "tests": 1,
+      "requires": "Five real GPU calibration payloads/scores/cache plus implementation manifest."
+    },
+    {
+      "path": "transport-retry/register.test.mjs",
+      "tests": 1,
+      "requires": "Original run-local replay plan and original absolute-path SHA mapping."
+    },
+    {
+      "path": "transport-retry/replay-receipt.test.mjs",
+      "tests": 1,
+      "requires": "Real Waterfall response and shared ledger."
+    },
+    {
+      "path": "transport-retry/replay-unanswered-receipt.test.mjs",
+      "tests": 1,
+      "requires": "Real partial native response and shared ledger."
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/test_resume.py",
+      "tests": 3,
+      "requires": "Real assignments and captured successful/failed native continuation receipts."
+    },
+    {
+      "path": "baseline-fidelity/test_fixed_full_queue.py",
+      "tests": 1,
+      "requires": "Original legacy plan and real inference artifact."
+    },
+    {
+      "path": "baseline-fidelity/test_fixed_worker.py",
+      "tests": 4,
+      "requires": "The pinned original absolute-path manifests/resource policies/probes before mocked worker execution; these runtime artifacts are not published."
+    }
+  ],
+  "syntax": {
+    "MJS_checked_with_node_check": 71,
+    "Python_checked_with_ast_parse": 38,
+    "errors": 0,
+    "does_not_imply_runtime_sidecars_are_available": true
+  },
+  "sensitive_scan": {
+    "scope": "Every copied source/template/license/six-dimension config; signature and long credential-literal scan, plus extension/path allowlist.",
+    "private_key_API_token_JWT_signature_hits": 0,
+    "unresolved_findings": 0,
+    "manual_fixture_findings": [
+      {
+        "path": "transport-retry/model-client-three.test.mjs",
+        "lines": [
+          20,
+          22
+        ],
+        "resolution": "Inline synthetic credentials written to a temporary test config; HTTP is mocked. No literal values are emitted in this report."
+      }
+    ],
+    "excluded_runtime_material_present": false
+  },
+  "source_equality": "Each copied source byte hash is checked against its live source_workspace_path in SOURCE-SHA256.json. No archived copied file was modified.",
+  "portability": "Original live bindings and SHA checks remain. External dependency bundles are for source inspection and do not redirect canonical code or turn this into an automatic full-run dataset package.",
+  "publication": "No git staging, commit or push by this task; root will copy this snapshot into a clean origin/research-based publish tree and review it there."
+}

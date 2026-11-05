@@ -1,0 +1,63 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {copyFileSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+
+test('three approved credentials retain identity and honor 16 concurrent / 50 RPM per key',async t=>{
+ const root=mkdtempSync(join(tmpdir(),'waterfall-three-'));
+ const names=['MODEL_CONFIG_FILE','WATERFALL_FORMAL_ROUTE','WATERFALL_MODEL_TIMEOUT_MS','WATERFALL_APPROVED_QUOTA_PROBE','WATERFALL_PROBE_CREDENTIAL_SLOT'];
+ const prior=Object.fromEntries(names.map(n=>[n,process.env[n]])),fetchBefore=globalThis.fetch;
+ t.after(()=>{globalThis.fetch=fetchBefore;for(const [n,v]of Object.entries(prior))v===undefined?delete process.env[n]:process.env[n]=v;rmSync(root,{recursive:true,force:true});});
+ for(const d of ['shared','demo'])mkdirSync(join(root,d));
+ const ledger=join(root,'shared/model-ledger.json'),model='DeepSeek-V4.1-Flash-1017',apiBase='https://api.jiuwenappless.com/v1';
+ const slots=['primary','secondary','tertiary'];
+ writeFileSync(ledger,JSON.stringify({limit:200,max_concurrent:10,max_concurrent_per_credential:2,attempts:[],credential_policy:{slots,max_concurrent:Object.fromEntries(slots.map(n=>[n,16])),rpm:Object.fromEntries(slots.map(n=>[n,50]))}}));
+ writeFileSync(join(root,'demo/CONTROL.json'),JSON.stringify({model_calls_enabled:true,model_request_limit:200}));
+ writeFileSync(join(root,'shared/dual-approved-routes.enabled'),'');
+ const privateFile=join(root,'approved.json');
+ writeFileSync(privateFile,JSON.stringify({enabled:true,primaryOverride:{apiKey:'replacement-primary',apiBase,model},credentials:[{apiKey:'new-tertiary',apiBase,model}],requestedLimits:Object.fromEntries(slots.map(n=>[n,{maxConcurrent:16,rpm:50}]))}));
+ const config=join(root,'config.json');
+ writeFileSync(config,JSON.stringify({recommendationModelName:model,apiBase,apiKey:'retired-primary',extraEndpoints:[{apiKey:'retained-secondary',apiBase,model}],waterfallApprovedCredentialsFile:privateFile}));
+ copyFileSync(process.env.WATERFALL_CLIENT_TEST_SOURCE||new URL('./model-client.mjs',import.meta.url),join(root,'shared/model-client.mjs'));
+ copyFileSync(new URL('../full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/model-response.mjs',import.meta.url),join(root,'shared/model-response.mjs'));
+ copyFileSync(new URL('./ledger-store.mjs',import.meta.url),join(root,'shared/ledger-store.mjs'));
+ writeFileSync(join(root,'shared/request-gate.mjs'),`export const createRequestGate=({key})=>({admit:async()=>Date.now(),cooldown:async()=>{},setRateLimit:async rpm=>globalThis.testRates.push({key,rpm})});`);
+ process.env.MODEL_CONFIG_FILE=config;process.env.WATERFALL_FORMAL_ROUTE='1';process.env.WATERFALL_MODEL_TIMEOUT_MS='1000';
+ globalThis.testRates=[];t.after(()=>delete globalThis.testRates);
+ const {callModel,loadModelConfig}=await import(pathToFileURL(join(root,'shared/model-client.mjs')));
+ assert.equal(loadModelConfig().slots.length,3);
+ const active=new Map(),peak=new Map(),bodies=[];
+ globalThis.fetch=async(_url,{headers,body})=>{
+  const key=headers.Authorization;assert.notEqual(key,'Bearer retired-primary');
+  active.set(key,(active.get(key)||0)+1);peak.set(key,Math.max(peak.get(key)||0,active.get(key)));assert(active.get(key)<=16);
+  bodies.push(body);await new Promise(resolve=>setTimeout(resolve,120));active.set(key,active.get(key)-1);
+  return Response.json({model,choices:[{message:{content:'OK'}}]});
+ };
+ const request={messages:[{role:'user',content:'same approved request'}],temperature:0,max_tokens:8};
+ await Promise.all(Array.from({length:48},()=>callModel(request,{experiment:'demo'})));
+ assert.deepEqual([...peak.values()].sort(),[16,16,16]);
+ assert(globalThis.testRates.every(r=>r.rpm===50));assert.equal(new Set(bodies).size,1);
+ const rows=JSON.parse(readFileSync(ledger)).attempts;
+ assert.deepEqual([...new Set(rows.map(r=>r.credential_slot))].sort(),slots.slice().sort());
+ assert(rows.every(r=>typeof r.credential_fingerprint==='string'&&r.credential_fingerprint.length===64));
+ process.env.WATERFALL_APPROVED_QUOTA_PROBE='1';process.env.WATERFALL_PROBE_CREDENTIAL_SLOT='tertiary';
+ const seen=[];globalThis.fetch=async(_url,{headers})=>{seen.push(headers.Authorization);return Response.json({model,choices:[{message:{content:'OK'}}]});};
+ await callModel(request,{experiment:'demo'});assert.deepEqual(seen,['Bearer new-tertiary']);
+ process.env.WATERFALL_PROBE_CREDENTIAL_SLOT='secondary';
+ const following=[];
+ globalThis.fetch=async(_url,{headers})=>{following.push(headers.Authorization);return headers.Authorization==='Bearer retained-secondary'
+  ?Response.json({error:{type:'token_not_found_in_db',message:'token no longer exists'}},{status:401})
+  :Response.json({model,choices:[{message:{content:'OK'}}]});};
+ await assert.rejects(callModel(request,{experiment:'demo'}),e=>e.receipt?.error==='model_http_401');
+ delete process.env.WATERFALL_APPROVED_QUOTA_PROBE;delete process.env.WATERFALL_PROBE_CREDENTIAL_SLOT;
+ following.length=0;
+ for(let i=0;i<6;i++)await callModel(request,{experiment:'demo'});
+ assert.equal(following.filter(key=>key==='Bearer new-tertiary').length,3);
+ assert.equal(following.filter(key=>key==='Bearer replacement-primary').length,3);
+ process.env.WATERFALL_APPROVED_QUOTA_PROBE='1';process.env.WATERFALL_PROBE_CREDENTIAL_SLOT='primary';
+ let rejected=false;globalThis.fetch=async()=>{if(!rejected){rejected=true;return Response.json({error:{type:'throttling_error',message:'Limit type: max_parallel_requests. Current limit: 10, Remaining: 0.'}},{status:429});}return Response.json({model,choices:[{message:{content:'OK'}}]});};
+ await assert.rejects(callModel(request,{experiment:'demo'}),e=>e.receipt?.error==='model_http_429');
+ assert.equal(JSON.parse(readFileSync(ledger)).credential_policy.max_concurrent.primary,10);
+});

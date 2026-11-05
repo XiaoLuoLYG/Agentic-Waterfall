@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-05",
+  "authorized_comparisons": 20,
+  "unscored_or_required_engineering_reruns": 0,
+  "MARS_AgentRecBench": {
+    "amazon": {
+      "hits": 82,
+      "assigned": 100,
+      "hit_at_5": 0.82
+    },
+    "goodreads": {
+      "hits": 72,
+      "assigned": 100,
+      "hit_at_5": 0.72
+    },
+    "yelp": {
+      "hits": 18,
+      "assigned": 100,
+      "hit_at_5": 0.18
+    },
+    "all": {
+      "hits": 172,
+      "assigned": 300,
+      "hit_at_5": 0.5733333333333334
+    },
+    "matched220": {
+      "hits": 163,
+      "assigned": 220,
+      "hit_at_5": 0.740909090909091
+    }
+  },
+  "RecBot_no_AIA_KuaiRand": {
+    "n": 617,
+    "invalid": 0,
+    "Hit@10": 0.11183144246353323,
+    "NDCG@10": 0.054180500648379405,
+    "Hit@20": 0.2106969205834684,
+    "NDCG@20": 0.07850971781593015,
+    "invalid_rate": 0.0
+  },
+  "MARS_category_repair": {
+    "cases": 5,
+    "other_outcomes_reused": 295,
+    "additional_format_calls": 5,
+    "previously_unexecuted_native_steps": 10,
+    "new_successful_HTTP_calls": 15,
+    "old_strict_protocol_hit_at_5": 0.56,
+    "nine_native_candidate_failures_kept_at_zero": 9
+  },
+  "fairness": {
+    "same_evaluation_tasks_and_candidate_pool_or_catalogue": true,
+    "original_denominators_kept": true,
+    "strict_equal_cost_or_effective_context_claimed": false,
+    "posthoc_format_revision_disclosed": true,
+    "original_failure_evidence_kept_locally": true
+  },
+  "artifact_sha256": {
+    "results-table.html": "7723581c3235b1fbd98fcd95baf61535e1cf975b774d1432f763f7fac7bb3617",
+    "waterfall-results-20261105.png": "688be2b597ce79c5e8c1392f82fbfedfae20562db3403452cbef2bd942caf129"
+  }
+}

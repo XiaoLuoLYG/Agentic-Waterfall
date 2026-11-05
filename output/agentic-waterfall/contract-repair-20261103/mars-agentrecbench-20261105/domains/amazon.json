@@ -1,0 +1,12 @@
+{
+  "name": "amazon",
+  "item_noun": "products",
+  "categories": [
+    "product category",
+    "compatibility",
+    "build quality",
+    "functionality",
+    "ease of use",
+    "value"
+  ]
+}

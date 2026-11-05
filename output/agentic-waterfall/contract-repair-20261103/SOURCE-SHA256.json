@@ -1,0 +1,1174 @@
+{
+  "schema": 1,
+  "kind": "source-only accepted experiment audit snapshot",
+  "source_files_copied": 125,
+  "source_bytes": 627205,
+  "source_bytes_unchanged": true,
+  "entries": [
+    {
+      "path": "agentrecbench-fixed-controls-20261103/PROTOCOL.md",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/PROTOCOL.md",
+      "sha256": "7cdb8bc7cc9b4bcd296645202c59ce6729d68f430998aab5c5aaac84f6569e74",
+      "bytes": 1044,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/labels-denied.sb",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/labels-denied.sb",
+      "sha256": "66410cbe3516f0147a43f09c0ac2d5c17f35276e02641c90906c2353d7f2a354",
+      "bytes": 118,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/resume-20261105/offline-boundary.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/resume-20261105/offline-boundary.mjs",
+      "sha256": "46fec4c37d1d6b4fc5b582c52abb081778e229b065590a1cecea4c34b66ea5ff",
+      "bytes": 456,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/resume-20261105/replay-register.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/resume-20261105/replay-register.mjs",
+      "sha256": "c623db4e268ab5216326c7505f305f743fb9dbf96dd21bbd0033afa96a7caeb9",
+      "bytes": 1007,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/resume.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/resume.py",
+      "sha256": "9e8aa6feb58233e8c55f37fa0ecebe18a2581e712461d622bc00e82a81b34f16",
+      "bytes": 15439,
+      "reason": [
+        "accepted run-local source/test/protocol",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/run.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/run.py",
+      "sha256": "915a5c346546b670ccdfab6cfcaa7fd757d07671a93312c75168dcdc6c321824",
+      "bytes": 11083,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/experiments/agentic-waterfall/shared/model-client.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/experiments/agentic-waterfall/shared/model-client.mjs",
+      "sha256": "c760d4cd62bfce12cb3fa237a4c5bc82cece665fd4d9687d467cedc0d408927a",
+      "bytes": 11617,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/experiments/agentic-waterfall/shared/model-response.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/experiments/agentic-waterfall/shared/model-response.mjs",
+      "sha256": "f0ef207f4ec2c3af0f8fe11ae5da58b28e2c25320bf7a7899dcdeddf60cbb82d",
+      "bytes": 1948,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/experiments/agentic-waterfall/shared/request-gate.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/experiments/agentic-waterfall/shared/request-gate.mjs",
+      "sha256": "6896f2e66fb53afc087b3231aa460ac6b4f65c843953b9cb2352546bfcbcdbdd",
+      "bytes": 4252,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/fixed_candidates.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/fixed_candidates.mjs",
+      "sha256": "f84c081d8ab75b8e218202af6cedaea31b3b6f14120809b2312088ee8427041b",
+      "bytes": 2211,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/kuairand_input.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/kuairand_input.mjs",
+      "sha256": "010a369343e8ce77058126a863dfd9e904611bdd744b5b7ab1edca260ead2db8",
+      "bytes": 1933,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/mind_input.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/mind_input.mjs",
+      "sha256": "5e3eb9716a4c398bc48177a4e5519082da0320cecef87e93d7851c2ccab53352",
+      "bytes": 829,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/source-snapshot/LICENSE",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/source-snapshot/LICENSE",
+      "sha256": "fc8509e97463e842963f583fd997a4c0c61cfec6cc6e1679f3ae19fd2556253a",
+      "bytes": 1067,
+      "reason": [
+        "license for pinned ClawRec skill source"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/source-snapshot/clawrec-curating-display-data/SKILL.md",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/source-snapshot/clawrec-curating-display-data/SKILL.md",
+      "sha256": "44f1d88927724d6a80f6784a2680c2db1ec3aefa62f69600ab9574cb4d8f3544",
+      "bytes": 9379,
+      "reason": [
+        "pinned ClawRec source prompt"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/source-snapshot/clawrec-synthesizing-user-state/SKILL.md",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/clawrec/source-snapshot/clawrec-synthesizing-user-state/SKILL.md",
+      "sha256": "a72b04b00686e88e94b206f11ee2a2da4423b72addf411677e84e8e49016b7e9",
+      "bytes": 11466,
+      "reason": [
+        "pinned ClawRec source prompt"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/generic-agent/fixed_candidates.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/generic-agent/fixed_candidates.mjs",
+      "sha256": "7de013b47d2bb7bd9b7a49fdea29a19ea06576e5fcfb76a0bb97bbd8d4e2508d",
+      "bytes": 1391,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/kuairec-input.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/kuairec-input.mjs",
+      "sha256": "ea2c505f2c6d8d8a4934ba17b4559408365efc16018286be1ba13f4437530c9f",
+      "bytes": 1317,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/mars/mars.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/mars/mars.mjs",
+      "sha256": "1443681e890883141e7930b081ff88280b6c09536efac2426463622fdb1a023a",
+      "bytes": 9282,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/mars/prompts.json",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/mars/prompts.json",
+      "sha256": "76c6bbfa3c69679ba175036ca903a329a07aa51f4f2ad13c154649402dbe8d0d",
+      "bytes": 3041,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/mars/prompts.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/mars/prompts.mjs",
+      "sha256": "fbecc43a87522786c19111337ef2d6a79bb280935d5d0fa7df8f2b8fbafd3981",
+      "bytes": 5052,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/paper-reproductions-run.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/paper-reproductions-run.mjs",
+      "sha256": "c600a859b6fe23aa22fe81d0bc9eef1e3bf0023ea5fb146bad9ca6daa7af4ba4",
+      "bytes": 9077,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/recbot/recbot.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/code/methods/agentic-waterfall/recbot/recbot.mjs",
+      "sha256": "39d8d1f5e6c19fae606d9965a4776ac1f997c72d4d5181d890d5d28636f661ea",
+      "bytes": 3783,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/offline.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/offline.mjs",
+      "sha256": "0369fb3194f929def33c0ad1a1b390cadc0a63ab4db35a2c78317b8b52bb821d",
+      "bytes": 1090,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/runtime/register.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/runtime/register.mjs",
+      "sha256": "c0c03be9effe2dc028fa37bb5d38ad8a7474f8babe40761fcae1ce1371c62d26",
+      "bytes": 457,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "agentrecbench-fixed-controls-20261103/test_resume.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/agentrecbench-fixed-controls-20261103/test_resume.py",
+      "sha256": "75b9783b06938dcd0b9f8865ce494a42dee30b12759c32b01114084a2b5d1c0e",
+      "bytes": 6538,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "baseline-fidelity/audit_fixed_current_inputs.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/baseline-fidelity/audit_fixed_current_inputs.py",
+      "sha256": "a72954cd8f8a6db621841c87c334341da783e696f27576f07d218977f0515f92",
+      "bytes": 7171,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "baseline-fidelity/fixed-worker.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/baseline-fidelity/fixed-worker.py",
+      "sha256": "83aca8380fc12c6ad544a4cae6a393cfb17ff9bb81eb8459909f20566770c4d6",
+      "bytes": 4832,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "baseline-fidelity/prepare_fixed_full.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/baseline-fidelity/prepare_fixed_full.py",
+      "sha256": "3a0312a9118c7c8dbf895baf87724563df66ea4771917d49cef58db5a75c7f95",
+      "bytes": 9207,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "baseline-fidelity/run_fixed16.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/baseline-fidelity/run_fixed16.py",
+      "sha256": "47c65cc3e09310dd3b1dcba5324082a6ab3ce3e034706e2d63e951877a100b61",
+      "bytes": 6496,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "baseline-fidelity/run_fixed_full.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/baseline-fidelity/run_fixed_full.py",
+      "sha256": "814ec57b702879090d1cf359f0c6bd9c86b50bbfc4ef9afe56258e1fe01274c0",
+      "bytes": 12148,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "baseline-fidelity/test_fixed_full_queue.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/baseline-fidelity/test_fixed_full_queue.py",
+      "sha256": "e0c910f24437587a93eba75ff54faf265006aad34b1e751f7abc0db29fa0aa3c",
+      "bytes": 3657,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "baseline-fidelity/test_fixed_worker.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/baseline-fidelity/test_fixed_worker.py",
+      "sha256": "6f682ebc357371dd6d4a24c73587a9f418ee406f162a323ae03fc485d04aad23",
+      "bytes": 3766,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "frozen/approved-recbot-semantic-source-20261105/code/methods/agentic-waterfall/clawrec/kuairand_input.mjs",
+      "source_workspace_path": "methods/agentic-waterfall/clawrec/kuairand_input.mjs",
+      "sha256": "66e93be5baed2396f6d952a148064979c9f22427e027f9b3382a299d5a4f6ae5",
+      "bytes": 1183,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/approved-recbot-semantic-source-20261105/code/methods/agentic-waterfall/fixed-retrieval/retrieval.py",
+      "source_workspace_path": "methods/agentic-waterfall/fixed-retrieval/retrieval.py",
+      "sha256": "957633d28c34aa267dea3b59f70744e16cfba82196c150b9724d978fc93da4a4",
+      "bytes": 8542,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/approved-recbot-semantic-source-20261105/code/methods/agentic-waterfall/paper-reproductions-run.mjs",
+      "source_workspace_path": "methods/agentic-waterfall/paper-reproductions-run.mjs",
+      "sha256": "7c669105f67f0d7d916fcfe093b017e2547f57ce33d054268c8a628c61880991",
+      "bytes": 8329,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/approved-recbot-semantic-source-20261105/code/methods/agentic-waterfall/recbot/recbot.mjs",
+      "source_workspace_path": "methods/agentic-waterfall/recbot/recbot.mjs",
+      "sha256": "29718c2c8521f41f96bc51c015d9ff5c4b91bd399b25fa39aae8c239e642cd81",
+      "bytes": 3174,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/approved-recbot-semantic-source-20261105/code/methods/agentic-waterfall/recbot/semantic.py",
+      "source_workspace_path": "methods/agentic-waterfall/recbot/semantic.py",
+      "sha256": "1ff4268e880bdd6487861a71f94e1d6a8f5254918a076a507241abeb5359afb7",
+      "bytes": 1011,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/approved-recbot-semantic-source-20261105/runtime/formal/gpu_lock.py",
+      "source_workspace_path": "output/agentic-waterfall/full-expansion-20261030/runtime/formal/gpu_lock.py",
+      "sha256": "ff60da899d9793a0d4653f187faf0431edb54bf7c6248b5ed7a4e7a2b9fa6dfe",
+      "bytes": 345,
+      "reason": [
+        "actual native local GPU lock dependency; source only"
+      ]
+    },
+    {
+      "path": "frozen/fixed-native-source-20261105/fixed-v2/kuairec_batch.py",
+      "source_workspace_path": "output/agentic-waterfall/baseline-faithful-overnight-20261103-013025/frozen/fixed-v2/kuairec_batch.py",
+      "sha256": "4714735a73deaa1833d2aae70506decbc54af20ffbf2b8ca3204d20458a5e699",
+      "bytes": 5252,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/fixed-native-source-20261105/fixed-v2/query_tokens.py",
+      "source_workspace_path": "output/agentic-waterfall/baseline-faithful-overnight-20261103-013025/frozen/fixed-v2/query_tokens.py",
+      "sha256": "1b9ca6d49e186a2f6d257543f9866585eeb3497e1465562e55b6ce5aee6c4949",
+      "bytes": 5785,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/fixed-native-source-20261105/fixed-v2/retrieval.py",
+      "source_workspace_path": "output/agentic-waterfall/baseline-faithful-overnight-20261103-013025/frozen/fixed-v2/retrieval.py",
+      "sha256": "91dc19616ae16d1397b067ea3214099e4512499fa5ca2ebcc15b563ec253a2b3",
+      "bytes": 11232,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/fixed-native-source-20261105/fixed-v2/trace_output.py",
+      "source_workspace_path": "output/agentic-waterfall/baseline-faithful-overnight-20261103-013025/frozen/fixed-v2/trace_output.py",
+      "sha256": "e32856f7cb095f27c78bd08380514b19d76d437f70fb1f79b7b29cd5e313f9a6",
+      "bytes": 827,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/fixed-native-source-20261105/formal-run/gpu_lock.py",
+      "source_workspace_path": "output/agentic-waterfall/baseline-faithful-overnight-20261103-013025/code/methods/agentic-waterfall/formal-run/gpu_lock.py",
+      "sha256": "ff60da899d9793a0d4653f187faf0431edb54bf7c6248b5ed7a4e7a2b9fa6dfe",
+      "bytes": 345,
+      "reason": [
+        "actual native fixed GPU lock dependency; source only"
+      ]
+    },
+    {
+      "path": "frozen/fixed-native-source-20261105/gpu_attention.py",
+      "source_workspace_path": "output/agentic-waterfall/baseline-faithful-overnight-20261103-013025/gpu_attention.py",
+      "sha256": "e0f1c8b83fa644ca3e8579d04b468c1af072fd847a532bd0908ad71055ba007c",
+      "bytes": 1869,
+      "reason": [
+        "source-only external native dependency; original runtime binding retained"
+      ]
+    },
+    {
+      "path": "frozen/v4/code/experiments/agentic-waterfall/kuairand/scripts/protocol.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v4/code/experiments/agentic-waterfall/kuairand/scripts/protocol.py",
+      "sha256": "85d433179416e1a6fdac7086e8d23f8ace5f876d5476e90b1f3765145a2b2e78",
+      "bytes": 5321,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "frozen/v4/code/experiments/agentic-waterfall/kuairand/scripts/score.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v4/code/experiments/agentic-waterfall/kuairand/scripts/score.py",
+      "sha256": "ee0528f3142ba7e1d5d2229874adb314a5156d9f34a20f2956937e8f588c4a3d",
+      "bytes": 898,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/experiments/agentic-waterfall/shared/model-client.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/experiments/agentic-waterfall/shared/model-client.mjs",
+      "sha256": "c760d4cd62bfce12cb3fa237a4c5bc82cece665fd4d9687d467cedc0d408927a",
+      "bytes": 11617,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/experiments/agentic-waterfall/shared/model-response.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/experiments/agentic-waterfall/shared/model-response.mjs",
+      "sha256": "f0ef207f4ec2c3af0f8fe11ae5da58b28e2c25320bf7a7899dcdeddf60cbb82d",
+      "bytes": 1948,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/experiments/agentic-waterfall/shared/request-gate.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/experiments/agentic-waterfall/shared/request-gate.mjs",
+      "sha256": "6896f2e66fb53afc087b3231aa460ac6b4f65c843953b9cb2352546bfcbcdbdd",
+      "bytes": 4252,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/clawrec/kuairand_input.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/clawrec/kuairand_input.mjs",
+      "sha256": "010a369343e8ce77058126a863dfd9e904611bdd744b5b7ab1edca260ead2db8",
+      "bytes": 1933,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/clawrec/mind_input.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/clawrec/mind_input.mjs",
+      "sha256": "5e3eb9716a4c398bc48177a4e5519082da0320cecef87e93d7851c2ccab53352",
+      "bytes": 829,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/README.md",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/README.md",
+      "sha256": "31297c58c8841aa9c4de14594ece4530f69293a275d05e2bc756d04118a9f938",
+      "bytes": 4236,
+      "reason": [
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/SOURCE-SEARCH.md",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/SOURCE-SEARCH.md",
+      "sha256": "df34ed1d9bae7c2ee0a87585ccf8682dac61ead7cbbfc767a8ec6748b41d0d75",
+      "bytes": 1406,
+      "reason": [
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/mars.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/mars.mjs",
+      "sha256": "1443681e890883141e7930b081ff88280b6c09536efac2426463622fdb1a023a",
+      "bytes": 9282,
+      "reason": [
+        "literal source import or explicit source URL",
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/mars.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/mars.test.mjs",
+      "sha256": "044e06e2781cc57a7b9703fcc088d95e31198b1c275783081e8167495cd454ff",
+      "bytes": 10521,
+      "reason": [
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/prompts.json",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/prompts.json",
+      "sha256": "76c6bbfa3c69679ba175036ca903a329a07aa51f4f2ad13c154649402dbe8d0d",
+      "bytes": 3041,
+      "reason": [
+        "literal source import or explicit source URL",
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/prompts.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/prompts.mjs",
+      "sha256": "fbecc43a87522786c19111337ef2d6a79bb280935d5d0fa7df8f2b8fbafd3981",
+      "bytes": 5052,
+      "reason": [
+        "literal source import or explicit source URL",
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/prompts.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/prompts.test.mjs",
+      "sha256": "17d4cf0c6632860f4a6dfe870f57bfa64d69675f8b8ca89275bc92dcd17b3935",
+      "bytes": 3474,
+      "reason": [
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/sequence.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/sequence.mjs",
+      "sha256": "b16ca595d601161d39d0fb7755f8646f440a3820e4ca1ea4d60362ee8ed90911",
+      "bytes": 638,
+      "reason": [
+        "literal source import or explicit source URL",
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/sequence.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/sequence.test.mjs",
+      "sha256": "447360d417584c506a415ec10edff780e51fa58a2de4298ef418d702ff75e069",
+      "bytes": 934,
+      "reason": [
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "frozen/v6/code/methods/agentic-waterfall/mars/sequence_live.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/frozen/v6/code/methods/agentic-waterfall/mars/sequence_live.mjs",
+      "sha256": "5c237455001aff8f58c05c174c405096c029937a93538fa33da68f189623cfae",
+      "bytes": 2237,
+      "reason": [
+        "pinned MARS implementation/prompt/test"
+      ]
+    },
+    {
+      "path": "full-agentrecbench-20261103/frozen/client.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/full-agentrecbench-20261103/frozen/client.mjs",
+      "sha256": "93da33a201792b45fb1c15427f03807d9897e791280e56847d52613e05101c20",
+      "bytes": 372,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/model-client.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/model-client.mjs",
+      "sha256": "3f1c9f9e3062925d02eefdc2eb06700f78cd7976e7b3d1dccd600adc2498a687",
+      "bytes": 13395,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/model-response.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/model-response.mjs",
+      "sha256": "f0ef207f4ec2c3af0f8fe11ae5da58b28e2c25320bf7a7899dcdeddf60cbb82d",
+      "bytes": 1948,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/model-stream.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/model-stream.test.mjs",
+      "sha256": "dcaedacddabd2730e7763d280e17c35a0953f7d2214e1dac1bbef296b774c133",
+      "bytes": 2072,
+      "reason": [
+        "pure synthetic stream parser regression tests"
+      ]
+    },
+    {
+      "path": "full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/request-gate.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/request-gate.mjs",
+      "sha256": "1700e9450cecde6e1cd369a0ee497de812fcf444ba5411e09357f3dcc8c45568",
+      "bytes": 4252,
+      "reason": [
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "full-agentrecbench-20261103/run_queue.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/full-agentrecbench-20261103/run_queue.py",
+      "sha256": "75545466a79a255f733fdaf1ae325963878c918af31d1423bfe54edcaa522c97",
+      "bytes": 12441,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "full-agentrecbench-20261103/score_after_run.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/full-agentrecbench-20261103/score_after_run.py",
+      "sha256": "d543b919a53ef37aece5a0dd885bb46fa1c31a9faa752d56f01ec9314815f184",
+      "bytes": 3918,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "kuairand-window512-20261103/client.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/kuairand-window512-20261103/client.mjs",
+      "sha256": "322e932528f83aa27ca3a99234d3ddee9baefa42331d4f226233d7d04c32780d",
+      "bytes": 781,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "kuairec-clawrec-targeted-repair-20261104/client.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/kuairec-clawrec-targeted-repair-20261104/client.mjs",
+      "sha256": "9aeef6bc7029b30814237fa0f1f03919db52c66d4c07c3344caf0e537e46e89c",
+      "bytes": 3195,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/PLAN.md",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/PLAN.md",
+      "sha256": "b397b83a643d408dfaaa2b9359950ba8eef2a79c74f5a6d64d9cef2ac5cae646",
+      "bytes": 2440,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/adapter.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/adapter.mjs",
+      "sha256": "df026b52da9608787465272c3e07738f566c4e5c82ca3ef5cd2d08fdca9b3e54",
+      "bytes": 2260,
+      "reason": [
+        "accepted run-local source/test/protocol",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/adapter.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/adapter.test.mjs",
+      "sha256": "93440ba08febef17e21a9906d83f17b3c8e41755abf0aad29266b026ece559b3",
+      "bytes": 4113,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/category-format-repair-20261105/adapter.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/category-format-repair-20261105/adapter.mjs",
+      "sha256": "07870709874177c6cbfb21b81880fed84ec7e54f8b89ebb86f006671189d23bb",
+      "bytes": 1335,
+      "reason": [
+        "accepted run-local source/test/protocol",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/category-format-repair-20261105/category.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/category-format-repair-20261105/category.mjs",
+      "sha256": "ff101be004c298abab62c98bd4786a1513f29d88e24524a81de31862e43e01f9",
+      "bytes": 1725,
+      "reason": [
+        "accepted run-local source/test/protocol",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/category-format-repair-20261105/category.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/category-format-repair-20261105/category.test.mjs",
+      "sha256": "85dbd8fc7b6e4a30b6a0331404ce92e89ea1e2f470f807c45a59916478fe726f",
+      "bytes": 1736,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/category-format-repair-20261105/correct.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/category-format-repair-20261105/correct.mjs",
+      "sha256": "65e0aac16d4dd2f6354bd1892277aa110d9dfaf1f84809a20abe7d38ea725fc7",
+      "bytes": 3118,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/category-format-repair-20261105/register.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/category-format-repair-20261105/register.mjs",
+      "sha256": "c1d91ff927dbf1c3cbe97b85a41d0dbd084be1ed2a41916a5caff7b9105e7100",
+      "bytes": 416,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/category-format-repair-20261105/run.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/category-format-repair-20261105/run.py",
+      "sha256": "0a850499887bbb637ae2a8405c1d8365aba72f961dd1e0ce929c07df07820429",
+      "bytes": 9603,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/domains/amazon.json",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/domains/amazon.json",
+      "sha256": "bab9c83dcca32e9d667c75c84a721fc9fb0925673bb5a3d34a30f87fddf4530e",
+      "bytes": 191,
+      "reason": [
+        "explicitly approved six-dimension algorithm configuration only; no seed/items/receipts"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/domains/goodreads.json",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/domains/goodreads.json",
+      "sha256": "e167690f86c87c902c8c52bb45a757cf5e6ef8b00334f5b4b297682572a20d4e",
+      "bytes": 174,
+      "reason": [
+        "explicitly approved six-dimension algorithm configuration only; no seed/items/receipts"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/domains/yelp.json",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/domains/yelp.json",
+      "sha256": "3abe886a3513ffd3c7bf88f70ba08e92e6a39da4d0241eaff8e17a0c9ad4d8f0",
+      "bytes": 243,
+      "reason": [
+        "explicitly approved six-dimension algorithm configuration only; no seed/items/receipts"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/run-case.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/run-case.mjs",
+      "sha256": "926f28233250d403e9f93f96d466d24a9ccf594f3fc95cf241b92b6e000d5fd3",
+      "bytes": 4885,
+      "reason": [
+        "accepted run-local source/test/protocol",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/run.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/run.py",
+      "sha256": "06fadac08eb92d2db261b946ae71f4bff04aa07562893491d0e7c2351bb1a595",
+      "bytes": 12354,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "mars-agentrecbench-20261105/test_run.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/mars-agentrecbench-20261105/test_run.py",
+      "sha256": "d677c24e6cab75f64cce5ed95b2a796dafbb0b649e619dc4c83723fed29529c3",
+      "bytes": 991,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "monitor-formal-runs.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/monitor-formal-runs.py",
+      "sha256": "957c2d0e2f45d4bbb21552a2fdc032e6a3937998a97a56cf6e3e9012d8d1f662",
+      "bytes": 19420,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "preflight/mars-domain.json",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/preflight/mars-domain.json",
+      "sha256": "6ba75b55049dd32435d8c8f01e5108e364bccf3d9aabc5f95b0e1c153022742e",
+      "bytes": 166,
+      "reason": [
+        "explicitly approved six-dimension algorithm configuration only; no seed/items/receipts"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/PLAN.md",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/PLAN.md",
+      "sha256": "63a03c43ef1e294c601d31e0085913d6752d7752d41107de7cdc16f80ecbd79f",
+      "bytes": 8559,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/accept.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/accept.mjs",
+      "sha256": "1127bf3ee42094800d9fc51efed2395413d6d74063194c560c5fb9b11aed7d8a",
+      "bytes": 5933,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/accounting.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/accounting.py",
+      "sha256": "0528d2c40cc711dc04b0328ea6d923539df6827ce4a04aae14dac660f9fea865",
+      "bytes": 4907,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/amend-transport.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/amend-transport.mjs",
+      "sha256": "0db473eff52d0ddfd42a5830bf5bfed0400d785978afbd8509e6e8c7571c528c",
+      "bytes": 2287,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/archive-transport-failures.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/archive-transport-failures.py",
+      "sha256": "4603d9160848e21ff661ded3aae648797c6240b7b781225da36aa2233ef6b990",
+      "bytes": 4660,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/audit.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/audit.mjs",
+      "sha256": "5d637b7102e0399f4905bed3cc1d9c015d5f64764edf72cce2e1783abb9cbb33",
+      "bytes": 13415,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/calibrate-local.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/calibrate-local.py",
+      "sha256": "8ac7a31cf8659ce8dda765690eece6745833ae677d42d5e693df0fd0956ca854",
+      "bytes": 7651,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/controller.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/controller.mjs",
+      "sha256": "01dc50f4ecf52329717237c3468befc171b6dbc115450273476bfead6dbc62b9",
+      "bytes": 10986,
+      "reason": [
+        "accepted run-local source/test/protocol",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/controller.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/controller.test.mjs",
+      "sha256": "2dfda8d53b004ea7815e7d2a58e743d9c7a464e6851cc153d1a4d97c2e0d7b5d",
+      "bytes": 3289,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/embedding-cache.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/embedding-cache.mjs",
+      "sha256": "d0af437b4609e64dcb4d3cdee22523204b3d033d723b59f5999cec535a2c5fa4",
+      "bytes": 1962,
+      "reason": [
+        "accepted run-local source/test/protocol",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/labels-denied.sb",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/labels-denied.sb",
+      "sha256": "58a890ecb9eedb9e1c27375e73df0cfa00bb0f34b8770238358801611bec182e",
+      "bytes": 98,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/precompute-embeddings.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/precompute-embeddings.mjs",
+      "sha256": "0fca89278f6fd1d60a2538b39769485fdc720d1fc9505768939ad8abe205c79e",
+      "bytes": 4167,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/prepare-local-calibration.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/prepare-local-calibration.mjs",
+      "sha256": "6a16db113500e4c625a2dae7b446c22dbbd09ddfa0577b9534b9311754f6cc1b",
+      "bytes": 1691,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/resident-bge.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/resident-bge.py",
+      "sha256": "e9e4213c79bd1cfb918976643dc6ba3211ae31a4a969feab34c77d10840e9bbb",
+      "bytes": 3164,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/run-case.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/run-case.mjs",
+      "sha256": "70da0796af877111a64809ff1d741731c81d25ea45fd0c989371275b665979fb",
+      "bytes": 11412,
+      "reason": [
+        "accepted run-local source/test/protocol",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/score-after-freeze.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/score-after-freeze.py",
+      "sha256": "c3645f3a38ef9ea6166286a611cf5ef42c532543db08769987b4117b68fe9589",
+      "bytes": 6831,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/test-score.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/test-score.py",
+      "sha256": "ba60f471f9e76fe616bf08a67c7702140135d0733331cd69962b400f5bdb8ce5",
+      "bytes": 2518,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "recbot-input-equivalence-20261105/test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/recbot-input-equivalence-20261105/test.mjs",
+      "sha256": "d1c7eb0b1ef2067c5156594a4d184696d75400962bb8b7c1196da9f3e6ff5cda",
+      "bytes": 5707,
+      "reason": [
+        "accepted run-local source/test/protocol"
+      ]
+    },
+    {
+      "path": "scoring/score_fixed_input_equivalent.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/scoring/score_fixed_input_equivalent.py",
+      "sha256": "c55bc64855baaa99d0ee524363e4eb894520d8ca0db64201c209d0924e04466f",
+      "bytes": 5479,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "scoring/score_kuairec_clawrec_completed.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/scoring/score_kuairec_clawrec_completed.py",
+      "sha256": "3316d94db8d295f240c681a62c46ba51558d2dbfcc11e43bb8ed02109c44496d",
+      "bytes": 7098,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "scoring/score_pilot.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/scoring/score_pilot.py",
+      "sha256": "5cb42e5c77b2997928aceeed2dc2d962b439810689821085a66a21324816eb12",
+      "bytes": 30426,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "test-monitor.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/test-monitor.py",
+      "sha256": "7d278a3009233a94d6221109f399ed62cbf60e34ca979848aae05604b47236fc",
+      "bytes": 6862,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "transport-retry/check-approved-quota.py",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/check-approved-quota.py",
+      "sha256": "ea4abe9f3c3e7c1d2487b3bae1fecd0144996621366f044eedaa5694fbec6b63",
+      "bytes": 4720,
+      "reason": [
+        "monitor imports its pure status helper; readiness requests are never run by snapshot tests"
+      ]
+    },
+    {
+      "path": "transport-retry/ledger-export.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/ledger-export.mjs",
+      "sha256": "5651714a0585a16d60a3b413b3a5315e40e1bc5a6b02ba7124bd20831d9e73b3",
+      "bytes": 651,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "transport-retry/ledger-store.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/ledger-store.mjs",
+      "sha256": "5a2d59708d5cff03aec8622d5e536c3cbbdda465e33302a929156259deafd40b",
+      "bytes": 8775,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "transport-retry/ledger-store.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/ledger-store.test.mjs",
+      "sha256": "57022c61f42a81c3a66d27a857613aedfbeb04679ae72d0913acb6427426894b",
+      "bytes": 13359,
+      "reason": [
+        "related transport regression test"
+      ]
+    },
+    {
+      "path": "transport-retry/model-client-three.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/model-client-three.test.mjs",
+      "sha256": "9aae39c390801bd4960fd9a8f2581797e77c4469901fc391ba9d003191e64155",
+      "bytes": 5911,
+      "reason": [
+        "related transport regression test"
+      ]
+    },
+    {
+      "path": "transport-retry/model-client.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/model-client.mjs",
+      "sha256": "be0d1503f5286984f41eb8f5ccbbedf86a77e56de74a3f2ec5a520fa9051a6cb",
+      "bytes": 23919,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "transport-retry/model-client.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/model-client.test.mjs",
+      "sha256": "551866de0a6cd7dcf1de8c3ae0904b45489f33dcd6a6da4be3e8173c0b43d34c",
+      "bytes": 10668,
+      "reason": [
+        "related transport regression test"
+      ]
+    },
+    {
+      "path": "transport-retry/model-response.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/full-agentrecbench-20261103/frozen/code/experiments/agentic-waterfall/shared/model-response.mjs",
+      "sha256": "f0ef207f4ec2c3af0f8fe11ae5da58b28e2c25320bf7a7899dcdeddf60cbb82d",
+      "bytes": 1948,
+      "reason": [
+        "published source-import alias of the existing frozen parser; no logic changes"
+      ]
+    },
+    {
+      "path": "transport-retry/quota-replay-client.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/quota-replay-client.mjs",
+      "sha256": "9b91800044a8b07811b924bf22e03f261eaf954fb006b9a7ec3db012093ff44b",
+      "bytes": 6843,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "transport-retry/quota-replay-register.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/quota-replay-register.mjs",
+      "sha256": "6d9a4c2b152e38d8a0a5661f75b5617e403a18701283521b0cacea9020067e0e",
+      "bytes": 417,
+      "reason": [
+        "explicit accepted source/test"
+      ]
+    },
+    {
+      "path": "transport-retry/register.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/register.mjs",
+      "sha256": "183df6d3d6c3238b31b2a03393868f69f284c7e202068688f5d68eb0d3d03dcf",
+      "bytes": 1810,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    },
+    {
+      "path": "transport-retry/register.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/register.test.mjs",
+      "sha256": "0488847969615d44b64419c85c7d9b39ba145ac44d603afbac3dfd3148ff2f88",
+      "bytes": 2036,
+      "reason": [
+        "related transport regression test"
+      ]
+    },
+    {
+      "path": "transport-retry/replay-receipt.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/replay-receipt.test.mjs",
+      "sha256": "5389086fea7a11b35647ac11f32b7c3b4129b8545a41915759156c479c445683",
+      "bytes": 3067,
+      "reason": [
+        "related transport regression test"
+      ]
+    },
+    {
+      "path": "transport-retry/replay-unanswered-receipt.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/replay-unanswered-receipt.test.mjs",
+      "sha256": "2869421deb5fefbabc9d2bea890b36185fd4b7d6eefb645c1f0ef40f8ea21131",
+      "bytes": 3572,
+      "reason": [
+        "related transport regression test"
+      ]
+    },
+    {
+      "path": "transport-retry/request-gate-burst.test.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/request-gate-burst.test.mjs",
+      "sha256": "f27cdb3eac3ec3cc8f1b3db1204a1b66e771ee63f6d9d5d7720b3b874e4ab90f",
+      "bytes": 1029,
+      "reason": [
+        "related transport regression test"
+      ]
+    },
+    {
+      "path": "transport-retry/request-gate.mjs",
+      "source_workspace_path": "output/agentic-waterfall/contract-repair-20261103/transport-retry/request-gate.mjs",
+      "sha256": "5aaaeba30d18472c7430a9f0ca1ec36db5eb292af1ec0e482dd17f9bb634d4cf",
+      "bytes": 4167,
+      "reason": [
+        "explicit accepted source/test",
+        "literal source import or explicit source URL"
+      ]
+    }
+  ],
+  "missing_literal_source_dependencies": [],
+  "missing_requested_sources": [],
+  "excluded": "No datasets, raw tasks/comments, run records, receipts, ledgers, runtime/model/API configs, credentials, model weights, real calibration/cache files or offline fake run artifacts. Four explicitly approved six-dimension MARS algorithm configs are included.",
+  "generated_files": [
+    {
+      "path": "README.md",
+      "sha256": "9a4db2f1683fb41dff2700f99e0de4e29c1e4b8d99cd40cf401f35b65d209fe6",
+      "bytes": 4589
+    },
+    {
+      "path": "SNAPSHOT-VERIFICATION.json",
+      "sha256": "ea233be8f74559f29a8556a944d59512536fcd11943c4ebd08dae10aa793fe8d",
+      "bytes": 8428
+    }
+  ],
+  "manifest_self_hash_note": "The manifest does not hash itself; git records its byte content.",
+  "binding_limitations": "External native source bundles preserve original content for audit. Runtime absolute paths, original assignments/manifests and native module bindings remain unchanged and require explicitly supplied sidecars; this manifest is not an end-to-end dependency installer."
+}

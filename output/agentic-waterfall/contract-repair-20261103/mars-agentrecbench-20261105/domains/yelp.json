@@ -1,0 +1,12 @@
+{
+  "name": "yelp",
+  "item_noun": "businesses",
+  "categories": [
+    "business category",
+    "price range",
+    "service options",
+    "atmosphere and ambience",
+    "suitable occasions and audience",
+    "location and accessibility"
+  ]
+}
