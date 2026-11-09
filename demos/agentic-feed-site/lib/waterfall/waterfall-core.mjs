@@ -157,9 +157,23 @@ export function createRuntime(input,{variant='full',acquire,lookupHistory,onActi
     }
   }
   function validateRecommendation(a){
-      const ids=a.ordered_item_ids;
+      let ids=a.ordered_item_ids;
       const candidateIds=[...pool.keys()],indexById=new Map(candidateIds.map((id,index)=>[id,index+1]));
       const bounds={candidate_count:pool.size,candidate_index_range:[1,pool.size],required_count:p.require_full_ranking?fixedIds.size:null,max_count:p.require_full_ranking?fixedIds.size:p.top_k};
+      if(!ids&&Array.isArray(a.ordered_candidate_indices)){
+        const indices=a.ordered_candidate_indices;
+        const byIndex=new Map(candidateIds.map((id,index)=>[index+1,id]));
+        let kept=indices;
+        const over=p.mode==='fixed_candidates'&&p.require_full_ranking;
+        if(over&&indices.some(index=>Number.isInteger(index)&&index>pool.size)){
+          const retained=indices.filter(index=>!(Number.isInteger(index)&&index>pool.size));
+          const complete=retained.length===pool.size&&new Set(retained).size===pool.size;
+          if(complete&&retained.every(index=>Number.isInteger(index)&&byIndex.has(index)))kept=retained;
+        }
+        const known=index=>Number.isInteger(index)&&byIndex.has(index);
+        if(kept.length&&kept.every(known))ids=kept.map(index=>byIndex.get(index));
+        if(ids){a.ordered_item_ids=ids;delete a.ordered_candidate_indices;}
+      }
       if(!ids&&a.ordered_candidate_indices!==undefined){
         const indices=Array.isArray(a.ordered_candidate_indices)?a.ordered_candidate_indices:[];
         rankingError('invalid_candidate_indices',{...bounds,received_count:Array.isArray(a.ordered_candidate_indices)?indices.length:null,
@@ -376,13 +390,29 @@ Ground recommendations in the actual content and available evidence. Hidden futu
 Evidence-conditioned acquisition: Treat a search query as a hypothesis about useful content. When the catalog is unfamiliar, obtain an initial set and inspect the actual returned content before deciding the remaining queries and quantities. Leave acquisition capacity available for decisions informed by those returns. Compare the first matches with the user evidence, refine weak or repetitive matches, and seek alternatives to weak prospective recommendations. Choose the initial quantity, subsequent quantities, and whether another round is useful from the observed evidence; there is no fixed topic quota or fixed number of rounds. Independent metadata reads may still run together. When the current candidates support the requested decision, deliver the ranking.
 `;
 
+function currentRequirements(observation){
+  if(observation.environment.recommendation_constraints.mode!=='acquire')return null;
+  const records=observation.user_state.records.filter(r=>r.status==='active'&&(r.kind==='task'||r.kind==='constraint')&&
+    (r.scope!=='session'||!r.scope_id||r.scope_id===observation.session_id));
+  return digest(records.sort((a,b)=>String(a.id).localeCompare(String(b.id))).map(r=>[r.id,r.kind,r.key,r.value,r.scope,r.scope_id]));
+}
+
+const feedRequirementGuidance=' For an open feed, use the strongest supported current task and applicable constraints to drive search and ranking. When a request or sustained behavior changes what to serve now, record the new purpose as a task; retain older interests and mark completion only when supported. Write material changes first and decide dependent searches or recommendations after the state update returns. Review the pending queue under the new requirements. Independent actions can still run together.';
+
 export async function runEpisode(input,{experiment,variant='full',decide,acquire,lookupHistory,onAction,modelCall,systemPrompt=SYSTEM_PROMPT,taskInstructions}={}) {
   const start=Date.now(),modelCalls=[],normalizations=[];let error=null,callsIssued=0,partialTask=null,partialAttempted=false,formatFeedback=null,runtime;
   const phases=variant==='fixed_workflow'?['update_state','acquire','recommend']:null;
-  const rankingEvidence=new Map();let committedEvidence=new Set();
+  const actionInputs=new Map();let recommendation,ending;
   const acquiredEvidence=observation=>observation.environment.tool_results.filter(r=>r.kind==='acquire'&&r.status==='success').map(r=>r.action_id);
+  const reviewedOutput=(result,snapshot)=>{
+    const requirements=currentRequirements(snapshot);
+    const stop=result.ended&&ending?.requirements===requirements;
+    const slate=result.ordered_item_ids.length>0&&(recommendation?.requirements===requirements||stop&&ending.mode==='keep');
+    return {stop,slate};
+  };
   runtime=createRuntime(input,{variant,acquire,lookupHistory,onAction:(receipt,progress)=>{
-    if(receipt.kind==='recommend'&&receipt.status==='success')committedEvidence=rankingEvidence.get(receipt.action_id)||new Set();
+    if(receipt.kind==='recommend'&&receipt.status==='success')recommendation=actionInputs.get(receipt.action_id);
+    if(receipt.kind==='idle'&&receipt.status==='success')ending={...actionInputs.get(receipt.action_id),mode:receipt.result.mode};
     onAction?.(receipt,progress);
     if(!phases&&!partialAttempted&&!partialTask&&receipt.kind==='acquire'&&receipt.status==='success'&&receipt.result?.items?.length&&progress.pending_acquisitions>0&&callsIssued+1<runtime.protocol.max_model_calls){
       partialAttempted=true;partialTask=perform(undefined,true).catch(error=>{const call=modelCalls.findLast(entry=>entry.context?.other_acquisitions_pending);if(call&&!call.error)call.error=error.message;});
@@ -413,18 +443,20 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       check(typeof modelCall==='function','model_transport_required');
       const extra=phase?` Fixed-workflow ablation: execute the ${phase} phase; responses and history lookups may accompany it. Use edits:[] if no state changes are needed; acquire in the acquisition phase.`:partial?' Other acquisitions are still pending. Recommend useful known content or wait for the remaining evidence.':'';
       try{
-        decision=await requestDecision(observation,context,extra);
+        const constraints=observation.environment.recommendation_constraints;
+        const guidance=!phase&&constraints.mode==='acquire'&&constraints.state_update_enabled?feedRequirementGuidance:'';
+        decision=await requestDecision(observation,context,extra+guidance);
       }catch(e){if(!e.recoverableModelFormat||phase)throw e;return {model_format_error:e.message,new_actions:0,execution_results:[]};}
     }
     const normalized=normalizeDecision(decision,observation.environment.candidate_pool);normalizations.push(...normalized.repairs.map(r=>({...r,call_index:executionIndex})));
-    const registered=[],evidence=new Set(acquiredEvidence(observation));
-    for(const action of Array.isArray(normalized.decision?.actions)?normalized.decision.actions:[])if(action?.kind==='recommend'&&!rankingEvidence.has(action.action_id)){
-      rankingEvidence.set(action.action_id,evidence);registered.push(action.action_id);
+    const registered=[],review={requirements:currentRequirements(observation),evidence:new Set(acquiredEvidence(observation))};
+    for(const action of Array.isArray(normalized.decision?.actions)?normalized.decision.actions:[])if(['recommend','idle'].includes(action?.kind)&&!actionInputs.has(action.action_id)){
+      actionInputs.set(action.action_id,review);registered.push(action.action_id);
     }
     let step;
     try{runtime.validateDecision(normalized.decision);step=await runtime.execute(normalized.decision,{phase,waitForAcquisitions:observation.environment.pending_acquisitions.length>0});}catch(e){
       if(!['action_id_reuse_with_different_payload','action_id_already_in_progress','unsupported_content_types','unsupported_source_or_mode','source_ids_required','invalid_acquire_limit','tool_budget_exhausted','state_evidence_missing','invalid_decision','invalid_actions','invalid_dependency','dependency_cycle','invalid_candidate_indices','invalid_ranking','unacquired_recommendation','incomplete_ranking','too_many_recommendations','invalid_delivery'].includes(e.message))throw e;
-      for(const id of registered)rankingEvidence.delete(id);
+      for(const id of registered)actionInputs.delete(id);
       const call=modelCalls.findLast(x=>x.context?.call_index===executionIndex);if(call){call.error=e.message;call.error_details=e.details;}
       formatFeedback={error:e.message,call_index:executionIndex,...(e.details?{error_details:e.details}:{}),message:'No actions from this response were executed. Correct the reported issue and regenerate the decision with new action IDs.'};
       return {model_format_error:e.message,new_actions:0,execution_results:[]};
@@ -447,13 +479,18 @@ export async function runEpisode(input,{experiment,variant='full',decide,acquire
       if(step.model_format_error||formatFeedback)continue;
       const result=runtime.result,snapshot=runtime.snapshot(),afterHistory=snapshot.dialogue.length+snapshot.behavior_events.length;
       // Known-item enrichment adds evidence without increasing the acquired-ID count.
-      const unseenEvidence=acquiredEvidence(snapshot).some(id=>!committedEvidence.has(id));
-      if(result.ended||(result.ordered_item_ids.length&&!unseenEvidence&&result.acquired_items===beforeAcquired&&afterHistory===beforeHistory&&!step.execution_results.some(recoverableRankingFailure)))break;
+      const unseenEvidence=acquiredEvidence(snapshot).some(id=>!recommendation?.evidence.has(id));
+      const review=reviewedOutput(result,snapshot);
+      if(review.stop||(review.slate&&!unseenEvidence&&result.acquired_items===beforeAcquired&&afterHistory===beforeHistory&&!step.execution_results.some(recoverableRankingFailure)))break;
       if(!step.new_actions){error='no_progress';break;}
     }
   }catch(e){error=e.message;}
-  const result=runtime.result;
-  if(!error&&!result.ended&&result.ordered_item_ids.length&&acquiredEvidence(runtime.snapshot()).some(id=>!committedEvidence.has(id)))error='model_call_budget_exhausted_with_unreviewed_evidence';
+  const result=runtime.result,snapshot=runtime.snapshot(),review=reviewedOutput(result,snapshot);
+  const outdated=(result.ended&&!review.stop)||(result.ordered_item_ids.length>0&&!review.slate);
+  if(!review.stop)result.ended=false;
+  if(!review.slate)result.ordered_item_ids=[];
+  if(!error&&outdated&&!result.ended&&!result.ordered_item_ids.length)error='model_call_budget_exhausted_with_unreviewed_requirements';
+  if(!error&&!result.ended&&result.ordered_item_ids.length&&acquiredEvidence(snapshot).some(id=>!recommendation?.evidence.has(id)))error='model_call_budget_exhausted_with_unreviewed_evidence';
   if(!error&&['action_id_reuse_with_different_payload','action_id_already_in_progress'].includes(formatFeedback?.error))error=formatFeedback.error;
   const continuationError=error&&result.ordered_item_ids.length?error:null;if(continuationError)error=null;
   if(!error&&!result.ordered_item_ids.length&&!result.ended)error='model_call_budget_exhausted_without_submission';
