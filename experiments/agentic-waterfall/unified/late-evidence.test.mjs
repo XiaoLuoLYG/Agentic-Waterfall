@@ -56,6 +56,58 @@ test('open acquisition still streams an interim slate and consumes the late resu
  assert.deepEqual(result.ordered_item_ids,['B','A']);
 });
 
+const updateFocus=(obs,kind='task')=>action('write','update_state',{base_version:obs.user_state.version,edits:[{
+ op:'upsert',record:{id:'new-focus',kind,key:'trip',value:'travel',scope:'user',scope_id:null,status:'active',basis:'observed',evidence_refs:['saved-trip']}
+}]});
+
+async function reviseAfterSlate(kind,maxCalls=4){
+ const episode=input('acquire',maxCalls),queries=[];
+ episode.observation.environment.candidate_pool=[{id:'A',title:'camera'}];
+ const result=await runEpisode(episode,{
+  lookupHistory:async()=>({dialogue:[],behavior_events:[{id:'saved-trip',type:'feedback',value:'save'}]}),
+  acquire:async args=>{queries.push(args.query);return {items:[{id:'B',title:'travel'}],actual_requests:1};},
+  decide:async(obs,ctx)=>{
+   const actions=[
+    [action('first','recommend',{ordered_item_ids:['A'],delivery:'replace_pending'}),action('read','lookup_history',{query:'',offset:0,limit:1})],
+    [updateFocus(obs,kind)],
+    [action('get-trip','acquire',{source_ids:['get_item'],mode:'browse',target_id:'B',query:obs.user_state.records[0]?.value,limit:1})],
+    [action('revised','recommend',{ordered_item_ids:['B'],delivery:'replace_pending'})]
+   ][ctx.call_index];
+   return {decision_id:obs.decision_id,actions};
+  }
+ });
+ return {result,queries};
+}
+
+test('a changed active task makes the feed reconsider an earlier slate within its budget',async()=>{
+ const {result,queries}=await reviseAfterSlate('task');
+ assert.deepEqual(queries,['travel']);
+ assert.equal(result.model_calls.length,4);
+ assert.deepEqual(result.ordered_item_ids,['B']);
+ const exhausted=await reviseAfterSlate('task',2);
+ assert.equal(exhausted.result.status,'failed');
+ assert.deepEqual(exhausted.result.ordered_item_ids,[]);
+});
+
+test('an ordinary preference update does not invalidate an earlier slate',async()=>{
+ const {result,queries}=await reviseAfterSlate('preference');
+ assert.equal(result.model_calls.length,2);
+ assert.deepEqual(queries,[]);
+ assert.deepEqual(result.ordered_item_ids,['A']);
+});
+
+test('keeping the queue in the same decision as a new requirement needs a fresh decision',async()=>{
+ const episode=input('acquire',2);
+ episode.observation.behavior_events=[{id:'saved-trip',type:'feedback',value:'save'}];
+ episode.observation.environment.candidate_pool=[{id:'A',title:'camera'},{id:'B',title:'travel'}];
+ episode.observation.environment.pending_queue=['A'];
+ const result=await runEpisode(episode,{decide:async(obs,ctx)=>({decision_id:obs.decision_id,actions:ctx.call_index===0
+  ?[updateFocus(obs,'constraint'),action('keep','idle',{mode:'keep'})]
+  :[action('revised','recommend',{ordered_item_ids:['B'],delivery:'replace_pending'})]})});
+ assert.equal(result.model_calls.length,2);
+ assert.deepEqual(result.ordered_item_ids,['B']);
+});
+
 test('late evidence never increases the logical call budget',async()=>{
  const {result,seen}=await lateEvidence({max_model_calls:2});
  assert.equal(seen.length,2);

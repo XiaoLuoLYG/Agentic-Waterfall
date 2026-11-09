@@ -7,6 +7,13 @@ const action=(id,args)=>({action_id:id,kind:'recommend',arguments:{...args,deliv
 const decision=actions=>({decision_id:'ranking-recovery',actions});
 const full=Array.from({length:101},(_,i)=>101-i);
 
+test('a complete fixed ranking discards an appended out-of-range index',async()=>{
+  const result=await runEpisode(input(1),{decide:async()=>decision([action('rank',{ordered_candidate_indices:[...full,102]})])});
+  assert.equal(result.status,'submitted');
+  assert.deepEqual(result.ordered_item_ids,full.map(i=>`kuairand:${999+i}`));
+  assert.equal(result.model_calls.length,1);
+});
+
 test('malformed decision envelopes and dependencies are rejected before dispatch and can be corrected',async()=>{
   const valid=action('rank',{ordered_candidate_indices:full});
   for(const [bad,error] of [
