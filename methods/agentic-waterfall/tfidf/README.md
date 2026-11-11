@@ -17,15 +17,15 @@ gh release download tfidf-benchmarks-20261110-v1 \
   --pattern tfidf-benchmarks-20261110-v1.zip --dir "$replay_dir"
 bundle="$replay_dir/tfidf-benchmarks-20261110-v1.zip"
 printf '%s  %s\n' 63b36aeefe9706f496b5b113300612335518823e8e624eeb6842275ec615ac3c "$bundle" \
-  | shasum -a 256 -c
-python "$tfidf_dir/reproduce.py" "$bundle" --output "$replay_dir/tfidf-reproduced-metrics.json"
+  | shasum -a 256 -c && \
+  python "$tfidf_dir/reproduce.py" "$bundle" --output "$replay_dir/tfidf-reproduced-metrics.json"
 ```
 
 The release provides both the replay ZIP and the verified metrics JSON. [Frozen inputs and scoring artifacts](https://github.com/XiaoLuoLYG/waterfall-anything/releases/tag/tfidf-benchmarks-20261110-v1)
 
 The ZIP contains three files.
 
-- `inputs.json` has the frozen unigram counts encoded as opaque terms, the candidate order and eligibility, and the available history after each dataset adapter. It uses case-local item positions and contains no source text or identifiers.
+- `inputs.json` has the frozen unigram counts encoded as opaque terms, the candidate order and eligibility, and the available history after each dataset adapter. Item positions refer to the corresponding corpus.
 - `scoring.json` has evaluator-only targets and relevance values. SimBench includes the four peer methods' frozen top-20 rankings so all five methods use the same ideal ranking.
 - `manifest.json` binds both inputs by SHA-256 and records the original run hashes, expected per-dataset ranking hashes, and published metrics.
 
@@ -38,7 +38,9 @@ The replay fits TF-IDF on the archived term counts, checks all four ranking hash
 | KuaiRec | 1,129 users with per-user eligibility, up to 100 acquired items and 10 returned. | P@10 4.84%, NDCG@10 0.0500 |
 | ClawRec-SimBench | 210 events from 42 users, cumulative public history, original source and publication-time filters. | Shared-pool NDCG@20 0.5040 |
 
-AgentRecBench domain Hit@5 is 48/100 for Amazon, 42/100 for Goodreads, and 22/100 for Yelp. Fixed-candidate cases with an empty query keep the original candidate order. KuaiRec's empty result stays in the denominator. SimBench reuses 42 first-event TF-IDF rankings and reranks the remaining 168 with cumulative visible history. The five-method union contains 12,507 event–item pairs, judged in 743 accepted batches with DeepSeek-V4.1-Flash-1017. The replay uses those archived judgments.
+AgentRecBench domain Hit@5 is 48/100 for Amazon, 42/100 for Goodreads, and 22/100 for Yelp. Fixed-candidate cases with an empty query keep the original order. This accounts for 17 hits across 72 empty-query AgentRecBench cases. The default analyzer treats uninterrupted Chinese text as a single term. KuaiRec's empty result stays in the denominator.
+
+SimBench reuses 42 first-event TF-IDF rankings and reranks the remaining 168 with cumulative visible history. The five-method union contains 12,507 event–item pairs, judged in 743 accepted batches with DeepSeek-V4.1-Flash-1017. The replay uses those archived judgments.
 
 ## Original experiment inputs
 
