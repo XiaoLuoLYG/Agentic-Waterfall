@@ -15,7 +15,7 @@ test('all visible original history, commands and state are included without muta
  const source=fixture(),before=structuredClone(source),{input,lookupHistory}=prepareHistory(source);
  assert.deepEqual(source,before);assert.deepEqual(input.observation.behavior_events,before.observation.behavior_events);
  assert.deepEqual(input.observation.dialogue,before.observation.dialogue);assert.deepEqual(input.observation.user_state,before.observation.user_state);
- assert.equal(input.protocol.max_tool_calls,20);assert.equal(input.run_meta.history_protocol.omitted_visible_events,0);
+ assert.equal(input.protocol.max_tool_calls,0);assert.equal(input.run_meta.history_protocol.omitted_visible_events,0);
  const current=createRuntime(input,{lookupHistory}).snapshot();
  assert.equal(current.behavior_events.length,65);assert.equal(current.environment.sources[0].initial_count,65);
  assert.equal(lookupHistory({query:'orchid',offset:0,limit:10},{observation:current}).behavior_events[0].id,'event-1');
@@ -30,8 +30,8 @@ test('complete history remains available even when records or candidate bodies e
  assert.equal(lookupHistory({query:'HEAD',offset:0,limit:1},{observation:current}).behavior_events[0].text,source.observation.behavior_events[0].text);
 });
 
-test('adding history access preserves enough allowance to inspect every native fixed candidate', async () => {
-  const source=fixture();source.protocol={...source.protocol,max_tool_calls:22,max_model_calls:3};
+test('history access uses the explicitly assigned shared tool allowance', async () => {
+  const source=fixture();source.protocol={...source.protocol,max_tool_calls:42,max_model_calls:3};
   source.observation.environment.candidate_pool=Array.from({length:20},(_,i)=>({id:'item-'+i}));
   source.observation.environment.sources=[{id:'metadata',modes:['browse']}];
   const {input,lookupHistory}=prepareHistory(source);let phase=0;
@@ -41,6 +41,14 @@ test('adding history access preserves enough allowance to inspect every native f
     [action('rank','recommend',{ordered_item_ids:['item-0'],delivery:'replace_pending'})]})});
   assert.equal(result.status,'submitted');assert.equal(result.tool_calls,23);
   assert(result.trace.flatMap(step=>step.execution_results).every(receipt=>receipt.status==='success'));
+});
+
+test('preparing an already prepared input never adds budget or duplicate history sources',()=>{
+ const source=fixture();source.protocol.max_tool_calls=30;
+ const first=prepareHistory(source).input,second=prepareHistory(first).input;
+ assert.equal(first.protocol.max_tool_calls,30);assert.equal(second.protocol.max_tool_calls,30);
+ assert.equal(second.observation.environment.sources.filter(row=>row.id==='waterfall-history-archive').length,1);
+ assert.deepEqual(second.observation.behavior_events,source.observation.behavior_events);
 });
 
 test('initial input and rereads exclude other users, forbidden policy evidence and future records',()=>{

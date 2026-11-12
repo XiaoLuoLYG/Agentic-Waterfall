@@ -1,0 +1,9 @@
+{
+  "version": "kuairand-public-feedback-v1",
+  "source": "https://kuairand.com/",
+  "target_definition": "Rank the fixed candidates by the user's next novel long_view=1 event under the frozen cutoff protocol; long_view is the documented duration-dependent threshold.",
+  "feedback_fields": ["date", "long_view", "is_rand", "play_time_ms", "duration_ms", "is_click", "is_like", "is_hate", "is_follow", "is_comment", "is_forward", "profile_stay_time", "comment_stay_time", "is_profile_enter", "tab"],
+  "units": {"play_time_ms": "milliseconds", "duration_ms": "milliseconds", "profile_stay_time": "unit not specified in the public field documentation; preserve raw value", "comment_stay_time": "unit not specified in the public field documentation; preserve raw value", "occurred_at": "ISO-8601 timestamp", "available_at": "ISO-8601 timestamp"},
+  "long_view_definition": "The original binary long_view flag is 1 when play_time_ms >= duration_ms for duration_ms <= 18000, or play_time_ms >= 18000 for duration_ms > 18000. It is a duration-dependent viewing threshold, not preference for long videos, not necessarily completion, and not an explicit like.",
+  "other_feedback_definition": "is_like/is_hate/is_follow/is_comment/is_forward indicate the corresponding observed action; 0 means that action was not recorded, not its opposite. is_click is a click in the two-column interface, but valid_play in the single-column interface (complete play for duration_ms <= 7000, otherwise play_time_ms > 7000); do not assume an explicit choice when interface is unknown. is_rand marks random exposure. Preserve original flags and times; do not silently recompute inconsistent records."
+}

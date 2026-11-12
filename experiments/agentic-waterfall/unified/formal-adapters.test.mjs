@@ -14,7 +14,10 @@ const json = (path, value) => writeFileSync(path, JSON.stringify(value));
 test('preloaded user reviews preserve duplicate source IDs as distinct complete records',async()=>{
  const task={user_id:'u',candidate_list:['i']},input=makeInput(task,'short_term','0');
  const reviews=[{review_id:'same',user_id:'u',item_id:'i',text:'original',stars:2},{review_id:'same',user_id:'u',item_id:'i',text:'updated '+ 'x'.repeat(15000)+' END',stars:5}];
- await preloadUserEvidence(input,makeAcquire({users:{},user_reviews:{u:reviews}},task,[]));
+ const item={item_id:'i',title:'public item'};
+ await preloadUserEvidence(input,makeAcquire({users:{},items:{i:item},user_reviews:{u:reviews}},task,[]));
+ assert.deepEqual(input.observation.behavior_events.map(row=>row.payload.item),[item,item]);
+ assert.equal(input.run_meta.user_evidence.history_item_count,1);
  assert.deepEqual(input.observation.behavior_events.map(row=>row.payload.review),reviews);
  assert.equal(new Set(input.observation.behavior_events.map(row=>row.id)).size,2);
  assert.equal(input.run_meta.user_evidence.user_available,false);
@@ -41,7 +44,9 @@ test('AgentRecBench uses the existing disk index and never returns masked review
   assert.equal(adapter.input.observation.environment.candidate_pool.length, 20);
   assert.equal(adapter.input.observation.behavior_events.length,1,'The first decision must receive every visible user review');
   assert.equal(adapter.input.observation.behavior_events[0].payload.review.text,'public review');
-  assert.equal(adapter.input.run_meta.user_evidence.preloaded_requests,2);
+  assert.equal(adapter.input.run_meta.user_evidence.preloaded_requests,3);
+  assert.equal(adapter.input.observation.behavior_events[0].payload.item.item_id,candidates[1]);
+  assert.equal(adapter.toolCalls.filter(call=>call.phase==='history_item_preload').length,1);
   const pool=adapter.input.observation.environment.candidate_pool;
   assert.equal(JSON.parse(pool[0].text).description.endsWith('END_OF_DESCRIPTION'),true);
   assert.equal(JSON.parse(pool.at(-1).text).metadata_status,'unavailable');

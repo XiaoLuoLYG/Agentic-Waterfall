@@ -12,6 +12,7 @@ if(existsSync(values.output+'.states.json'))throw new Error('state_output_alread
 inputs.sort((a,b)=>Date.parse(a.observation.observed_at)-Date.parse(b.observation.observed_at)||a.observation.decision_id.localeCompare(b.observation.decision_id));
 writeFileSync(values.output,'',{flag:'wx'});const states=new Map();let failed=0;
 for(const input of inputs){
+ input.protocol={...input.protocol,delivery_scope:'offline_slate'};
  const user=input.observation.user_id;
  if(states.has(user))input.observation.user_state=structuredClone(states.get(user));
  let result;

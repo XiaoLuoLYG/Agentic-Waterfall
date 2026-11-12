@@ -60,7 +60,7 @@ async function main(){
     }
   }
   // Match the demo decision allowance; this is a new protocol, not the old one-call MIND run.
-  input.protocol={...input.protocol,max_model_calls:20,max_output_tokens:task.max_output_tokens??8192};
+  input.protocol={...input.protocol,delivery_scope:'offline_slate',max_model_calls:20,max_tool_calls:task.max_tool_calls??(task.dataset==='agentrecbench'?42:30),max_output_tokens:task.max_output_tokens??8192};
   const history=prepareHistory(input);input=history.input;
   const result=await runEpisode(input,{experiment:task.dataset,modelCall:serial((request,options)=>callModel({...request,stream:task.model_streaming===true},{...options,thinkingMode:task.thinking_mode}),true),lookupHistory:history.lookupHistory,...(task.adapter_instructions===false?{}:{taskInstructions:taskInstructions(task,input)}),...(task.system_prompt_path?{systemPrompt:readFileSync(task.system_prompt_path,'utf8')}:{}),...(acquire?{acquire:serial(acquire)}:{})});
   result.preparation_tool_calls=(input.run_meta.candidate_details?.preloaded_requests||0)+(input.run_meta.user_evidence?.preloaded_requests||0);

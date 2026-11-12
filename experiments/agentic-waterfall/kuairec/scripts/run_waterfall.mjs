@@ -27,6 +27,7 @@ function acquireRequest(request){
 }
 let failed=0;
 for(const input of inputs){
+ input.protocol={...input.protocol,delivery_scope:'offline_slate'};
   input.observation.environment.sources=[JSON.parse(readFileSync(resolve(root,'scripts/source.json'),'utf8'))];
   const user=input.observation.user_id;
   const acquire=async(arguments_,context)=>{
@@ -37,7 +38,7 @@ for(const input of inputs){
   const result=await runEpisode(input,{experiment:'kuairec',variant:'full',acquire,modelCall:callModel});
   appendFileSync(output,JSON.stringify({user_id:user,...result})+'\n');
   // Failed/partial outputs remain in the denominator; never repair using held-out labels.
-  const row={user_id:Number(user),method:`${result.runtime_version}_bm25_backend`,status:result.status,acquisition_required:true,ordered_item_ids:result.ordered_item_ids,acquired_item_ids:result.candidate_pool_after.map(x=>x.id),model_requests:result.model_request_count,tool_calls:result.tool_calls,error:result.error,continuation_error:result.continuation_error};
+  const row={user_id:Number(user),method:`${result.runtime_version}_bm25_backend`,status:result.status,acquisition_required:true,ordered_item_ids:result.ordered_item_ids,acquired_item_ids:result.candidate_pool_after.map(x=>x.id),model_requests:result.model_request_count,tool_calls:result.tool_calls,error:result.error,continuation_error:result.continuation_error,action_failures:result.action_failures};
   appendFileSync(predictions,JSON.stringify(row)+'\n');
   if(result.status==='failed')failed++;
   console.log(JSON.stringify({user_id:user,status:result.status,error:result.error,model_requests:result.model_request_count,tool_calls:result.tool_calls,acquired:result.acquired_items,recommended:result.ordered_item_ids.length}));

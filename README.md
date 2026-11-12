@@ -4,6 +4,7 @@
 
 - [研究主方案](docs/research/agentic-waterfall/01-研究主方案.md)与[输入输出协议](docs/research/agentic-waterfall/02-输入输出与数据流.md)
 - [本地研究 Demo](demos/agentic-feed/README.md)：Node.js 22；个人数据和模型密钥不包含在仓库中
+- [实验结果与复现说明 · 2026-11-11](docs/research/agentic-waterfall/results-20261111/README.md)
 - [ACL 论文材料](paper/acl-2027/README.md)
 
 以下为产品分支介绍：
