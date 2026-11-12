@@ -44,6 +44,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  if(!sources.length)throw Error('no_available_live_sources');
  const input=makeInput(JSON.parse(proc.stdout),sources),toolCalls=[];
  const get=async(source,args)=>{const entry=sources.find(s=>s.id===source);const modality=args.content_types?.find(type=>entry.modalities.includes(type))||entry.modalities[0];const result=await acquire({source,mode:args.mode,query:args.query||'',modality},sourceConfig,{limit:args.limit});toolCalls.push(result);return result;};
+ input.protocol={...input.protocol,delivery_scope:'offline_slate'};
  const result=await runEpisode(input,{experiment:'clawrec',modelCall:callModel,acquire:makeAcquire(input,get)});
  writeFileSync(values.output,JSON.stringify({input,result,tool_calls:toolCalls},null,2)+'\n',{flag:'wx'});
  console.log(JSON.stringify({status:result.status,error:result.error,continuation_error:result.continuation_error,model_requests:result.model_request_count,tool_calls:result.tool_calls,ranked:result.ordered_item_ids.length,content_environment:input.run_meta.content_environment}));

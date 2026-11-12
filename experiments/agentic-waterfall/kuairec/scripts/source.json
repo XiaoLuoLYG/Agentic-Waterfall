@@ -1,7 +1,11 @@
 {
   "id": "kuairec",
-  "modes": ["search"],
-  "content_types": ["video"],
-  "description": "Frozen 3327-video KuaiRec catalog with public captions/categories. content_types accepts video; put topics or interests in query. Search returns BM25-ranked lexical matches using terms in the visible titles, captions or categories. Empty or unmatched queries return no items. Popularity retrieval is not available in this benchmark. Scores are source signals, not individual relevance probabilities. duration_ms is a public big-table content measurement. Per-user unknown entries are ineligible. Retrieve up to 100 distinct candidates and recommend exactly 10. limit is the number requested from this retrieval, from 1 to 100; it is separate from the final recommendation count.",
+  "modes": [
+    "search"
+  ],
+  "content_types": [
+    "video"
+  ],
+  "description": "Frozen 3327-video KuaiRec catalog with public captions/categories. content_types accepts video; put topics or interests in query. Search returns BM25-ranked lexical matches using terms in the visible titles, captions or categories. A multi-character Chinese segment must share at least one adjacent character pair; only a query consisting of one Chinese character can match that single character. Space-separated terms and pairs use OR admission, so long phrases need not match in full. BM25 scores retain the original unigram/bigram tokens. Empty or unmatched queries return no items. Popularity retrieval is not available in this benchmark. Scores are source signals, not individual relevance probabilities. duration_ms is a public big-table content measurement. Per-user unknown entries are ineligible. Retrieve up to 100 distinct candidates and recommend up to 10 distinct items; do not invent entries to fill an undersized result. limit is the number requested from this retrieval, from 1 to 100; it is separate from the final recommendation count.",
   "public_input_version": "kuairec-public-content-v1"
 }

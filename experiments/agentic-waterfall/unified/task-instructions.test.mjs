@@ -1,11 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {taskInstructions,behaviorStatistics} from './task-instructions.mjs';
+
+test('KuaiRec search source and actual recommendation contract agree on partial slates',()=>{
+ const source=JSON.parse(readFileSync(new URL('../kuairec/scripts/source.json',import.meta.url),'utf8'));
+ assert.match(source.description,/recommend up to 10/);
+ assert.doesNotMatch(source.description,/recommend exactly 10/);
+});
 
 test('dataset contracts preserve native output size and opaque identity semantics',()=>{
  for(const [dataset,count,full] of [['mind',2,true],['kuairec',10,false],['kuairand',101,true],['agentrecbench',20,true],['clawrec',5,false]]){
   const input={protocol:{top_k:count,require_full_ranking:full},observation:{behavior_events:[],environment:{candidate_pool:Array.from({length:count},(_,i)=>({id:String(i+1000)}))}}};
-  const result=taskInstructions({dataset},input);assert.equal(result.recommendation.count,count);assert.equal(result.recommendation.order_field,'ordered_candidate_indices');assert.equal(result.behavior_statistics,undefined);
+  const result=taskInstructions({dataset},input);assert.equal(result.recommendation.count,count);assert.equal(result.recommendation.order_field,'ordered_candidate_indices');assert.equal(result.recommendation.count_rule,full?'exact':'up_to');assert.equal(result.behavior_statistics,undefined);
  }
 });
 test('KuaiRand statistics distinguish explicit feedback from missing fields',()=>{

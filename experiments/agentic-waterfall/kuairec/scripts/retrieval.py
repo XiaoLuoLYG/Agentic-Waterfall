@@ -10,6 +10,14 @@ def tokenize(text):
         out.extend(s[i:i+2] for i in range(len(s)-1))
     return out
 
+def match_tokens(text):
+    # Admission requires adjacent Chinese characters; BM25 scoring keeps its original tokens.
+    if re.fullmatch(r'[\u3400-\u9fff]',text.strip()):return [text.strip()]
+    out=re.findall(r'[a-z0-9]+',text.lower())
+    for part in re.findall(r'[\u3400-\u9fff]+',text):
+        out.extend(part[i:i+2] for i in range(len(part)-1))
+    return out
+
 class CatalogRetriever:
     def __init__(self,catalog):
         self.catalog=sorted(catalog,key=lambda x:int(x['id']))
@@ -20,9 +28,9 @@ class CatalogRetriever:
         if limit<0 or limit>100: raise ValueError('Invalid acquisition limit')
         if mode != 'search': raise ValueError('KuaiRec benchmark supports search only')
         start=time.perf_counter();allowed=set(map(str,eligible))-set(map(str,exclude))
-        tokens=tokenize(query)
+        tokens=tokenize(query);required=match_tokens(query)
         scores=self.bm25.get_scores(tokens);actual_mode='bm25'
-        candidates=[(str(x['id']),float(scores[i]),x) for i,x in enumerate(self.catalog) if str(x['id']) in allowed and any(token in self.bm25.doc_freqs[i] for token in tokens)]
+        candidates=[(str(x['id']),float(scores[i]),x) for i,x in enumerate(self.catalog) if str(x['id']) in allowed and any(token in self.bm25.doc_freqs[i] for token in required)]
         candidates.sort(key=lambda r:(-r[1],int(r[0])))
         selected=candidates[:limit]
         return {'items':[x[2] for x in selected],'scores':{x[0]:x[1] for x in selected},'evidence':{'query':query,'backend':actual_mode,'elapsed_seconds':time.perf_counter()-start,'catalog_items_scored':len(self.catalog),'eligible_items':len(allowed),'returned_items':len(selected)},'actual_requests':1}
@@ -42,8 +50,8 @@ def public_result(result,metadata):
     evidence=result['evidence']
     items=[]
     for row in result['items']:
-        item={'id':row['id'],'source_id':'kuairec','content_type':'video','text':row['text']}
-        duration=metadata.get('items',{}).get(row['id'],{}).get('duration_ms')
+        item={'id':row['id'],'source':'kuairec','source_id':'kuairec','content_type':'video','title':row.get('title',''),'text':row['text'],'url':''}
+        duration=metadata.get('items',{}).get(row['id'],{}).get('duration_ms',row.get('duration_ms'))
         if duration is not None:item['duration_ms']=duration
         if row['id'] in result.get('scores',{}):
             item.update(retrieval_score=result['scores'][row['id']],retrieval_backend=evidence['backend'],retrieval_query=evidence['query'])

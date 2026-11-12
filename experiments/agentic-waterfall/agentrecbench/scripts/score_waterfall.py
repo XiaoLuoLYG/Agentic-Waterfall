@@ -5,7 +5,7 @@ from adapter import official_metrics, validate_ranking
 
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--task-dir',type=Path,required=True);p.add_argument('--task-ids',help='Comma-separated assigned IDs; missing results count as failures');p.add_argument('--output',type=Path,required=True);p.add_argument('results',nargs='*',type=Path)
-a=p.parse_args();labels=[];predictions=[];failures=[];by_id={}
+a=p.parse_args();labels=[];predictions=[];strict_predictions=[];failures=[];rows=[];by_id={}
 for file in a.results:
     data=json.loads(file.read_text());task_id=str(data['input']['run_meta']['task_id'])
     if not task_id.isdigit() or task_id in by_id:raise ValueError('invalid or duplicate task ID')
@@ -20,8 +20,13 @@ for task_id in ids:
         validate_ranking(ranking,task['candidate_list'])
     except ValueError as error:
         ranking=[];failures.append({'task_id':task_id,'error':str(error)})
-    labels.append(label);predictions.append(ranking)
+    action_failures=result.get('action_failures',[r for step in result.get('trace',[]) for r in step.get('execution_results',[]) if r.get('status')!='success'])
+    strict=bool(ranking) and not result.get('error') and not result.get('continuation_error') and not action_failures
+    labels.append(label);predictions.append(ranking);strict_predictions.append(ranking if strict else [])
+    rows.append({'task_id':task_id,'status':result.get('status'),'delivery_valid':bool(ranking),'strict_episode_success':strict,
+                 'error':result.get('error'),'continuation_error':result.get('continuation_error'),'action_failures':action_failures})
 metrics=official_metrics(labels,predictions)
-result={'n':len(labels),'failed':len(failures),'failures':failures,'scorer':'official','metrics':metrics}
+result={'n':len(labels),'failed':len(failures),'failures':failures,'scorer':'official','metrics':metrics,
+        'strict_failed':sum(not row['strict_episode_success'] for row in rows),'strict_metrics':official_metrics(labels,strict_predictions),'rows':rows}
 with a.output.open('x') as f:json.dump(result,f,indent=2);f.write('\n')
 print(json.dumps({'n':len(labels),'failed':len(failures),'output':str(a.output)}))

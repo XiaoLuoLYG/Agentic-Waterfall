@@ -4,6 +4,8 @@ import argparse,collections,csv,datetime,hashlib,json,pathlib,sqlite3
 from protocol import SEED,WINDOWS,available_at,cohort,split,user_tasks
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 FIELDS=['user_id','video_id','date','time_ms','long_view','is_rand','play_time_ms','duration_ms','is_click','is_like','is_hate','is_follow','is_comment','is_forward']
+OPTIONAL_FIELDS=['hourmin','profile_stay_time','comment_stay_time','is_profile_enter','tab']
+FEEDBACK_CONTRACT=json.loads((ROOT.parents[2]/'methods/agentic-waterfall/i2agent/kuairand-feedback-contract.json').read_text())
 def sha(path):
     h=hashlib.sha256()
     with path.open('rb') as f:
@@ -32,7 +34,7 @@ def main():
             missing=set(FIELDS)-set(reader.fieldnames)
             if missing:raise ValueError(f'{name} missing {missing}')
             for count,r in enumerate(reader,1):
-                e={k:int(r[k]) for k in FIELDS};e['event_id']=name+':'+str(count)
+                e={k:int(r[k]) for k in FIELDS+OPTIONAL_FIELDS if k in r};e['event_id']=name+':'+str(count)
                 if any(e[k] not in (0,1) for k in ('long_view','is_rand')):raise ValueError('invalid feedback flag')
                 if split(e['date']) is None:raise ValueError('date outside declared windows')
                 if e['user_id'] not in user_set:raise ValueError('unknown user ID')
@@ -77,10 +79,10 @@ def main():
             if not t['eligible']:continue
             candidates=[json.loads(db.execute('SELECT payload FROM items WHERE video_id=?',(v,)).fetchone()[0]) for v in t['candidate_ids']]
             behavior=[dict(id=e['event_id'],type='video_exposure_feedback',item_id=f"kuairand:{e['video_id']}",
-                occurred_at=iso_ms(e['time_ms']),available_at=iso_ms(available_at(e)),payload={k:e[k] for k in FIELDS if k not in ('user_id','video_id','time_ms')}) for e in t['history']]
+                occurred_at=iso_ms(e['time_ms']),available_at=iso_ms(available_at(e)),payload={k:e[k] for k in FIELDS+OPTIONAL_FIELDS if k in e and k not in ('user_id','video_id','time_ms')}) for e in t['history']]
             observation=dict(schema_version='1',decision_id=t['task_id'],user_id=f'kuairand-user:{t["user_id"]}',
                 session_id=f'kuairand-log:{t["user_id"]}',observed_at=iso_ms(t['decision_time_ms']),trigger='offline_next_item',dialogue=[],
-                behavior_events=behavior,user_state=dict(version=0,records=[]),environment=dict(candidate_pool=candidates,
+                behavior_events=behavior,user_state=dict(version=0,records=[]),environment=dict(data_contract=FEEDBACK_CONTRACT,candidate_pool=candidates,
                 sources=[],pending_queue=[],visible_item_ids=[],content_version='kuairand-1k-basic-train-window-v1'))
             public.write(json.dumps(dict(observation=observation,protocol=dict(mode='fixed_candidates',top_k=101,
                 require_full_ranking=True,max_model_calls=3,max_tool_calls=10,max_output_tokens=8192),

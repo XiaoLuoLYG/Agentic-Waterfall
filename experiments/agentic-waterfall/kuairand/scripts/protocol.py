@@ -53,8 +53,8 @@ def metrics(target,ranking):
     return {f'{name}@{k}':(float(rank<=k) if name=='Hit' else (1/math.log2(rank+1) if rank<=k else 0.0))
             for k in (10,20) for name in ('Hit','NDCG')}
 def evaluate(tasks,predictions):
-    """All eligible rows stay in denominator. Invalid/missing rankings use frozen shuffled order."""
-    groups={}; details=[]
+    """All eligible rows stay in denominator. Score actual valid delivery, never invent a ranking."""
+    groups={}; strict_groups={}; details=[]
     for task in tasks:
         if not task['eligible']: continue
         candidates=[f'kuairand:{i}' for i in task['candidate_ids']]
@@ -63,15 +63,19 @@ def evaluate(tasks,predictions):
         minimum=task.get('required_ranking_length',len(candidates))
         valid=(output.get('status','ok') in ('ok','completed','success','submitted') and isinstance(ranking,list) and all(isinstance(x,str) for x in ranking)
                and minimum<=len(ranking)<=len(candidates) and len(set(ranking))==len(ranking) and set(ranking)<=set(candidates))
-        if not valid: ranking=candidates
+        if not valid: ranking=[]
+        strict=valid and not output.get('error') and not output.get('continuation_error') and not output.get('action_failures')
         values=metrics(f"kuairand:{task['target']}",ranking)
-        details.append(dict(task_id=task['task_id'],valid=valid,fallback=not valid,**values))
+        details.append(dict(task_id=task['task_id'],valid=valid,fallback=False,strict_episode_success=strict,**values))
         for group in ('all',task['split']+':'+task['stratum']):
             acc=groups.setdefault(group,dict(n=0,invalid=0,**{k:0.0 for k in values}))
             acc['n']+=1; acc['invalid']+=not valid
             for k,v in values.items(): acc[k]+=v
-    for acc in groups.values():
+            strict_acc=strict_groups.setdefault(group,dict(n=0,invalid=0,**{k:0.0 for k in values}))
+            strict_acc['n']+=1;strict_acc['invalid']+=not strict
+            for k,v in values.items():strict_acc[k]+=v if strict else 0.0
+    for acc in [*groups.values(),*strict_groups.values()]:
         for k in list(acc):
             if k not in ('n','invalid'): acc[k]/=acc['n']
         acc['invalid_rate']=acc['invalid']/acc['n']
-    return dict(groups=groups,per_task=details,fallback='pre-shuffled candidate order; labels never used')
+    return dict(groups=groups,strict_groups=strict_groups,per_task=details,fallback='none; invalid or missing delivery scores zero')

@@ -15,9 +15,9 @@ export function makeInput(task,scenario,taskId){
       content_version:'AgentRecBench-288f7f09ca0387e5169a61b219047aea397e4b06',
       sources:[
         {id:'get_user',modes:['browse'],description:'Read public user metadata. Set target_id to the user ID and limit to 1. The result appears in evidence and adds no candidate IDs. Cite the successful action ID as evidence.',benchmark_task:{candidate_category:task.candidate_category,loc:task.loc}},
-        {id:'get_item',modes:['browse'],description:'Public details for every fixed candidate are preloaded in candidate_pool.text as JSON. An unavailable record is explicitly marked. This tool rereads one candidate: set target_id to its exact candidate ID and limit to 1. Rank only the original candidates.'},
+        {id:'get_item',modes:['browse'],description:'Public candidate details are preloaded in candidate_pool.text; public details of reviewed history items are in behavior_events.payload.item. Unavailable records are explicitly marked. Reread any visible item by setting target_id to its exact item ID and limit to 1. Rank only the original candidates; historical items are evidence, not additional candidates.'},
         {id:'get_reviews',modes:['browse'],description:'Read all visible reviews for one entity. query is a JSON string containing exactly one of user_id, item_id, or review_id, for example {"user_id":"the user ID"}. Results appear in evidence; limit does not truncate the review list. Held-out target interactions are masked. Cite the successful action ID; review_id is source metadata.'}
-      ]}},protocol:{mode:'fixed_candidates',top_k:20,require_full_ranking:true,max_model_calls:4,
+      ]}},protocol:{mode:'fixed_candidates',delivery_scope:'offline_slate',top_k:20,require_full_ranking:true,max_model_calls:4,
         max_tool_calls:22,max_acquired_items:20,max_output_tokens:4096},run_meta:{scenario,task_id:taskId,synthetic:false}};
 }
 export function makeAcquire(bundle,task,trace,remoteTool=null){
@@ -35,9 +35,9 @@ export function makeAcquire(bundle,task,trace,remoteTool=null){
       }else throw new Error('unknown_benchmark_tool');
       if(remoteTool)result=await remoteTool(source,params);
       trace.push({tool:source,arguments:params,result,...(context?.phase?{phase:context.phase}:{})});
-      const fields=['item_id','name','stars','review_count','attributes','title','average_rating','rating_number','description','ratings_count','title_without_series'];
+      const fields=['item_id','name','stars','review_count','attributes','title','average_rating','rating_number','description','ratings_count','title_without_series','categories','address','city','state','postal_code','latitude','longitude','hours','is_open'];
       const publicResult=source==='get_item'&&result?Object.fromEntries(fields.filter(k=>k in result).map(k=>[k,result[k]])):result;
-      evidence.push({tool:source,arguments:params,result:publicResult,...(source==='get_item'?{projection:'official_RecAgent_item_fields_no_truncation'}:{})});
+      evidence.push({tool:source,arguments:params,result:publicResult,...(source==='get_item'?{projection:'shared_official_public_item_fields_no_truncation'}:{})});
       // Full raw tool result is retained in benchmark_tool_calls; avoid repeating it in both pool and receipt.
       if(source==='get_item'&&result&&candidates.has(result.item_id))items.push({id:result.item_id,title:result.title||result.name||result.title_without_series||'',text:JSON.stringify(publicResult),source_id:'get_item',content_type:'benchmark_item'});
     }
@@ -70,10 +70,17 @@ export async function preloadUserEvidence(input,acquire){
     if(user.user_id!==userId)throw Error('user_metadata_identity_mismatch');
     observation.user_state.records.push({id:`agentrecbench:user:${userId}`,kind:'fact',key:'public_user_metadata',value:structuredClone(user),scope:'user',scope_id:userId,status:'active',basis:'observed',source_channels:['independent_profile'],evidence_refs:[]});
   }
-  observation.behavior_events.push(...reviews.map((review,index)=>({id:`agentrecbench:review:${userId}:${index}:${review.review_id}`,user_id:userId,item_id:review.item_id,type:'comment',source_channels:['behavior','expression'],payload:{review:structuredClone(review)}})));
+  const items=new Map();
+  for(const itemId of new Set(reviews.map(review=>review.item_id))){
+    const response=await acquire({source_ids:['get_item'],mode:'browse',target_id:itemId,limit:1},{phase:'history_item_preload'});
+    const item=response.evidence[0].result;
+    if(item!==null&&item.item_id!==itemId)throw Error('history_metadata_identity_mismatch');
+    items.set(itemId,item??{item_id:itemId,metadata_status:'unavailable',reason:'Official get_item returned null.'});
+  }
+  observation.behavior_events.push(...reviews.map((review,index)=>({id:`agentrecbench:review:${userId}:${index}:${review.review_id}`,user_id:userId,item_id:review.item_id,type:'comment',source_channels:['behavior','expression'],payload:{review:structuredClone(review),item:structuredClone(items.get(review.item_id))}})));
   observation.environment.sources.find(source=>source.id==='get_user').initial_evidence={available:user!==null,location:'user_state.records'};
   observation.environment.sources.find(source=>source.id==='get_reviews').initial_evidence={visible_user_reviews:reviews.length,location:'behavior_events',complete:true};
-  input.run_meta={...input.run_meta,user_evidence:{policy:'all_official_visible_user_evidence_v1',preloaded_requests:2,user_available:user!==null,visible_review_count:reviews.length,omitted_reviews:0}};
+  input.run_meta={...input.run_meta,user_evidence:{policy:'all_official_visible_user_evidence_v2',preloaded_requests:2+items.size,user_available:user!==null,visible_review_count:reviews.length,history_item_count:items.size,unavailable_history_item_ids:[...items].filter(([,item])=>item.metadata_status==='unavailable').map(([id])=>id),omitted_reviews:0}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const {values:v}=parseArgs({options:{task:{type:'string'},bundle:{type:'string'},'tool-url':{type:'string'},output:{type:'string'},scenario:{type:'string'},'task-id':{type:'string'},variant:{type:'string',default:'full'}}});

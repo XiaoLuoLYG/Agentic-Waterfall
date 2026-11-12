@@ -15,7 +15,7 @@ class PublicMetadataChecks(unittest.TestCase):
         result={'items':[{'id':'1','text':'caption','secret_label':1}], 'scores':{'1':7,'hidden':99}, 'evidence':{'backend':'hot_big_only','query':''},'actual_requests':1}
         out=public_result(result,{'items':{'1':{'duration_ms':1000.0}}})
         self.assertEqual(out['scores'],{'1':7})
-        self.assertEqual(out['items'],[{'id':'1','source_id':'kuairec','content_type':'video','text':'caption','duration_ms':1000.0,'retrieval_score':7,'retrieval_backend':'hot_big_only','retrieval_query':''}])
+        self.assertEqual(out['items'],[{'id':'1','source':'kuairec','source_id':'kuairec','content_type':'video','title':'','text':'caption','url':'','duration_ms':1000.0,'retrieval_score':7,'retrieval_backend':'hot_big_only','retrieval_query':''}])
         self.assertEqual(out['evidence'],[{'backend':'hot_big_only','query':''}])
 
 if __name__=='__main__':unittest.main()
