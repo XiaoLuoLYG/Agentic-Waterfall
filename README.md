@@ -34,4 +34,20 @@ Start with the [replay guide](docs/reproduce.md). It links the frozen rankings a
 
 ![The replay protocol freezes a browsing history and asks each system for a ranking at the same checkpoint.](docs/assets/waterfall-dataset.png)
 
-`demos/` has the browser app and core. `experiments/` prepares inputs and runs evaluations. `methods/` has the baselines, including RecAgent's MIND-small adapter. `docs/` has results and setup instructions.
+## Repository layout
+
+```text
+examples/run-core.mjs          Small runnable core example
+demos/agentic-feed-site/
+  lib/waterfall/               Shared core, model and data adapters
+  public/                     Browser interface
+  scripts/                    Local demo and research service
+  drizzle/, db/               Hosted database schema and migrations
+demos/agentic-feed/            Compatibility imports used by research
+experiments/agentic-waterfall/ Input preparation, runners, scorers
+methods/agentic-waterfall/     Baseline methods and their adapters
+output/agentic-waterfall/      Frozen source dependencies for paper runs
+docs/                         Setup, results, figures, and research notes
+```
+
+The active core is `demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs`. The demo and current research adapters import it. The source files under `output/` preserve the adapters used by the archived experiments; those files are needed to reproduce the recorded runs. Data downloads and the leaderboard live in the [dataset repository](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset).
