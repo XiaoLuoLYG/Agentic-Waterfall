@@ -110,7 +110,7 @@ def report(old_root, final_root):
             assert before.lower() == after.lower() if key == "name" else before == after
     for rel in ("plan.json", "comparison/manifest.json", "comparison/analysis.json"):
         expected, = (expected for path, expected in new_plan["preserved"].items()
-                     if path.endswith(f"/{old_root.name}/{rel}"))
+                     if path.endswith(f"/{rel}"))
         assert digest(old_root / rel) == expected, rel
     assert digest(old_root / "comparison/input-lineage.json") == digest(final_root / "comparison/input-lineage.json")
     assert new_frozen["routing"]["agent_starter_count"] == 0

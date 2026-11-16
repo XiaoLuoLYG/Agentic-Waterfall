@@ -1,6 +1,6 @@
 # 复现 2026-11-11 结果
 
-从仓库根目录执行。离线复算需要对应的冻结榜单和评价数据。TF-IDF 与 SimBench 五法的评分材料可从 GitHub Release 取用。其余实验使用团队持有的原冻结归档和有权限的基准数据。 [当前结果](README.md) · [TF-IDF 回放包](https://github.com/XiaoLuoLYG/waterfall-anything/releases/tag/tfidf-benchmarks-20261110-v1)
+从仓库根目录执行。离线复算需要对应的冻结榜单和评价数据。TF-IDF 与 SimBench 五法的评分材料可从 GitHub Release 取用。其余实验使用团队持有的原冻结归档和有权限的基准数据。 [当前结果](README.md) · [TF-IDF 回放包](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset/releases/tag/waterfall-dataset-v1)
 
 ```sh
 repo=$(pwd -P)
@@ -100,21 +100,13 @@ jq '{n_users, mean: (.mean | {precision_at_10, ndcg_at_10})}' "$scratch/kuairec-
 
 按 [TF-IDF 基线说明](../../../../methods/agentic-waterfall/tfidf/README.md)下载并校验 `tfidf-benchmarks-20261110-v1.zip`。使用该说明中的 Python 环境运行 `reproduce.py`。脚本复算四个基准的 TF-IDF 榜单和分数，并从包里的其他四法冻结榜单、共同池标签复算 SimBench 五法得分。Waterfall 的五法共同池结果在 `simbench.waterfall-core79d`，预期 NDCG@20 为 0.7790。历史四法池与新旧 Waterfall 配对池各有自己的理想排序和分数。
 
-## RC8
+## Waterfall Dataset
 
-使用团队归档的 `waterfall-synthetic-50-rc8-20261111.zip`，SHA-256 为 `667efd83a7347197dd32c6adb3c8693fec2f2443114ca7fce88119d36bfd094d`。包内包含轨迹、双池、逐点评审和冻结协议。数据清单的许可字段为 `pending`。
+Download the score replay archive from the [Waterfall Dataset release](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset/releases/tag/waterfall-dataset-v1). Extract it and run the following commands.
 
 ```sh
-rc8_zip=/path/to/waterfall-synthetic-50-rc8-20261111.zip
-printf '%s  %s\n' 667efd83a7347197dd32c6adb3c8693fec2f2443114ca7fce88119d36bfd094d \
-  "$rc8_zip" | shasum -a 256 -c -
-unzip -p "$rc8_zip" waterfall-synthetic-50-rc8-20261111/evaluation/analysis.json | jq '.by_subset | map_values({
-  checkpoints,
-  methods: (.methods | map_values({complete_lists, mean_card_interest, mean_dcg_at_5, dcg_at_5_denominator})),
-  votes: .blind.votes_by_method
-})'
+cd waterfall-dataset-v1
+python3 replay.py
 ```
 
-读取逐点评审时，用 `user_id` 和 `round` 对齐 `comparison-cutoffs.json` 与 `evaluation/studies.jsonl.gz`。候选、匿名选项映射及评分按各点冻结。运行原方法还需要比较归档中的 `comparison/runtime/`、`baseline-code/` 和对应运行计划。公开基准的全量推理同样依赖原冻结运行计划、模型与检索环境，包含已验收的续跑产物。离线评分使用最终选定的输出和评审。
-
-MIND 的异机成绩与正在进行的适配实验沿各自记录核验。
+The script recomputes the paper's shared-shortlist results from the saved rankings and judgments, including the number of complete lists and blind votes. The full dataset archive contains the 50 trajectories, visible inputs, catalogs, and evaluation records. The public benchmark download guide also lists the MIND score inputs available for replay.

@@ -29,7 +29,7 @@ export class CloudStore {
   }
   async loadEvent(userId,{sessionId,referenceId,exposureId}) {
     this.userId=userId;
-    const query="SELECT sequence,CASE WHEN kind='run' THEN json_remove(payload,'$.result.trace','$.result.content_snapshot','$.result.input_snapshot') ELSE payload END AS payload FROM events WHERE user_id=? AND session_id=? AND (kind='session' OR (id=? AND kind IN ('run','comparison')) OR (kind='exposure' AND json_extract(payload,'$.exposure_id')=?)) ORDER BY sequence";
+    const query="SELECT sequence,CASE WHEN kind='run' THEN json_remove(payload,'$.result.trace','$.result.content_snapshot','$.result.input_snapshot') ELSE payload END AS payload FROM events WHERE user_id=? AND session_id=? AND (kind IN ('session','collection_profile') OR (id=? AND kind IN ('run','comparison')) OR (kind='exposure' AND json_extract(payload,'$.exposure_id')=?)) ORDER BY sequence";
     this.rows=(await this.db.prepare(query).bind(userId,typeof sessionId==='string'?sessionId:'',typeof referenceId==='string'?referenceId:'',typeof exposureId==='string'?exposureId:'').all()).results.map(row=>({...JSON.parse(row.payload),sequence:row.sequence}));
   }
   async add(kind,data={}) {
@@ -38,7 +38,7 @@ export class CloudStore {
     row.sequence=inserted.sequence;this.rows.push(row);return row;
   }
   session(sessionId) { const row=this.rows.find(row=>row.kind==='session'&&row.session_id===sessionId);check(row,'会话不存在，请重新开始',404);return row; }
-  state(sessionId) { this.session(sessionId);return this.rows.findLast(row=>row.session_id===sessionId&&row.kind==='state').state; }
+  state(sessionId) { this.session(sessionId);return this.rows.findLast(row=>row.session_id===sessionId&&['state','collection_profile'].includes(row.kind)&&row.state).state; }
   async record(kind,sessionId,data={}) { const s=this.session(sessionId);return this.add(kind,{...data,session_id:sessionId,participant_id:s.participant_id,record_kind:s.record_kind}); }
   async recordOnce(kind,sessionId,eventId,data={}) {
     const s=this.session(sessionId),row={...data,session_id:sessionId,participant_id:s.participant_id,record_kind:s.record_kind,id:eventId,kind,available_at:new Date().toISOString(),schema_version:VERSION};
@@ -48,7 +48,7 @@ export class CloudStore {
   }
   async recordIfCurrent(kind,sessionId,data,sequence,owner=null) {
     const s=this.session(sessionId),row={...data,session_id:sessionId,participant_id:s.participant_id,record_kind:s.record_kind,id:randomUUID(),kind,available_at:new Date().toISOString(),schema_version:VERSION};
-    const inserted=await this.db.prepare("INSERT INTO events (id,user_id,session_id,kind,comparison_id,payload) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM events WHERE user_id=? AND session_id=? AND sequence>? AND kind IN ('command','feedback')) AND (? IS NULL OR EXISTS (SELECT 1 FROM active_operations WHERE user_id=? AND owner=?)) RETURNING sequence").bind(row.id,this.userId,sessionId,kind,row.comparison_id||null,JSON.stringify(row),this.userId,sessionId,sequence,owner,this.userId,owner).first();
+    const inserted=await this.db.prepare("INSERT INTO events (id,user_id,session_id,kind,comparison_id,payload) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM events WHERE user_id=? AND session_id=? AND sequence>? AND kind IN ('command','feedback','feed_reset')) AND (? IS NULL OR EXISTS (SELECT 1 FROM active_operations WHERE user_id=? AND owner=?)) RETURNING sequence").bind(row.id,this.userId,sessionId,kind,row.comparison_id||null,JSON.stringify(row),this.userId,sessionId,sequence,owner,this.userId,owner).first();
     if(!inserted)return null;row.sequence=inserted.sequence;this.rows.push(row);return row;
   }
 }

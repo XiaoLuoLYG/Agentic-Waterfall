@@ -1,6 +1,6 @@
 # Agentic Waterfall 实验结果 · 2026-11-11
 
-Waterfall 的四项公开基准与 RC8 使用同一份 [Waterfall 核心](../../../../demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs)，源码 SHA-256 为 `79d87e6b8bbc031727a43526768aba4765afec0b44c3e9bf06b2a9c39dd03905`。公开基准使用各自的输入、适配器和评分协议。 [复现说明](REPRODUCE.md) · [11 月 5 日历史结果](../results-20261105/README.md)
+Waterfall 的四项公开基准与 Waterfall Dataset 的论文主实验使用同一份 [Waterfall 核心](../../../../demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs)，源码 SHA-256 为 `79d87e6b8bbc031727a43526768aba4765afec0b44c3e9bf06b2a9c39dd03905`。公开基准使用各自的输入、适配器和评分协议。 [复现说明](REPRODUCE.md) · [11 月 5 日历史结果](../results-20261105/README.md)
 
 ## 公开基准
 
@@ -23,7 +23,7 @@ Waterfall 的四项公开基准与 RC8 使用同一份 [Waterfall 核心](../../
 - **KuaiRec** 使用 1,129 人各自的资格集合。Waterfall 最多获取 100 个候选、交付 10 项，1 人未交榜计零。fixed BM25+BGE 的榜单沿用验收过的冻结检索版本。
 - **SimBench** 使用 42 名用户的 210 个事件。五法共用一个由冻结榜单合成的评分池，12,507 个事件与卡片配对由 DeepSeek-V4.1-Flash-1017 评分。Waterfall 在 195 个事件交满 20 项，210 个事件都进入分母。
 
-## RC8 自采合成集
+## Waterfall Dataset · 共享短名单
 
 50 条合成轨迹包含两个各 20 人的专项组和 10 人一般组，共 300 个评测点。每点的五法共用由可见画像、指令和行为从 C0 小池（10,446 张卡）筛出的 20 张起始卡。Waterfall 与 ClawRec 可以继续搜索 Cext 冻结大池（50,228 张卡）。RecAgent、i²Agent 和 fixed BM25+BGE 使用这 20 张卡排序。评分和盲选使用 DeepSeek-V4.1-Flash-1017，尚待真人校准。结果对应各方法在这些候选访问规则下的表现。
 

@@ -56,7 +56,7 @@ export function createTraceView() {
   }
   async function enter(id,type) {
     expandedGroups.clear();lastData=null;active=true;isAgent=type==='agent';$('#traceAgentToggle').hidden=!isAgent;currentSession=id;selected=id;$('.trace-live').hidden=false;revision=null;signature='';rows=[];pendingData=null;list.innerHTML='';status.hidden=false;status.textContent='正在读取轨迹…';select.disabled=true;const serial=++requestId;
-    try { const data=await get('/api/sessions');if(!active||serial!==requestId)return;const sessions=data.sessions || [];select.innerHTML=sessions.map(s=>`<option value="${escape(s.session_id)}">${escape(dateText(s.event_time))} ${escape(timeText(s.event_time))}${s.session_id===id?' · 当前会话':''}${s.record_kind==='synthetic'?' · 模拟用户':''}</option>`).join('');select.value=id;select.disabled=false;await refresh(); }
+    try { const data=await get('/api/sessions');if(!active||serial!==requestId)return;const sessions=data.sessions || [];select.innerHTML=sessions.map(s=>`<option value="${escape(s.session_id)}">${escape(dateText(s.event_time))} ${escape(timeText(s.event_time))}${s.session_id===id?' · 当前会话':''}${s.demo_mode==='sample'?' · 本地样例':s.record_kind==='synthetic'?' · 模拟用户':''}</option>`).join('');select.value=id;select.disabled=false;await refresh(); }
     catch(error) { if(active&&serial===requestId){status.textContent=`轨迹暂时无法读取：${error.message}`;select.disabled=false;} }
   }
   function leave(){active=false;requestId++;clearTimeout(timer);hide();}

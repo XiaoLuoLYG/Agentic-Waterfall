@@ -22,35 +22,20 @@
 
 新轮跨百炼与原网关，两边的回执模型名均为 `DeepSeek-V4.1-Flash-1017`。最终计入汇总的评分答复中，百炼 1,145 条，原网关 5,299 条。服务端行为是否一致未经控制验证。评分由模型完成。前后变化同时涉及候选协议、运行失败恢复与服务端点，不能据此估计候选协议单独造成的变化。
 
-## 离线核验
+## Recalculate the scores
 
-从仓库根目录执行。需要团队保存的冻结数据、两轮评测归档和新轮各次续跑归档，按原目录名放在同一归档目录。代码、校验值和汇总指标在仓库内，归档、权重和密钥由有权限的运行方提供。
+Download the score replay archive from the [Waterfall Dataset release](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset/releases/tag/waterfall-dataset-v1). From the extracted directory, run `python3 replay.py --protocol independent-recall`. This uses the saved rankings and model judgments and reports how many checkpoints each method could score.
 
-```sh
-repo=$(pwd -P)
-archive=/path/to/output/agentic-waterfall
-src=experiments/agentic-waterfall/synthetic-collection
-old="$archive/comparison-20261110-dual-50-rc8"
-new="$archive/comparison-20261112-independent-recall-gateway-final-retry"
-(cd "$archive" && shasum -a 256 -c "$repo/docs/research/agentic-waterfall/synthetic-independent-recall/SHA256SUMS")
-python3 "$src/review-results.py" "$old" "$new"
-node --test "$src/api.test.mjs" "$src/bge-recovery.test.mjs" \
-  experiments/agentic-waterfall/shared/request-gate.test.mjs
-```
+With the complete original run archives, `review-results.py SHARED_RUN INDEPENDENT_RUN` also verifies both runs and all intermediate retries. Keep the retry directories next to the original final run so the audit can follow their lineage. `SHA256SUMS` uses the archive labels `waterfall-dataset/shared-shortlist`, `waterfall-dataset/independent-recall`, `waterfall-dataset/inputs`, and `waterfall-dataset/catalog`.
 
-复算脚本只读存档，逐一核对两轮各 1,500 份方法记录的哈希、同一截点输入、模型配置和失败去向，并按分组复算 DCG@5、兴趣均分及盲选票。正式汇总包含行为歧义和交互修订子集。运行时的预算、候选来源和状态链验证由 `comparison.mjs` 执行。
+## Run the experiment code
 
-## 运行与回归测试
+Use Node.js 22.13 or later. The frozen source adapters are in `output/agentic-waterfall/comparison-20261106-synthetic-10x20-all-methods-v4/`. The candidate policy and runner live in `experiments/agentic-waterfall/synthetic-collection/`.
 
-使用 Node.js 22。将冻结基线目录 `comparison-20261106-synthetic-10x20-all-methods-v4` 放在仓库下的 `output/agentic-waterfall/`，或在该位置建立指向团队归档的符号链接。它包含固定版本的 `source/site`、`author-methods` 和 BGE 权重清单。Python 环境和模型位置见 [BM25+BGE 的依赖说明](../../../../methods/agentic-waterfall/fixed-retrieval/README.md)。RecAgent 还需要 `experiments/agentic-waterfall/agentrecbench/.venv`（含 `tiktoken==0.12.0`）、[固定的上游实现](../results-20261111/REPRODUCE.md#agentrecbench) 和 `methods/agentic-waterfall/recagent/cache/` 下匹配哈希的 tokenizer 缓存。
+For a full model run, set up the frozen input manifests and the original model and catalog configuration. The fixed-retrieval Python environment goes in `methods/agentic-waterfall/fixed-retrieval/.venv`, with the model weights at the paths in the frozen BGE manifest. Set up [the BGE dependencies](../../../../methods/agentic-waterfall/fixed-retrieval/README.md) and [the RecAgent dependencies](../../../../methods/agentic-waterfall/recagent/README.md). Fetch the pinned i²Agent source with `python3 methods/agentic-waterfall/i2agent/fetch_author.py`, then copy the resulting `model.py` to `author-methods/i2agent/source-snapshot/` in the frozen adapter directory.
 
 ```sh
-dataset="$archive/synthetic-single-card-20261110-starter-repair/rc8"
-node "$src/check-dual-dataset.mjs" "$dataset"
-AWF_LOCAL_BGE_CHECK=1 node --test "$src/"*.test.mjs \
-  experiments/agentic-waterfall/shared/request-gate.test.mjs
+node --test experiments/agentic-waterfall/synthetic-collection/*.test.mjs
 ```
 
-完整测试使用小规模夹具、真实本地 BGE 和 RecAgent 代码，模型 API 响应用夹具模拟。数据清单和历史续跑清单保留了原运行的绝对路径。恢复历史运行时须保留原路径，或在副本中按实际位置重建清单引用并验证哈希。旧轮归档、模型/数据版本和先前文件的 SHA-256 由运行入口检查。
-
-[正式运行入口](../../../../experiments/agentic-waterfall/synthetic-collection/run-main-comparison.mjs)会发起付费请求。参数为旧轮目录、新输出目录和百炼密钥文件，或 `--gateway CONFIG INTERRUPTED_RUN_DIR PAUSED_MIND_DIR`。网关分支要求 MIND 已停止且请求已排空。续跑应写入新的目录，`--retry-failed` 会重跑失败点和同一方法之后依赖其状态的截点，并使相关盲选评分重新生成。
+The [original run entry](../../../../experiments/agentic-waterfall/synthetic-collection/run-main-comparison.mjs) sends model requests. Its archived gateway continuation uses the same configured model service and existing run state. The score replay archive works with Python alone.

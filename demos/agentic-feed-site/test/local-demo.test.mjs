@@ -26,6 +26,60 @@ async function account(demo,name,recordKind='synthetic'){
  return {api,cookie,user:identity.user,sid:(await created.json()).session.session_id};
 }
 
+test('credential-free sample uses the shared core and never calls a remote model or content source', async t => {
+ const directory = mkdtempSync(resolve(tmpdir(), 'waterfall-sample-'));
+ const originalFetch = globalThis.fetch;
+ const remoteCalls = [];
+ t.mock.method(globalThis, 'fetch', (url, options) => {
+  if (String(url).startsWith('http://127.0.0.1:')) return originalFetch(url, options);
+  remoteCalls.push(String(url));
+  throw Error('sample mode made an external request');
+ });
+ let demo;
+ try {
+  demo = await createLocalDemo({port: 0, dataDir: directory, configFile: '', modelOverride: '', modelKey: ''});
+  const health = await (await client(demo)('/api/health')).json();
+  const config = await (await client(demo)('/api/config')).json();
+  assert.equal(health.mode, 'sample');
+  assert.equal(config.mode, 'sample');
+  assert.equal(config.model, null);
+  assert.deepEqual(config.sources.map(source => source.id), ['local']);
+  assert.equal(config.research.fullComparison, false);
+  const a = await account(demo, 'sample-reader', 'human');
+  const recent = await (await a.api('/api/me')).json();
+  assert.equal(recent.sessionInfo.session.record_kind, 'synthetic');
+  await a.api('/api/settings', {settings: {interests: ['自然']}});
+  const first = await a.api('/api/run', {sessionId: a.sid, command: '', trigger: 'prefetch'});
+  assert.equal(first.status, 200);
+  const {run} = await first.json();
+  assert.equal(run.mode, 'sample');
+  assert.equal(run.runtime_source_sha256, '79d87e6b8bbc031727a43526768aba4765afec0b44c3e9bf06b2a9c39dd03905');
+  assert.equal(run.slate[0].source_item_id, 'nature');
+  assert.ok(run.trace.every(step => step.origin === 'scripted_fixture' && !step.requested_model));
+  const saved = await (await a.api('/api/interaction', {sessionId: a.sid, type: 'command', text: '我已经买了电脑，想学怎么用', eventTime: new Date().toISOString()})).json();
+  const reply = await a.api('/api/run', {sessionId: a.sid, command: '我已经买了电脑，想学怎么用', commandId: saved.id, trigger: 'command'});
+  assert.equal(reply.status, 200);
+  const changed = await reply.json();
+  assert.equal(changed.run.slate[0].source_item_id, 'computer-guide');
+  assert.ok(changed.state.entries.some(entry => entry.target === 'goal' && entry.value === 'completed'));
+  const trace = await (await a.api(`/api/trace?sessionId=${a.sid}`)).json();
+  const receipts = trace.decisions.flatMap(decision => decision.execution_results);
+  assert.ok(['acquire', 'update_state', 'recommend'].every(kind => receipts.some(receipt => receipt.kind === kind && receipt.status === 'success')));
+  const file = await a.api('/api/export');
+  assert.equal(file.status, 200);
+  assert.match(file.headers.get('content-disposition') || '', /^attachment; filename="waterfall-data-\d{4}-\d{2}-\d{2}\.json\.gz"$/);
+  assert.equal(file.headers.get('x-unfinished-studies'), '0');
+  const exported = JSON.parse(gunzipSync(Buffer.from(await file.arrayBuffer())));
+  assert.equal(exported.manifest.data_origin, 'synthetic');
+  assert.equal(exported.manifest.eligible_for_analysis, false);
+  assert.deepEqual(exported.tables.model_calls, []);
+  assert.deepEqual(remoteCalls, []);
+ } finally {
+  await demo?.close();
+  rmSync(directory, {recursive: true, force: true});
+ }
+});
+
 test('local demo uses real configuration without startup calls or fabricated accounts, and reopens owned history',async t=>{
  const s=setup();let demo,calls=0;const backend={async info(){calls++;throw Error('not called at startup');}};
  const originalFetch=globalThis.fetch;
@@ -101,18 +155,18 @@ test('normal model acquisition uses configured model and the same durable datase
   calls++;
   if(new URL(address).hostname==='hn.algolia.com')return Response.json({hits:[1,2,3].map(n=>({objectID:String(n),title:'Offline public '+n,story_text:'Offline source body '+n}))});
   assert.equal(String(address),'https://model.example/v1/chat/completions');
-  const payload=JSON.parse(options.body);assert.equal(payload.model,model);assert.equal(options.headers.Authorization,'Bearer private-fixture-key');
+  const payload=JSON.parse(options.body);assert.equal(payload.model,model);assert.equal(options.headers.Authorization,'Bearer private-override-key');
   const observation=JSON.parse(payload.messages[1].content).observation,items=observation.environment.candidate_pool;
   const action=items.length?{action_id:'recommend',kind:'recommend',arguments:{ordered_item_ids:[items[0].id],delivery:'replace_pending'}}:{action_id:'acquire',kind:'acquire',arguments:{source_ids:['hackernews'],query:'public',mode:'search',content_types:['text'],limit:1}};
   return Response.json({choices:[{message:{content:JSON.stringify({decision_id:observation.decision_id,actions:[{...action,evidence_refs:[],depends_on:[]}]})}}]});
  });
  try{
-  demo=await createLocalDemo(s.options);assert.equal(calls,0);const a=await account(demo,'dataset-owner');
+  demo=await createLocalDemo({...s.options,modelKey:'private-override-key'});assert.equal(calls,0);const a=await account(demo,'dataset-owner');
   assert.equal((await a.api('/api/settings',{settings:{sources:['hackernews'],contentTypes:['text']}})).status,200);
-  const response=await a.api('/api/run',{sessionId:a.sid,command:'public'});assert.equal(response.status,200,await response.clone().text());assert.equal((await response.json()).run.slate.length,1);
+  const response=await a.api('/api/run',{sessionId:a.sid,command:'public'});assert.equal(response.status,200,await response.clone().text());const {run}=await response.json();assert.equal(run.slate.length,1);assert.equal(run.mode,'llm');assert.equal(run.runtime_source_sha256,'79d87e6b8bbc031727a43526768aba4765afec0b44c3e9bf06b2a9c39dd03905');
   const status=await (await a.api('/api/dataset/status?sessionId='+a.sid)).json();assert.equal(status.archive_ready,true);assert.equal(status.contents,3);assert.equal(status.storage,'sqlite+files');
   const exported=await a.api('/api/export?sessionId='+a.sid+'&format=dataset');assert.equal(exported.status,200);
-  const data=JSON.parse(gunzipSync(Buffer.from(await exported.arrayBuffer())));assert.equal(data.tables.tool_calls.find(call=>call.results?.length===3).results.length,3);assert.ok(data.tables.contents.some(item=>item.summary==='Offline source body 3'));assert.ok(!JSON.stringify(data).includes('private-fixture-key'));
+  const data=JSON.parse(gunzipSync(Buffer.from(await exported.arrayBuffer())));assert.equal(data.tables.tool_calls.find(call=>call.results?.length===3).results.length,3);assert.ok(data.tables.contents.some(item=>item.summary==='Offline source body 3'));assert.ok(!JSON.stringify(data).includes('private-override-key'));
   assert.ok(readdirSync(resolve(s.dataDir,'artifacts')).length>0);
   await demo.close();demo=await createLocalDemo(s.options);
   const restored=await client(demo,a.cookie)('/api/export?sessionId='+a.sid+'&format=dataset');assert.equal(restored.status,200);assert.deepEqual(JSON.parse(gunzipSync(Buffer.from(await restored.arrayBuffer()))).tables.contents,data.tables.contents);

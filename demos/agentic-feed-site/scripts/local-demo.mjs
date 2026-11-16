@@ -51,27 +51,29 @@ function database(path){
  return {native,db:{prepare(sql){return {bind(...args){const statement=native.prepare(sql);return {async first(){return statement.get(...args)||null;},async all(){return {results:statement.all(...args)};},async run(){statement.run(...args);return {success:true};}};}};}}};
 }
 
-function configuration(file,override){
- if(!file)throw Error('Set MODEL_CONFIG_FILE to the existing private model/source configuration');
+function configuration(file,override,key){
+ if(!file)return null;
  let raw;
- try{const path=resolve(file);if(!lstatSync(path).isFile()||lstatSync(path).isSymbolicLink())throw Error();raw=JSON.parse(readFileSync(path,'utf8'));if(!raw||typeof raw!=='object'||Array.isArray(raw)||!modelConfig(raw,undefined,override))throw Error();}
+ try{const path=resolve(file);if(!lstatSync(path).isFile()||lstatSync(path).isSymbolicLink())throw Error();raw=JSON.parse(readFileSync(path,'utf8'));if(!raw||typeof raw!=='object'||Array.isArray(raw)||!modelConfig({...raw,apiKey:key||raw.apiKey},undefined,override))throw Error();}
  catch{throw Error('Local model/source configuration is unreadable or invalid');}
  return raw;
 }
 
 function closeServer(server){return new Promise((accept,reject)=>{if(!server?.listening)return accept();server.close(error=>error?reject(error):accept());server.closeIdleConnections();});}
 
-/** Serves the production API and public files; startup never searches or calls a model/backend. */
-export async function createLocalDemo({port=Number(process.env.LOCAL_DEMO_PORT||4196),dataDir=process.env.LOCAL_DEMO_DATA_DIR||resolve(siteRoot,'../local-demo-data'),configFile=process.env.MODEL_CONFIG_FILE,modelOverride=process.env.OPENAI_MODEL,backend=null,backendUrl=process.env.RESEARCH_BACKEND_URL,backendToken=process.env.RESEARCH_BACKEND_TOKEN}={}){
+/** Serves the production API and public files without making startup requests. */
+export async function createLocalDemo({port=Number(process.env.LOCAL_DEMO_PORT||4196),dataDir=process.env.LOCAL_DEMO_DATA_DIR,configFile=process.env.MODEL_CONFIG_FILE,modelOverride=process.env.OPENAI_MODEL,modelKey=process.env.WATERFALL_API_KEY,backend=null,backendUrl=process.env.RESEARCH_BACKEND_URL,backendToken=process.env.RESEARCH_BACKEND_TOKEN}={}){
  assert(Number.isInteger(port)&&port>=0&&port<=65535,'Invalid LOCAL_DEMO_PORT');
- const raw=configuration(configFile,modelOverride),dataRoot=resolve(dataDir),dbPath=resolve(dataRoot,'preview.sqlite');
- if(!backend&&(backendUrl||backendToken))createRemoteResearchBackend({url:backendUrl,token:backendToken});
+ const raw=configuration(configFile,modelOverride,modelKey),sampleMode=raw===null;
+ const dataRoot=resolve(dataDir||resolve(siteRoot,sampleMode?'.sites-runtime/local-demo-sample':'../local-demo-data')),dbPath=resolve(dataRoot,'preview.sqlite');
+ const info={mode:sampleMode?'sample':'llm',model:sampleMode?null:modelOverride||raw.recommendationModelName||raw.modelName,storage:'sqlite+files'};
+ if(!sampleMode&&!backend&&(backendUrl||backendToken))createRemoteResearchBackend({url:backendUrl,token:backendToken});
  const unlock=lockDirectory(dataRoot);let native,server;
  try{
   const connection=database(dbPath);native=connection.native;
   const objectDirectory=resolve(dataRoot,'artifacts'),objects=createPrivateObjectStore(objectDirectory);
   objects.head=async key=>{const path=resolve(objectDirectory,hash(String(key))+'.gz');if(!existsSync(path))return null;const stat=lstatSync(path);if(!stat.isFile()||stat.isSymbolicLink())throw Error('Private object must be a regular file');return {size:stat.size};};
-  const env={DB:connection.db,WATERFALL_CONFIG:JSON.stringify(raw),OPENAI_MODEL:modelOverride,RESEARCH_BACKEND:backend,RESEARCH_BACKEND_URL:backendUrl,RESEARCH_BACKEND_TOKEN:backendToken,RESEARCH_ARCHIVE:objects,DATASET_ARCHIVE:objects,RESEARCH_STORAGE:'sqlite+files',BILIBILI_RELAY_TOKEN:process.env.BILIBILI_RELAY_TOKEN};
+  const env={DB:connection.db,WATERFALL_CONFIG:raw?JSON.stringify(raw):undefined,WATERFALL_API_KEY:modelKey,OPENAI_MODEL:modelOverride,RESEARCH_BACKEND:backend,RESEARCH_BACKEND_URL:backendUrl,RESEARCH_BACKEND_TOKEN:backendToken,RESEARCH_ARCHIVE:objects,DATASET_ARCHIVE:objects,RESEARCH_STORAGE:'sqlite+files',BILIBILI_RELAY_TOKEN:process.env.BILIBILI_RELAY_TOKEN};
   const publicRoot=realpathSync(resolve(siteRoot,'public'));
   const send=(res,status,value,type='application/json; charset=utf-8')=>{res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':csp});res.end(value);};
   server=createServer(async(req,res)=>{
@@ -80,13 +82,13 @@ export async function createLocalDemo({port=Number(process.env.LOCAL_DEMO_PORT||
     if(![`127.0.0.1:${actualPort}`,`localhost:${actualPort}`].includes(req.headers.host))return send(res,403,JSON.stringify({error:'Local host required'}));
     const base=`http://${req.headers.host}`;
     const url=new URL(req.url,base);
-    if(url.pathname==='/api/health')return send(res,req.method==='GET'?200:405,JSON.stringify({status:'ok',mode:'llm',model:modelOverride||raw.recommendationModelName||raw.modelName,storage:'sqlite+files'}));
+    if(url.pathname==='/api/health')return send(res,req.method==='GET'?200:405,JSON.stringify({status:'ok',...info}));
     if(url.pathname.startsWith('/api/')){
      let size=0;const chunks=[];
      for await(const chunk of req){size+=chunk.length;if(size>2097152)return send(res,413,JSON.stringify({error:'Request too large'}));chunks.push(chunk);}
      const body=chunks.length?Buffer.concat(chunks):undefined;
      const request=new Request(base+url.pathname+url.search,{method:req.method,headers:req.headers,...(body?{body}:{})});
-     const response=await handleApi(request,env);res.writeHead(response.status,Object.fromEntries(response.headers));return res.end(Buffer.from(await response.arrayBuffer()));
+     const response=await handleApi(request,env,{sampleMode});res.writeHead(response.status,Object.fromEntries(response.headers));return res.end(Buffer.from(await response.arrayBuffer()));
     }
     if(!['GET','HEAD'].includes(req.method))return send(res,405,'Method not allowed','text/plain; charset=utf-8');
     let pathname;try{pathname=decodeURIComponent(url.pathname);}catch{return send(res,400,'Invalid path','text/plain; charset=utf-8');}
@@ -101,7 +103,7 @@ export async function createLocalDemo({port=Number(process.env.LOCAL_DEMO_PORT||
   await new Promise((accept,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',()=>{server.off('error',reject);accept();});});
   let closed=false;
   const close=async()=>{if(closed)return;closed=true;try{await closeServer(server);native.close();}finally{unlock();}};
-  return {server,close,info:{port:server.address().port,db_path:dbPath,mode:'llm',model:modelOverride||raw.recommendationModelName||raw.modelName,storage:'sqlite+files'}};
+  return {server,close,info:{port:server.address().port,db_path:dbPath,...info}};
  }catch(error){try{await closeServer(server);native?.close();}finally{unlock();}throw error;}
 }
 
