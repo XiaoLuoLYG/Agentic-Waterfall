@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 oh_modules/
 .hvigor/
 .idea/
@@ -15,3 +15,11 @@ local.properties
 *.cer
 **/aiphone_provider_config.json
 **/waterfall_config.local.json
+
+/demos/local-demo-data/
+**/.venv
+**/__pycache__/
+**/*.pyc
+
+/output/agentic-waterfall/comparison-20261106-synthetic-10x20-all-methods-v4/author-methods/i2agent/source-snapshot/
+/output/agentic-waterfall/comparison-20261106-synthetic-10x20-all-methods-v4/author-methods/fixed-retrieval/weights

@@ -1,4 +1,4 @@
-import {check,exact,hash,id,comparisonAssignment} from './core.mjs';
+import {check,exact,hash,id,comparisonAssignment,collectionProfile} from './core.mjs';
 import {createHash} from 'node:crypto';
 import {researchPublicInput} from './research-input.mjs';
 import {RESEARCH_METHODS as METHODS,validResearchMethods,sameResearchMethods} from './research-methods.mjs';
@@ -15,7 +15,7 @@ export function publicStudy(store,study){
  if(!study)return null;
  if(legacy(study))return {id:study.id,session_id:study.session_id,legacy:true,mode:'blind',created_at:study.available_at,stopped:researchStopped(store,study.id),completed:answers(store,study).length?1:0,total:1,items:[],pairs:[],annotation_policy:'evaluation_only'};
  const saved=answers(store,study),byQuestion=new Map(saved.map(row=>[row.question_id,row]));
- return {id:study.id,session_id:study.session_id,mode:study.mode,created_at:study.available_at,annotation_policy:'evaluation_only',stopped:researchStopped(store,study.id),
+ return {id:study.id,session_id:study.session_id,mode:study.mode,created_at:study.available_at,collection_profile_id:study.collection_profile_id||null,collection_subset:study.collection_subset||'general',annotation_policy:'evaluation_only',stopped:researchStopped(store,study.id),
   items:study.items.map(question=>({id:question.id,item:question.item,answered:byQuestion.has(question.id)})),
   pairs:study.pairs.map(pair=>({id:pair.id,A:pair.A,B:pair.B,unavailable:pair.unavailable,same_content:pair.same_content,answered:byQuestion.has(pair.id)})),
   method_count:(study.method_ids||METHODS).length,incomplete_methods:(study.method_ids||METHODS).filter(id=>!methodResults(study).some(method=>method.method_id===id&&method.status==='submitted'&&method.slate?.length===5)).length,completed:saved.length,total:study.mode==='rating'?study.items.length:study.pairs.length};
@@ -99,7 +99,7 @@ export async function readResearchArtifact(archive,ref,userId){
  const data=await bytes(await archive.get(ref.key));verifyGzip(data,ref);return data;
 }
 
-export async function handleResearch({req,url,store,user,send,body,snapshot,backend,archive,storage='d1+r2'}){
+export async function handleResearch({req,url,store,user,send,body,snapshot,config=null,backend,archive,storage='d1+r2'}){
  if(!url.pathname.startsWith('/api/research/'))return false;
  const path=url.pathname,input=req.method==='POST'?await body(req):{sessionId:url.searchParams.get('sessionId')};
  check(typeof input.sessionId==='string','会话无效');
@@ -109,9 +109,12 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
  const context=async info=>{
   const raw=await snapshot(session.session_id),history=historyOf(store),public_input=researchPublicInput(raw,history,user.id);
   const sources=(info?.sources||[]).filter(source=>!user.settings.sources.length||user.settings.sources.includes(source.id)).map(source=>({...source,modalities:source.modalities.filter(type=>user.settings.contentTypes.includes(type))})).filter(source=>source.modalities.length);
+  const persona=collectionProfile(store,session.session_id),expressions=public_input.evidence.filter(row=>row.type==='command'||row.type==='feedback'&&row.value==='comment'&&row.text);
+  check(persona.subset!=='behavior_ambiguity'||!expressions.length,'行为歧义场景的共同历史不能含用户指令或文字需求',409);
+  check(persona.subset!=='interactive_revision'||expressions.length,'请先在发现页表达一次具体需求，再开始交互修改评测',409);
   const unavailable_sources=user.settings.sources.filter(id=>!sources.some(source=>source.id===id));
   const frozen={...raw,unavailable_sources,state:{version:1,...public_input.provided_profile,memory:'',context:''},candidate_pool:[],previous_slate_ids:[],available_sources:sources,original_source_catalog:raw.available_sources||[]};delete frozen.hash;frozen.hash=hash(frozen);
-  return {snapshot:frozen,history,public_input,sources,unavailable_sources,fingerprint:hash({public_input,settings:user.settings,sources,backend:{methods:info?.methods,model:info?.model,catalog_sha256:info?.catalog_sha256,source_sha256:info?.source_sha256}})};
+  return {snapshot:frozen,history,public_input,sources,unavailable_sources,collection_profile_id:persona.profile_id,collection_subset:persona.subset,fingerprint:hash({...(persona.profile_id?{collection_profile_id:persona.profile_id}:{}),public_input,settings:user.settings,sources,backend:{methods:info?.methods,model:info?.model,catalog_sha256:info?.catalog_sha256,source_sha256:info?.source_sha256}})};
  };
  const payload=prep=>({job_id:prep.id,user_id:user.id,session_id:session.session_id,mode:prep.mode,context_hash:prep.context_hash,method_ids:prep.methods,snapshot:prep.snapshot,history:prep.history,data_origin:prep.snapshot.qa_environment?.data_origin==='test_only'?'test_only':session.record_kind==='human'?'human':'synthetic'});
  const finish=async(prep,job)=>{
@@ -125,8 +128,8 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
   const data=await bytes(await backend.artifact(prep.id));verifyGzip(data,job.artifact);
   const key=`research/${user.id}/${prep.id}.json.gz`,artifact_ref={...job.artifact,key,job_id:prep.id};
   try{await archive.put(key,data,{httpMetadata:{contentType:'application/gzip'},customMetadata:{sha256:job.artifact.sha256,user_id:user.id,session_id:session.session_id,job_id:prep.id,context_hash:prep.context_hash}});}catch{check(false,'原始记录归档失败，尚未创建评测，请稍后重试',503);}
-  const cleanSummary={run_id:summary.run_id,artifact_version:summary.artifact_version,data_origin:payload(prep).data_origin,methods:smallMethods(summary.methods),environment:summary.environment,costs:summary.costs};
-  const record={track:'evaluation',mode:prep.mode,preparation_id:prep.id,protocol:'awf-evaluation/4.0',method_ids:[...prep.methods],annotation_policy:'evaluation_only',context_hash:prep.context_hash,public_input:prep.public_input,summary:cleanSummary,artifact_ref,...questions(cleanSummary,prep.mode)};
+  const cleanSummary={run_id:summary.run_id,artifact_version:summary.artifact_version,data_origin:payload(prep).data_origin,methods:smallMethods(summary.methods),environment:{...summary.environment,collection_subset:prep.collection_subset||'general',reference_trajectory:'shared_prefix'},costs:summary.costs};
+  const record={track:'evaluation',mode:prep.mode,preparation_id:prep.id,collection_profile_id:prep.collection_profile_id||null,collection_subset:prep.collection_subset||'general',protocol:'awf-evaluation/4.0',method_ids:[...prep.methods],annotation_policy:'evaluation_only',context_hash:prep.context_hash,public_input:prep.public_input,summary:cleanSummary,artifact_ref,...questions(cleanSummary,prep.mode)};
   check(Buffer.byteLength(JSON.stringify(record))<900000,'评测摘要过大',502);
   const study=await store.recordOnce('research_study',session.session_id,`research-study:${prep.id}`,record);return {study:publicStudy(store,study)};
  };
@@ -170,11 +173,11 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
   const study=store.rows.findLast(row=>row.kind==='research_study'&&row.session_id===session.session_id&&(!mode||row.mode===mode));send(200,{study:publicStudy(store,study),full_comparison_available:!!backend&&!!archive});return true;
  }
  if(req.method==='POST'&&path==='/api/research/prepare'){
-  exact(input,['sessionId','mode']);check(user.type==='human','本轮只开放人工评测');check(['rating','blind'].includes(input.mode),'评测类型无效');
+  exact(input,['sessionId','mode']);check(['rating','blind'].includes(input.mode),'评测类型无效');
   const info=await capabilities(),shared=await context(info),ready=!!info&&!!archive?.put&&!!archive?.get&&shared.sources.length>0;
   const previous=store.rows.findLast(row=>row.kind==='research_preparation'&&row.session_id===session.session_id&&row.mode===input.mode&&row.fingerprint===shared.fingerprint&&row.backend_ready===ready&&!store.rows.some(job=>job.kind==='research_job'&&job.preparation_id===row.id));
   const preparation=previous||await store.record('research_preparation',session.session_id,{track:'evaluation',user_id:user.id,mode:input.mode,captured_at:shared.snapshot.captured_at,context_hash:hash(shared.snapshot),backend_ready:ready,methods:info?.methods||[],deferred_methods:info?.methods?METHODS.filter(id=>!info.methods.includes(id)):[],sources:shared.sources,backend_info:info,...shared});
-  const visible=Object.fromEntries(['id','mode','captured_at','context_hash','public_input','methods','deferred_methods','sources','unavailable_sources','backend_ready'].map(key=>[key,preparation[key]]));send(previous?200:201,{preparation:visible});return true;
+  const visible=Object.fromEntries(['id','mode','captured_at','context_hash','public_input','methods','deferred_methods','sources','unavailable_sources','backend_ready','collection_subset'].map(key=>[key,preparation[key]]));send(previous?200:201,{preparation:visible});return true;
  }
  if(req.method==='POST'&&path==='/api/research/curate'){
   exact(input,['sessionId','studyId','disposition']);check(['keep','exclude','pending'].includes(input.disposition),'数据保留状态无效');
@@ -188,7 +191,7 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
   if(!researchStopped(store,study.id))await store.recordOnce('research_stop',study.session_id,`research-stop:${study.id}`,{track:'evaluation',study_id:study.id,reason:'participant_stop',legacy:legacy(study),missing_answers_preserved:true,annotation_policy:'evaluation_only'});send(201,{study:publicStudy(store,study)});return true;
  }
  if(req.method==='POST'&&path==='/api/research/start'){
-  exact(input,['sessionId','mode','preparationId']);check(typeof input.preparationId==='string','请先查看并确认本组共同输入',400);check(['rating','blind'].includes(input.mode),'评测类型无效');check(user.type==='human','本轮只开放人工评测');
+  exact(input,['sessionId','mode','preparationId']);check(typeof input.preparationId==='string','请先查看并确认本组共同输入',400);check(['rating','blind'].includes(input.mode),'评测类型无效');
   const prep=store.rows.find(row=>row.kind==='research_preparation'&&row.id===input.preparationId&&row.session_id===session.session_id&&row.user_id===user.id&&row.mode===input.mode);check(prep,'共同输入准备记录不存在',404);
   const existing=store.rows.find(row=>row.kind==='research_study'&&row.preparation_id===prep.id);if(existing){send(200,{study:publicStudy(store,existing)});return true;}
   check(prep.backend_ready&&backend&&archive?.put,'参评系统计算后端或私有归档暂不可用',503);
@@ -196,12 +199,32 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
   if(!already){const info=await capabilities();check(info,'参评系统计算后端暂不可用',503);const current=await context(info);check(current.fingerprint===prep.fingerprint,'共同输入已变化，请重新查看并确认',409);await store.recordOnce('research_job',session.session_id,`research-job:${prep.id}`,{track:'evaluation',mode:prep.mode,preparation_id:prep.id,status:'queued',context_hash:prep.context_hash});}
   let job;try{job=await backend.start(payload(prep));}catch{check(false,'参评系统任务连接失败，可重新连接同一任务',503);}const response=await finish(prep,job);send(response.study?201:202,response);return true;
  }
- check(req.method==='POST'&&['/api/research/present','/api/research/answer','/api/research/interaction'].includes(path),'地址不存在',404);
+ check(req.method==='POST'&&['/api/research/present','/api/research/answer','/api/research/interaction','/api/research/simulate'].includes(path),'地址不存在',404);
  const study=store.rows.find(row=>row.kind==='research_study'&&row.id===input.studyId&&row.session_id===session.session_id);
  check(study,'评测不存在',404);
  check(!publicStudy(store,study).stopped,'本次评测已结束，不能继续提交答案',409);
  const question=(study.mode==='rating'?study.items:study.pairs).find(question=>question.id===input.questionId);check(question,'题目不存在',404);
  const comparison_id=answerKey(study,question.id);
+ const simulated=path==='/api/research/simulate';let simulationAttempt=null;
+ if(simulated){
+  exact(input,['sessionId','studyId','questionId']);check(user.type==='agent','只有Agent账号可以模拟评价',403);check(config,'Agent评价需要配置模型',503);
+  check(!store.rows.some(row=>row.kind==='evaluation'&&row.comparison_id===comparison_id),'本题已经作答',409);
+  const record=store.rows.find(row=>row.kind==='collection_profile'&&row.id===study.collection_profile_id&&row.session_id===session.session_id);
+  check(record?.collection_profile.hidden_profile,'本组没有冻结的隐藏画像，请补充后重新准备评测',409);
+  const messages=[{role:'system',content:'模拟该人物对匿名内容的当前兴趣。只依据隐藏人物设定、截至当前的共同历史和实际提供的卡片材料判断，不猜系统身份，不把未来阶段当成已经发生。内容不足以判断时选择无法判断。评分只用于评价，不产生浏览反馈。评分任务只输出JSON {"rating":0到3,"status":"rated"}，无法判断输出{"rating":null,"status":"unable"}；盲选任务只输出{"choice":"A"或"B"或"tie"或"neither"或"insufficient"}。同一列表不能选胜方，交付不足只能insufficient。'},
+   {role:'user',content:JSON.stringify({mode:study.mode,hidden_profile:record.collection_profile.hidden_profile,public_input:study.public_input,content:study.mode==='rating'?question.item:{A:question.A,B:question.B,same_content:question.same_content,unavailable:question.unavailable}})}];
+  simulationAttempt=await store.record('agent_attempt',session.session_id,{track:'evaluation',study_id:study.id,question_id:question.id,collection_profile_id:record.id,simulated:true,model:config.model,messages,annotation_policy:'evaluation_only'});
+  try{
+   const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${config.key}`},body:JSON.stringify({model:config.model,...config.requestParameters,messages,response_format:{type:'json_object'}}),signal:config.signal?AbortSignal.any([config.signal,AbortSignal.timeout(config.timeoutMs)]):AbortSignal.timeout(config.timeoutMs)});
+   check(response.ok,`模型接口返回HTTP ${response.status}`,502);const result=await response.json(),raw=result.choices?.[0]?.message?.content;let decision;
+   try{decision=JSON.parse(raw);}catch{check(false,'模拟评价没有返回有效JSON',502);}
+   exact(decision,study.mode==='rating'?['rating','status']:['choice']);
+   if(study.mode==='rating')check(decision.status==='rated'&&Number.isInteger(decision.rating)&&decision.rating>=0&&decision.rating<=3||decision.status==='unable'&&decision.rating===null,'模拟评分无效',502);
+   else check(['A','B','tie','neither','insufficient'].includes(decision.choice)&&(!question.unavailable||decision.choice==='insufficient')&&(!question.same_content||['tie','neither','insufficient'].includes(decision.choice)),'模拟选择无效',502);
+   Object.assign(input,decision);
+   await store.record('agent_decision',session.session_id,{track:'evaluation',study_id:study.id,question_id:question.id,attempt_id:simulationAttempt.id,collection_profile_id:record.id,model:config.model,provider_response_model:result.model||null,usage:result.usage||null,messages,raw_output:raw,decision,simulated:true,annotation_policy:'evaluation_only'});
+  }catch(error){await store.record('agent_failure',session.session_id,{track:'evaluation',study_id:study.id,question_id:question.id,attempt_id:simulationAttempt.id,error:error.message,simulated:true,annotation_policy:'evaluation_only'});throw error;}
+ }
  if(path==='/api/research/interaction'){
   exact(input,['sessionId','studyId','questionId','event','itemId']);
   check(['open','return'].includes(input.event),'事件类型无效');
@@ -219,8 +242,8 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
   if(!present)await store.record('research_presentation',session.session_id,{track:'evaluation',study_id:study.id,question_id:question.id,comparison_id,content_id:shown.id,displayed_ids:[shown.id],presentation_hash:hash(publicItem(shown)),measurement:'client_attested_half_visible_not_full_reading',annotation_policy:'evaluation_only'});
   send(present?200:201,{saved:true});return true;
  }
- check(user.type==='human','本轮只开放人工评测');
- check(store.rows.some(row=>row.kind==='research_presentation'&&row.comparison_id===comparison_id),'请先查看内容再作答',409);
+ check(user.type==='human'||simulated,'Agent请使用单题模拟评价入口',403);
+ check(simulated||store.rows.some(row=>row.kind==='research_presentation'&&row.comparison_id===comparison_id),'请先查看内容再作答',409);
  check(!store.rows.some(row=>row.kind==='evaluation'&&row.comparison_id===comparison_id),'本题已经作答',409);
  let label;
  if(study.mode==='rating'){
@@ -235,7 +258,7 @@ export async function handleResearch({req,url,store,user,send,body,snapshot,back
   label={choice:input.choice,label_type:'blind_choice'};
  }
  try{await store.record('evaluation',session.session_id,{track:'evaluation',study_id:study.id,question_id:question.id,comparison_id,...label,
-  origin:session.record_kind==='human'?'human':'synthetic',simulated:session.record_kind!=='human',context_hash:study.context_hash,
+  origin:session.record_kind==='human'?'human':'synthetic',simulated:session.record_kind!=='human',annotation_source:simulated?'model':'participant',agent_attempt_id:simulationAttempt?.id||null,context_hash:study.context_hash,
   rubric_version:study.mode==='rating'?'interest-0-3/v1':'list-preference/v1',...(study.mode==='rating'?{content_id:question.item.id}:{}),
   evaluated_at:new Date().toISOString(),annotation_policy:'evaluation_only',label_use:'evaluation_only_never_controller_input'});}
  catch(error){if(/unique/i.test(error.message))check(false,'本题已经作答',409);throw error;}

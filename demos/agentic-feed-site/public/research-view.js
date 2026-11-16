@@ -11,7 +11,7 @@ function sharedInput(input){
  return `<h3>共同原始画像</h3><pre tabindex="0">${json(input?.provided_profile)}</pre><h3>正常浏览与近期指令（共 ${evidence.length} 条）</h3><p>最近指令（最多 5 条）：${commands.length?commands.map(event=>esc(event.text)).join('；'):'暂无'}</p><details><summary>查看完整行为输入</summary><pre tabindex="0">${json(evidence)}</pre></details>`;
 }
 
-export function createResearchView({api,getSession,notice,onPreparing}){
+export function createResearchView({api,getSession,getUser=()=>null,notice,onPreparing}){
  const root=document.querySelector('#researchView');let mode='rating',study=null,preparation=null,pending=null,question=null,busy=false,outbound=null,generation=0,observer=null,pollTimer=null,active=false,error='',backendReady=true;
  const shown=new Map();
  root.innerHTML='<header class="section-header"><h1 id="researchTitle">内容评分</h1><p id="researchIntro"></p></header><p class="research-policy">评分与选择只用于研究评价，不会改变你的推荐。</p><p id="researchProgress" role="status" aria-live="polite"></p><section id="researchPreparation" class="research-input" hidden aria-label="本组共同输入"></section><div id="researchContent"></div><div id="researchChoices" class="research-choices"></div><div class="research-controls"><button id="researchStart" type="button" class="primary">查看本组输入</button><button id="researchConfirm" type="button" class="primary" hidden>确认输入并开始</button><button id="researchStop" type="button" class="quiet" hidden>结束并保留记录</button></div>';
@@ -54,6 +54,7 @@ export function createResearchView({api,getSession,notice,onPreparing}){
    el('researchContent').innerHTML=preview(question.item);
    el('researchChoices').innerHTML=['0 · 不感兴趣','1 · 一般','2 · 喜欢','3 · 很喜欢'].map((label,value)=>`<button class="secondary" type="button" data-rating="${value}">${label}</button>`).join('')+'<button class="quiet" type="button" data-rating="unable">无法判断</button>';
   }
+  if(getUser()?.type==='agent')el('researchChoices').innerHTML='<button class="primary" type="button" data-simulate="true">'+(blind?'让 Agent 选择本题':'让 Agent 评价本题')+'</button>';
   observer=new IntersectionObserver(()=>recordVisible(),{threshold:[.5]});for(const card of el('researchContent').querySelectorAll('.research-card'))observer.observe(card);
   requestAnimationFrame(()=>recordVisible());
  }
@@ -107,7 +108,7 @@ export function createResearchView({api,getSession,notice,onPreparing}){
   const label=mode==='blind'?{choice:button.dataset.choice}:{rating:button.dataset.rating==='unable'?null:Number(button.dataset.rating),status:button.dataset.rating==='unable'?'unable':'rated'};
   try{
    await recordVisible();if(!current(token,sid,expectedMode))return;
-   const result=await request('answer',{...reference,...label});if(current(token,sid,expectedMode))study=result.study;
+   const result=await request(button.dataset.simulate?'simulate':'answer',button.dataset.simulate?reference:{...reference,...label});if(current(token,sid,expectedMode))study=result.study;
   }catch(cause){if(current(token,sid,expectedMode)){error=cause.message;notice(error,true);}}
   finally{if(current(token,sid,expectedMode)){busy=false;render();}}
  });
@@ -129,15 +130,16 @@ function curationControls(study){
 
 export function createResearchDataView({api,getSession,notice}){
  const root=document.querySelector('#dataView');let generation=0,active=false,studies=[];
- root.innerHTML='<header class="section-header"><h1>我的数据</h1><p>这里只显示本人账户的输入、答案和评测记录。完成或明确结束一组后，可查看对应方法与原始记录。</p></header><p id="dataStatus" role="status" aria-live="polite"></p><section id="dataStorage" class="research-input" hidden></section><div id="dataStudies"></div><section id="dataDetails" class="research-input" hidden></section><div id="dataExport"></div><button id="dataRefresh" type="button" class="secondary">刷新记录</button>';
+ root.innerHTML='<header class="section-header"><h1>我的数据</h1><a class="export-link" href="/api/export" download>导出账户数据 .json.gz</a><p>这里只显示本人账户的输入、答案和评测记录。完成或明确结束一组后，可查看对应方法与原始记录。</p></header><p id="dataStatus" role="status" aria-live="polite"></p><section id="dataStorage" class="research-input" hidden></section><div id="dataStudies"></div><section id="dataDetails" class="research-input" hidden></section><div id="dataExport"></div><button id="dataRefresh" type="button" class="secondary">刷新记录</button>';
  const el=id=>root.querySelector('#'+id);
  const current=(token,sid)=>active&&token===generation&&getSession()?.session_id===sid;
  function render(result){
+  const sample=getSession()?.demo_mode==='sample';
   studies=result.studies||[];el('dataStatus').textContent=studies.length?`共 ${studies.length} 组评测记录`:'还没有评测记录。';
-  el('dataStorage').hidden=!result.storage;el('dataStorage').innerHTML=result.storage?`<h2>${result.storage.kind==='sqlite+files'?'本机私有存储':result.storage.kind==='d1+r2'?'云端私有存储':'数据保存与下载'}</h2><p>可在这里查看本账号所有会话的评测；完整记录自动保存在${result.storage.kind==='sqlite+files'?'本机':'云端'}，完成或结束一组后可下载。参评系统评测的本组输入与运行归档也会保存在云端计算后端。排除仅影响正式数据包，不删除原始记录。人工组默认待审核，测试与合成组默认排除。</p><p>顶部“导出数据”只包含当前会话，历史组在下方单独下载。</p>`:'';
+  el('dataStorage').hidden=!result.storage;el('dataStorage').innerHTML=sample?'<h2>本机私有存储</h2><p>浏览、反馈和推荐轨迹自动保存在本机，可下载。</p>':result.storage?`<h2>${result.storage.kind==='sqlite+files'?'本机私有存储':result.storage.kind==='d1+r2'?'云端私有存储':'数据保存与下载'}</h2><p>可在这里查看本账号所有会话的评测；完整记录自动保存在${result.storage.kind==='sqlite+files'?'本机':'云端'}，完成或结束一组后可下载。参评系统评测的本组输入与运行归档也会保存在云端计算后端。排除仅影响正式数据包，不删除原始记录。人工组默认待审核，测试与合成组默认排除。</p><p>导出账户数据包含所有会话和已完成或结束的评测。侧栏可导出当前会话，历史组在下方单独下载。</p>`:'';
   el('dataStudies').innerHTML=studies.map(study=>{const unable=(study.answers||[]).filter(answer=>[answer.status,answer.grade_status,answer.choice].some(value=>['unable','insufficient'].includes(value))).length;return `<article class="research-data-group"><h2>${study.legacy?'旧版盲选':study.mode==='blind'?'匿名盲选':'内容评分'} · ${esc(study.created_at)}</h2><p>已答 ${esc(study.completed)} / ${esc(study.total)} · 未答 ${Math.max(0,study.total-study.completed)} · 无法判断 ${unable} · ${study.stopped?'已结束':study.sealed?'已完成':'进行中'}</p><details><summary>本组输入</summary><pre tabindex="0">${json(study.input)}</pre></details><details><summary>本人答案</summary><pre tabindex="0">${json(study.answers)}</pre></details>${curationControls(study)}${study.can_stop&&!study.sealed?`<button class="secondary" type="button" data-study-stop="${esc(study.id)}">${study.legacy?'结束旧版评测并保留未答':'结束并保留未答'}</button>`:''}${study.sealed?`<button class="secondary" type="button" data-study-details="${esc(study.id)}">查看方法结果与下载</button>`:'<p class="research-policy">完成或结束本组后显示方法对应关系及原始记录下载。</p>'}</article>`;}).join('');
   const href=downloadUrl(result.export_url),sessions=[...new Set([getSession()?.session_id,...studies.map(study=>study.session_id)].filter(Boolean))];
-  el('dataExport').innerHTML=(href&&studies.every(study=>study.sealed)?`<p><a class="export-link" href="${esc(href)}" download>下载当前会话数据</a></p>`:'')+sessions.map(sid=>`<p><a class="export-link" href="/api/export?sessionId=${esc(encodeURIComponent(sid))}&amp;format=release" download>下载正式数据包 · ${sid===getSession()?.session_id?'当前会话':esc(sid)}</a></p>`).join('')+'<p>正式数据包只包含明确保留的已完成或已结束人工组；未保留任何组时不会生成。</p>';
+  el('dataExport').innerHTML=(href&&studies.every(study=>study.sealed)?`<p><a class="export-link" href="${esc(href)}" download>下载当前会话数据</a></p>`:'')+(sample?'':sessions.map(sid=>`<p><a class="export-link" href="/api/export?sessionId=${esc(encodeURIComponent(sid))}&amp;format=release" download>下载正式数据包 · ${sid===getSession()?.session_id?'当前会话':esc(sid)}</a></p>`).join('')+'<p>正式数据包只包含明确保留的已完成或已结束人工组；未保留任何组时不会生成。</p>');
 
  }
  async function enter(){

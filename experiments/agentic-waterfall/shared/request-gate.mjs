@@ -34,13 +34,14 @@ export function createRequestGate({endpoint,key},{directory=process.env.WATERFAL
   }finally{rmdirSync(lock);}
  }
  return {
-  async admit({deadline:callDeadline=Infinity}={}){
+  async admit({deadline:callDeadline=Infinity,deferCooldown=false}={}){
    if(callDeadline!==Infinity&&(!Number.isSafeInteger(callDeadline)||callDeadline<0))throw Error('request_gate_invalid_deadline');
    const started=now(),hardDeadline=started+300000;
    let deadline=started+90000,observedCooldown=started;
    for(;;){
     const result=await withState(state=>{
      const time=now();if(!Number.isSafeInteger(time)||time<0)throw Error('request_gate_clock_invalid');
+     if(deferCooldown===true&&state.cooldown_until>time)return {cooldownUntil:state.cooldown_until};
      state.starts=state.starts.filter(x=>x>time-WINDOW_MS);
      const limit=state.requests_per_minute??45,spacing=Math.ceil(WINDOW_MS/limit);
      const ready=Math.max(state.cooldown_until,state.starts.length?state.starts.at(-1)+spacing:0,state.starts.length>=limit?state.starts[state.starts.length-limit]+WINDOW_MS:0);
@@ -57,6 +58,7 @@ export function createRequestGate({endpoint,key},{directory=process.env.WATERFAL
      state.starts.push(time);return {save:true,time};
     });
     if(result.save)return result.time;
+    if(result.cooldownUntil!==undefined)return result;
     await wait(Math.min(result.delay,1000));
    }
   },
@@ -67,7 +69,8 @@ export function createRequestGate({endpoint,key},{directory=process.env.WATERFAL
   async cooldown(seconds=60){
    const until=now()+Math.ceil(Math.max(60,seconds)*1000);
    if(!Number.isSafeInteger(until)||until<0)throw Error('request_gate_invalid_cooldown');
-   await withState(state=>{state.cooldown_until=Math.max(state.cooldown_until,until);return {save:true};});
+   const result=await withState(state=>{state.cooldown_until=Math.max(state.cooldown_until,until);return {save:true,cooldownUntil:state.cooldown_until};});
+   return result.cooldownUntil;
   }
  };
 }

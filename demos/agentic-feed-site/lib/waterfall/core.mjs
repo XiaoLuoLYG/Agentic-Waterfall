@@ -25,21 +25,36 @@ export class Store {
     this.rows.push(row); return row;
   }
   session(sessionId) { const s = this.rows.find(r => r.kind === 'session' && r.session_id === sessionId); check(s, '会话不存在，请重新开始', 404); return s; }
-  state(sessionId) { this.session(sessionId); return this.rows.findLast(r => r.session_id === sessionId && r.kind === 'state').state; }
+  state(sessionId) { this.session(sessionId); return this.rows.findLast(r => r.session_id === sessionId && ['state','collection_profile'].includes(r.kind)&&r.state).state; }
   record(kind, sessionId, data = {}) { const s = this.session(sessionId); return this.add(kind, { ...data, session_id: sessionId, participant_id: s.participant_id, record_kind: s.record_kind }); }
 }
 
-export async function startSession(store, input, user = null, previousState = null, previousSessionId = null) {
-  exact(input, ['consent', 'recordKind', 'interests', 'profile']); check(input.consent === true, '请先阅读并确认本地记录说明');
+export const COLLECTION_SUBSETS = ['general','behavior_ambiguity','interactive_revision'];
+export function normalizeCollectionProfile(value, origin) {
+  exact(value, ['public_profile','hidden_profile','subset']);
+  const subset=value.subset ?? 'general';check(COLLECTION_SUBSETS.includes(subset),'采集场景无效');
+  check(origin!=='human'||subset==='general','两个研究子集只用于生成的Agent数据');
+  return {schema_version:'awf-persona/1.0',origin,public_profile:short(value.public_profile ?? '', '公开画像'),hidden_profile:short(value.hidden_profile ?? '', '隐藏画像',8000),subset};
+}
+export function collectionProfile(store, sessionId) {
+  const session=store.session(sessionId),row=store.rows.findLast(r=>r.session_id===sessionId&&r.kind==='collection_profile');
+  const persona=row?.collection_profile || normalizeCollectionProfile({},session.record_kind==='human'?'human':'synthetic');
+  return {...persona,subset:session.record_kind==='human'?'general':persona.subset,profile_id:row?.id || null,public_profile:store.rows.findLast(r=>r.session_id===sessionId&&['state','collection_profile'].includes(r.kind)&&r.state)?.state.profile || ''};
+}
+
+export async function startSession(store, input, user = null, previousState = null, previousSessionId = null, {sampleMode=false}={}) {
+  exact(input, ['consent', 'recordKind', 'interests', 'profile', 'collectionProfile']); check(input.consent === true, '请先阅读并确认本地记录说明');
   check(['human', 'synthetic'].includes(input.recordKind), '请选择人工记录或合成演示');
   check(Array.isArray(input.interests) && input.interests.length <= (user ? 60 : 3) && input.interests.every(x => typeof x === 'string' && x.trim().length > 0 && x.length <= 40 && (user || INTERESTS.includes(x))), '兴趣格式无效');
-  const profile = short(input.profile || '', '个人画像');
+  const persona=normalizeCollectionProfile(input.collectionProfile ?? {public_profile:previousState?.profile || input.profile || ''},input.recordKind==='human'?'human':'synthetic');
+  const profile=persona.public_profile;
   const sessionId = id();
-  const s = await store.add('session', { session_id: sessionId, participant_id: user?.id || id(), user_id: user?.id || null, record_kind: input.recordKind, initial_settings: user?.settings ? structuredClone(user.settings) : null, consent_version: 'local-v2', event_time: new Date().toISOString() });
+  const s = await store.add('session', { session_id: sessionId, participant_id: user?.id || id(), user_id: user?.id || null, record_kind: input.recordKind, ...(sampleMode?{demo_mode:'sample'}:{}), initial_settings: user?.settings ? structuredClone(user.settings) : null, consent_version: 'local-v2', event_time: new Date().toISOString() });
   const entries=structuredClone(previousState?.entries || []).map(entry=>entry.lifetime==='session'&&!entry.origin_session_id?{...entry,origin_session_id:previousSessionId}:entry);
   if(previousState?.context)entries.push({type:'update_state',target:'context',value:previousState.context,scope:'session',topic:'会话情境',lifetime:'session',origin:'session_archive',origin_session_id:previousSessionId,evidence_ids:[]});
-  const state = { version: 1, profile: previousState?.profile || profile, memory: previousState?.memory || '', context: '', interests: [...new Set(input.interests.map(x => x.trim()))], entries };
-  await store.record('state', sessionId, { state, reason: 'cold_start' }); return s;
+  const state = { version: 1, profile, memory: previousState?.memory || '', context: '', interests: [...new Set(input.interests.map(x => x.trim()))], entries };
+  await store.record('state', sessionId, { state, reason: 'cold_start' });
+  await store.record('collection_profile',sessionId,{track:'evaluation_private',annotation_policy:'evaluation_only',collection_profile:persona,state});return s;
 }
 
 export function inputSnapshot(store, sessionId, command, settings = null, availableSources = null, pending = null, renderedIds = []) {

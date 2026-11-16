@@ -18,6 +18,7 @@ test('approved ledger limits, failed-call accounting and experiment quotas', asy
   await mkdir(join(root,'shared'));await mkdir(join(root,'mind'));
   await copyFile(new URL('./model-client.mjs',import.meta.url),join(root,'shared/model-client.mjs'));
   await copyFile(new URL('./request-gate.mjs',import.meta.url),join(root,'shared/request-gate.mjs'));
+  await copyFile(new URL('./model-response.mjs',import.meta.url),join(root,'shared/model-response.mjs'));
   const config=join(root,'fake-config.json');
   await writeFile(config,JSON.stringify({apiKey:'test-only',apiBase:'https://example.invalid',modelName:'test-only'}));
   process.env.MODEL_CONFIG_FILE=config;

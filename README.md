@@ -1,28 +1,53 @@
-# Waterfall Anything
+# Agentic Waterfall
 
-`research` 是默认分支，保存 Agentic Waterfall 研究材料和本地网页 Demo。
+Tell the feed, "I already bought the camera. Show me how to film from the sidelines." Waterfall uses the request, recent browsing, and what it knows about you to decide what to search for, what to move up in the feed, and what to remember.
 
-- [研究主方案](docs/research/agentic-waterfall/01-研究主方案.md)与[输入输出协议](docs/research/agentic-waterfall/02-输入输出与数据流.md)
-- [本地研究 Demo](demos/agentic-feed/README.md)：Node.js 22；个人数据和模型密钥不包含在仓库中
-- [实验结果与复现说明 · 2026-11-11](docs/research/agentic-waterfall/results-20261111/README.md)
-- [ACL 论文材料](paper/acl-2027/README.md)
+[Waterfall Dataset](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset) · [Results and replay](docs/reproduce.md)
 
-以下为产品分支介绍：
+![The Waterfall agent looks up filming tips, updates the feed, and keeps the user's camera in mind.](docs/assets/waterfall-method.png)
 
-独立的 Waterfall 内容发现模块，目标是作为 HyperAgent Hive 中可在编译时接入或移除的能力。
+## Run the demo
 
-| 分支 | 内容 |
-| --- | --- |
-| **rust** | 项目约定与未来 Rust 替换范围，本次未实现 Rust 代码 |
-| [hos](https://github.com/XiaoLuoLYG/waterfall-anything/tree/hos) | 从 DigitalMate 抽取的 ETS / ArkTS 模块及回归测试 |
-| [release](https://github.com/XiaoLuoLYG/waterfall-anything/tree/release) | 只承载 Waterfall 的最小 HarmonyOS 应用 |
+Use Node.js 22.13 or newer.
 
-HarmonyOS 版本保留推荐、关键词搜索、多来源与 RSS、P/S/E 调度、偏好反馈、收藏、阅读与媒体、评论、分享、语音和阅读 AI。宿主不再依赖 DM 的账号、主聊天、分身或其他业务。
+```sh
+git clone https://github.com/XiaoLuoLYG/waterfall-anything.git
+cd waterfall-anything
+node demos/agentic-feed-site/scripts/local-demo.mjs
+```
 
-模块入口为 `WaterfallView` 与 `WaterfallHostConfig`。宿主提供模型/来源配置、独立存储范围和可选记忆投影；模块负责内容状态与平台界面。首版只支持编译时插拔，不含远程插件安装。接入、后台落盘和退出约定见 [接口约定](docs/hive-contract.md)。
+Open `http://127.0.0.1:4196`. Make a local account, choose an interest, and browse the feed. Give the feed a new instruction and open the trace to see the next decision. The sample catalog runs without API keys. It uses scripted decisions so you can try the feed and the same action runtime locally.
 
-来源：DigitalMate `release_20260818` 的 `f70603d0db5939a3a68d23176686c18d1ecb31f3`，宿主脚手架参考 HyperAgent `56ae4eb56414955dd3c3065e4788cc4dcb357708`。两个来源均为私有仓库，本仓库保持私有，未新设开源许可证。
+To use your own model and content providers, see the [demo setup](demos/agentic-feed-site/README.md).
 
-已通过 347 项主机 Hypium 兼容测试、239 项 Node 回归、HarmonyOS 完整应用构建，以及拔出模块后的宿主构建。测试边界见 [hos 验证记录](https://github.com/XiaoLuoLYG/waterfall-anything/blob/hos/docs/validation.md)。真机签名/安装的当前状态单独记录在 [release 真机记录](https://github.com/XiaoLuoLYG/waterfall-anything/blob/release/docs/device-validation.md)。
+## Run the core
 
-Rust 后续替换内容处理、来源调度和排序核心，保持现有宿主契约与用户行为。平台 UI、语音与分享仍由 HarmonyOS 层承担；本分支目前不含运行库、FFI 或占位算法。
+```sh
+node examples/run-core.mjs
+```
+
+The example searches two sample cards and recommends the one about filming. It prints the IDs and action receipts so you can see what the runtime did. The browser demo and benchmark runners load the same [Waterfall core](demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs).
+
+## Reproduce the paper results
+
+Start with the [replay guide](docs/reproduce.md). It links the frozen rankings and labels used to recompute scores, the public datasets, and the commands to run the benchmark adapters.
+
+![The replay protocol freezes a browsing history and asks each system for a ranking at the same checkpoint.](docs/assets/waterfall-dataset.png)
+
+## Repository layout
+
+```text
+examples/run-core.mjs          Small runnable core example
+demos/agentic-feed-site/
+  lib/waterfall/               Shared core, model and data adapters
+  public/                     Browser interface
+  scripts/                    Local demo and research service
+  drizzle/, db/               Hosted database schema and migrations
+demos/agentic-feed/            Compatibility imports used by research
+experiments/agentic-waterfall/ Input preparation, runners, scorers
+methods/agentic-waterfall/     Baseline methods and their adapters
+output/agentic-waterfall/      Frozen source dependencies for paper runs
+docs/                         Setup, results, figures, and research notes
+```
+
+The active core is `demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs`. The demo and current research adapters import it. The source files under `output/` preserve the adapters used by the archived experiments; those files are needed to reproduce the recorded runs. Data downloads and the leaderboard live in the [dataset repository](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset).

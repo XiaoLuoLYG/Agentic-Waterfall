@@ -17,7 +17,7 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
       if (step.phase === 'unified') {
         const canonicalInput=step.input||null;let modelInput=null;try{if(step.messages?.[1]?.content)modelInput=JSON.parse(step.messages[1].content);}catch{modelInput=step.messages?.[1]?.content||null;}
         const output=step.parsed_output||null;
-        decisions.push({decision_id:`${owner.id}:unified:${decisions.length+1}`,phase:'unified',input:snapshot,canonical_input:canonicalInput,input_sha256:canonicalInput?hash(canonicalInput):null,model_input:modelInput,model_call:{messages:step.messages||null,requested_model:step.requested_model||null,provider_response_model:step.provider_response_model||null,request_settings:step.request_settings||null,usage:step.usage||null,finish_reason:step.finish_reason||null,started_at:step.started_at||null,completed_at:step.completed_at||null},raw_output:step.content??null,parsed_output:output,validation:{valid:!step.error&&!(step.execution_results||[]).some(result=>result.status==='failed'),errors:(step.execution_results||[]).filter(result=>result.status==='failed').map(result=>result.error)},normalized_output:step.normalized_output||output,dispatch_groups:step.dispatch_groups||[],execution_results:step.execution_results||[],state_after:step.state_after||null,recorded_at:step.at||owner.available_at,run_id:failed?null:owner.id,failure_id:failed?owner.id:null});
+        decisions.push({decision_id:`${owner.id}:unified:${decisions.length+1}`,phase:'unified',...(step.origin==='scripted_fixture'?{decision_source:'sample'}:{}),input:snapshot,canonical_input:canonicalInput,input_sha256:canonicalInput?hash(canonicalInput):null,model_input:modelInput,model_call:{messages:step.messages||null,requested_model:step.requested_model||null,provider_response_model:step.provider_response_model||null,request_settings:step.request_settings||null,usage:step.usage||null,finish_reason:step.finish_reason||null,started_at:step.started_at||null,completed_at:step.completed_at||null},raw_output:step.content??null,parsed_output:output,validation:{valid:!step.error&&!(step.execution_results||[]).some(result=>result.status==='failed'),errors:(step.execution_results||[]).filter(result=>result.status==='failed').map(result=>result.error)},normalized_output:step.normalized_output||output,dispatch_groups:step.dispatch_groups||[],execution_results:step.execution_results||[],state_after:step.state_after||null,recorded_at:step.at||owner.available_at,run_id:failed?null:owner.id,failure_id:failed?owner.id:null});
         continue;
       }
       if (!['plan', 'rank', 'rank_retry', 'failure'].includes(step.phase)) continue;
@@ -63,13 +63,13 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
     if (!trace.some(x => x.phase === 'failure')) decisions.push({ decision_id:`${input.id}:incomplete`, phase:'incomplete', input:input.input_snapshot, input_sha256:hash(input.input_snapshot), raw_output:null, parsed_output:null, validation:{valid:null,errors:[]}, dispatch_groups:[], execution_results:[], state_after:null, recorded_at:input.available_at, failure_id:null, run_id:null, status:'interrupted_or_in_progress' });
   }
   decisions.sort((a,b) => (a.recorded_at || '').localeCompare(b.recorded_at || ''));
-  const eventKinds = new Set(['session','enter','leave','scroll','exposure','open','return','feedback','command','response','feed_update','settings_change']);
-  const eventLog = rows.filter(r => eventKinds.has(r.kind) && (!r.track || r.track === 'feed')).map(r => ({
+  const eventKinds = new Set(['session','enter','leave','scroll','exposure','open','return','feedback','command','response','feed_update','feed_reset','settings_change']);
+  const eventLog = rows.filter(r => eventKinds.has(r.kind) && (!r.track || r.track === 'feed'||r.kind==='feed_reset')).map(r => ({
     id:r.id, type:r.kind === 'feedback' ? r.value : r.kind === 'session' ? 'session_start' : r.kind,
     occurred_at:r.event_time || r.available_at, available_at:r.available_at, item_id:r.content_id || null, exposure_id:r.exposure_id || null,
     payload:{ ...r }
   }));
-  const blindIds=new Set(rows.filter(r=>r.kind==='comparison' && r.study_protocol==='blind-next-v1').map(r=>r.id));
+  const blindIds=new Set(rows.filter(r=>r.kind==='comparison').map(r=>r.id));
   const blindEventLog=rows.filter(r=>r.track==='blind' && (r.kind==='blind_presentation' && blindIds.has(r.comparison_id) || r.kind==='evaluation' && blindIds.has(r.comparison_id) || ['open','return'].includes(r.kind) && blindIds.has(r.reference_id))).map(r=>{
     const {mapping,assignment_probability,...payload}=r;
     return { id:r.id, type:r.kind==='evaluation'?'blind_choice':r.kind==='blind_presentation'?'blind_presentation':`blind_${r.kind}`, occurred_at:r.event_time || r.available_at, available_at:r.available_at, item_id:r.content_id || null, payload };
@@ -85,7 +85,7 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
   });
   const ids = new Set();
   for (const row of inputs.values()) { for (const e of row.input_snapshot.behavior || []) ids.add(e.id); for (const c of row.input_snapshot.recent_commands || []) ids.add(c.id); }
-  for (const comparison of rows.filter(r=>r.kind==='comparison' && r.study_protocol==='blind-next-v1')) for (const eventId of comparison.history_event_ids || []) ids.add(eventId);
+  for (const comparison of rows.filter(r=>r.kind==='comparison')) for (const eventId of comparison.history_event_ids || []) ids.add(eventId);
   const referencedContext = contextRows.filter(r => r.session_id !== session.session_id && ((ids.has(r.id) && ['feedback','exposure','open','return','command'].includes(r.kind) && r.track === 'feed') || (r.kind === 'input' && r.track === 'feed' && ids.has(r.input_snapshot?.id))));
   const runRefs = new Set(referencedContext.map(r => r.reference_id).filter(Boolean));
   const contextRuns = contextRows.filter(r => r.session_id !== session.session_id && r.kind === 'run' && r.track === 'feed' && runRefs.has(r.id));
@@ -93,7 +93,7 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
   referencedContext.push(...contextRuns);
   return {
     schema_version:'awf-collection/1.0', exported_at:exportedAt,
-    metadata:{ episode_id:session.session_id, user_id:session.user_id, session_id:session.session_id, data_origin:session.record_kind === 'human' ? 'human' : 'synthetic', eligible_for_analysis:null, started_at:session.event_time, ended_at:null, exported_at:exportedAt },
+    metadata:{ episode_id:session.session_id, user_id:session.user_id, session_id:session.session_id, ...(session.demo_mode?{demo_mode:session.demo_mode}:{}), data_origin:session.record_kind === 'human' ? 'human' : 'synthetic', eligible_for_analysis:null, started_at:session.event_time, ended_at:null, exported_at:exportedAt },
     run_meta:{ io_contract:'demo-controller-two-phase/0.2', collection_protocol:{ version:'awf-collection/1.0', exposure_rule:'foreground + focused, at least 50% visible for 1 second; immediate on card interaction', external_time:'open and return only; external playback is not measured', simulated_exposure:'simulated action, not actual viewing' }, note:'Original model calls and demo actions are retained as executed; no hypothetical actions or evaluation labels are added.' },
     environment_snapshot:{ source_catalog:inputs.size ? [...inputs.values()].at(-1).input_snapshot.available_sources || [] : [], corpus:[...corpus.values()], note:'Content and source snapshots are also preserved per decision.' },
     initial_snapshot:{ user_state:rows.find(r=>r.kind==='state')?.state || null, settings:session.initial_settings ?? null },
@@ -107,13 +107,13 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
     research_presentations:rows.filter(row=>row.kind==='research_presentation'),
     research_events:rows.filter(row=>row.kind==='research_event'),
     content_rating_metrics:researchMetrics(rows),
-    decisions, event_log:eventLog, blind_event_log:blindEventLog, dialogue_log:dialogue,
+    decisions, event_log:[...eventLog,...rows.filter(r=>r.kind==='collection_profile'||r.kind==='agent_decision'&&r.track==='evaluation').map(r=>({id:r.id,type:r.kind,occurred_at:r.event_time||r.available_at,available_at:r.available_at,payload:{...r,annotation_policy:'evaluation_only'}}))], blind_event_log:blindEventLog, dialogue_log:dialogue,
     slates:runs.map(r=>({ slate_id:r.id, item_ids:(r.result?.slate || []).map(i=>i.id), available_at:r.available_at, content_snapshot:r.result?.content_snapshot || null })),
     feedback_windows:windows, simulator_decisions:rows.filter(r=>['agent_attempt','agent_decision','agent_failure'].includes(r.kind)),
-    final_snapshot:{ state:rows.findLast(r=>r.kind==='state')?.state || null, feed: (() => { const last=rows.findLast(r=>r.kind==='feed_update'); return last ? { visible_cards:last.visible_cards, pending_cards:last.pending_cards, recorded_at:last.event_time } : null; })(), last_leave:rows.findLast(r=>r.kind==='leave') || null, termination_reason:null },
+    final_snapshot:{ state:rows.findLast(r=>['state','collection_profile'].includes(r.kind)&&r.state)?.state || null, feed: (() => { const last=rows.findLast(r=>['feed_update','feed_reset'].includes(r.kind)); return last ? { visible_cards:last.visible_cards||[], pending_cards:last.pending_cards||[], recorded_at:last.event_time } : null; })(), last_leave:rows.findLast(r=>r.kind==='leave') || null, termination_reason:null },
     referenced_context:referencedContext,
-    blind_trials:rows.filter(r=>r.kind==='comparison' && r.study_protocol==='blind-next-v1').map(comparison=>({
-      comparison, attempt:rows.find(r=>r.id===comparison.attempt_id) || null,
+    blind_trials:rows.filter(r=>r.kind==='comparison').map(comparison=>({
+      comparison:comparison.study_protocol?comparison:{...comparison,study_protocol:'legacy-policy-comparison'}, attempt:rows.find(r=>r.id===comparison.attempt_id) || null,
       presentation:rows.find(r=>r.kind==='blind_presentation' && r.comparison_id===comparison.id) || null,
       choice:rows.find(r=>r.kind==='evaluation' && r.comparison_id===comparison.id) || null,
       simulated_choice:rows.find(r=>r.kind==='blind_simulated_choice' && r.comparison_id===comparison.id) || null,

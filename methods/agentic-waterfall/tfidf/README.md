@@ -4,7 +4,7 @@ The ranker uses scikit-learn's default unigram TF-IDF and cosine similarity betw
 
 ## Reproduce the results table
 
-From the repository root, authenticate GitHub CLI with read access to the private repository. The verified run used Python 3.13.9.
+From the repository root, use Python 3.13 with the pinned dependencies below. The verified run used Python 3.13.9.
 
 ```sh
 tfidf_dir=methods/agentic-waterfall/tfidf
@@ -12,8 +12,8 @@ replay_dir=$(mktemp -d)
 python3.13 -m venv "$replay_dir/venv"
 . "$replay_dir/venv/bin/activate"
 python -m pip install -r "$tfidf_dir/requirements-replay.txt"
-gh release download tfidf-benchmarks-20261110-v1 \
-  --repo XiaoLuoLYG/waterfall-anything \
+gh release download waterfall-dataset-v1 \
+  --repo XiaoLuoLYG/agentic-waterfall-dataset \
   --pattern tfidf-benchmarks-20261110-v1.zip --dir "$replay_dir"
 bundle="$replay_dir/tfidf-benchmarks-20261110-v1.zip"
 printf '%s  %s\n' 63b36aeefe9706f496b5b113300612335518823e8e624eeb6842275ec615ac3c "$bundle" \
@@ -21,7 +21,7 @@ printf '%s  %s\n' 63b36aeefe9706f496b5b113300612335518823e8e624eeb6842275ec615ac
   python "$tfidf_dir/reproduce.py" "$bundle" --output "$replay_dir/tfidf-reproduced-metrics.json"
 ```
 
-The release provides both the replay ZIP and the verified metrics JSON. [Frozen inputs and scoring artifacts](https://github.com/XiaoLuoLYG/waterfall-anything/releases/tag/tfidf-benchmarks-20261110-v1)
+The release provides both the replay ZIP and the verified metrics JSON. [Frozen inputs and scoring artifacts](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset/releases/tag/waterfall-dataset-v1)
 
 The ZIP contains three files.
 

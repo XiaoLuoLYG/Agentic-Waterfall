@@ -2,7 +2,7 @@
 **/.venv/
 **/__pycache__/
 **/data/
-**/upstream/
+**/upstream
 **/results/
 **/logs/
 shared/model-ledger.json

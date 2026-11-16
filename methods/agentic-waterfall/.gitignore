@@ -16,3 +16,5 @@ model-control/*.json
 !model-control/CONTROL.example.json
 kuairand/*-status.json
 kuairand/*-preflight.log
+
+recagent/cache/
