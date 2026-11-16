@@ -69,7 +69,7 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
     occurred_at:r.event_time || r.available_at, available_at:r.available_at, item_id:r.content_id || null, exposure_id:r.exposure_id || null,
     payload:{ ...r }
   }));
-  const blindIds=new Set(rows.filter(r=>r.kind==='comparison' && r.study_protocol==='blind-next-v1').map(r=>r.id));
+  const blindIds=new Set(rows.filter(r=>r.kind==='comparison').map(r=>r.id));
   const blindEventLog=rows.filter(r=>r.track==='blind' && (r.kind==='blind_presentation' && blindIds.has(r.comparison_id) || r.kind==='evaluation' && blindIds.has(r.comparison_id) || ['open','return'].includes(r.kind) && blindIds.has(r.reference_id))).map(r=>{
     const {mapping,assignment_probability,...payload}=r;
     return { id:r.id, type:r.kind==='evaluation'?'blind_choice':r.kind==='blind_presentation'?'blind_presentation':`blind_${r.kind}`, occurred_at:r.event_time || r.available_at, available_at:r.available_at, item_id:r.content_id || null, payload };
@@ -85,7 +85,7 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
   });
   const ids = new Set();
   for (const row of inputs.values()) { for (const e of row.input_snapshot.behavior || []) ids.add(e.id); for (const c of row.input_snapshot.recent_commands || []) ids.add(c.id); }
-  for (const comparison of rows.filter(r=>r.kind==='comparison' && r.study_protocol==='blind-next-v1')) for (const eventId of comparison.history_event_ids || []) ids.add(eventId);
+  for (const comparison of rows.filter(r=>r.kind==='comparison')) for (const eventId of comparison.history_event_ids || []) ids.add(eventId);
   const referencedContext = contextRows.filter(r => r.session_id !== session.session_id && ((ids.has(r.id) && ['feedback','exposure','open','return','command'].includes(r.kind) && r.track === 'feed') || (r.kind === 'input' && r.track === 'feed' && ids.has(r.input_snapshot?.id))));
   const runRefs = new Set(referencedContext.map(r => r.reference_id).filter(Boolean));
   const contextRuns = contextRows.filter(r => r.session_id !== session.session_id && r.kind === 'run' && r.track === 'feed' && runRefs.has(r.id));
@@ -112,8 +112,8 @@ export function buildEpisode(rows, { session, exportedAt, contextRows = [] }) {
     feedback_windows:windows, simulator_decisions:rows.filter(r=>['agent_attempt','agent_decision','agent_failure'].includes(r.kind)),
     final_snapshot:{ state:rows.findLast(r=>['state','collection_profile'].includes(r.kind)&&r.state)?.state || null, feed: (() => { const last=rows.findLast(r=>['feed_update','feed_reset'].includes(r.kind)); return last ? { visible_cards:last.visible_cards||[], pending_cards:last.pending_cards||[], recorded_at:last.event_time } : null; })(), last_leave:rows.findLast(r=>r.kind==='leave') || null, termination_reason:null },
     referenced_context:referencedContext,
-    blind_trials:rows.filter(r=>r.kind==='comparison' && r.study_protocol==='blind-next-v1').map(comparison=>({
-      comparison, attempt:rows.find(r=>r.id===comparison.attempt_id) || null,
+    blind_trials:rows.filter(r=>r.kind==='comparison').map(comparison=>({
+      comparison:comparison.study_protocol?comparison:{...comparison,study_protocol:'legacy-policy-comparison'}, attempt:rows.find(r=>r.id===comparison.attempt_id) || null,
       presentation:rows.find(r=>r.kind==='blind_presentation' && r.comparison_id===comparison.id) || null,
       choice:rows.find(r=>r.kind==='evaluation' && r.comparison_id===comparison.id) || null,
       simulated_choice:rows.find(r=>r.kind==='blind_simulated_choice' && r.comparison_id===comparison.id) || null,

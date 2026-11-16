@@ -26,13 +26,13 @@
 
 Download the score replay archive from the [Waterfall Dataset release](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset/releases/tag/waterfall-dataset-v1). From the extracted directory, run `python3 replay.py --protocol independent-recall`. This uses the saved rankings and model judgments and reports how many checkpoints each method could score.
 
-With the complete original run archives, `review-results.py SHARED_RUN INDEPENDENT_RUN` also verifies both runs and all intermediate retries. Keep the retry directories next to the original final run so the audit can follow their lineage. `SHA256SUMS` uses the archive labels `waterfall-dataset/shared-shortlist`, `waterfall-dataset/independent-recall`, `waterfall-dataset/inputs`, and `waterfall-dataset/catalog`.
+With the complete original run archives, `review-results.py SHARED_RUN INDEPENDENT_RUN` also verifies both runs and all intermediate retries. Keep the retry directories next to the original final run so the audit can follow their lineage. The `SHA256SUMS` in this directory uses historical archive labels. Verify downloaded release files with the checksum file supplied alongside those files.
 
 ## Run the experiment code
 
 Use Node.js 22.13 or later. The frozen source adapters are in `output/agentic-waterfall/comparison-20261106-synthetic-10x20-all-methods-v4/`. The candidate policy and runner live in `experiments/agentic-waterfall/synthetic-collection/`.
 
-For a full model run, set up the frozen input manifests and the original model and catalog configuration. The fixed-retrieval Python environment goes in `methods/agentic-waterfall/fixed-retrieval/.venv`, with the model weights at the paths in the frozen BGE manifest. Set up [the BGE dependencies](../../../../methods/agentic-waterfall/fixed-retrieval/README.md) and [the RecAgent dependencies](../../../../methods/agentic-waterfall/recagent/README.md). Fetch the pinned i²Agent source with `python3 methods/agentic-waterfall/i2agent/fetch_author.py`, then copy the resulting `model.py` to `author-methods/i2agent/source-snapshot/` in the frozen adapter directory.
+For a new run from `waterfall-dataset-v1-full.zip`, follow the [setup and run commands](../../../reproduce.md#run-a-new-waterfall-dataset-comparison). This entry checks the released inputs and works without an old experiment directory. The original continuation entry below still requires its archived ledgers.
 
 ```sh
 node --test experiments/agentic-waterfall/synthetic-collection/*.test.mjs

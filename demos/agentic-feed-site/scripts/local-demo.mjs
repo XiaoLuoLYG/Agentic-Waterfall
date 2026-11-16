@@ -71,6 +71,9 @@ export async function createLocalDemo({port=Number(process.env.LOCAL_DEMO_PORT||
  const unlock=lockDirectory(dataRoot);let native,server;
  try{
   const connection=database(dbPath);native=connection.native;
+  for(const row of native.prepare("SELECT payload FROM events WHERE kind='session'").iterate()){
+   assert((JSON.parse(row.payload).demo_mode==='sample')===sampleMode,'Data directory contains sessions from a different demo mode. Use another LOCAL_DEMO_DATA_DIR.');
+  }
   const objectDirectory=resolve(dataRoot,'artifacts'),objects=createPrivateObjectStore(objectDirectory);
   objects.head=async key=>{const path=resolve(objectDirectory,hash(String(key))+'.gz');if(!existsSync(path))return null;const stat=lstatSync(path);if(!stat.isFile()||stat.isSymbolicLink())throw Error('Private object must be a regular file');return {size:stat.size};};
   const env={DB:connection.db,WATERFALL_CONFIG:raw?JSON.stringify(raw):undefined,WATERFALL_API_KEY:modelKey,OPENAI_MODEL:modelOverride,RESEARCH_BACKEND:backend,RESEARCH_BACKEND_URL:backendUrl,RESEARCH_BACKEND_TOKEN:backendToken,RESEARCH_ARCHIVE:objects,DATASET_ARCHIVE:objects,RESEARCH_STORAGE:'sqlite+files',BILIBILI_RELAY_TOKEN:process.env.BILIBILI_RELAY_TOKEN};

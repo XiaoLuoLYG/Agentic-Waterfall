@@ -356,4 +356,4 @@ KuaiRand 只保留预测时可用的过去行为；默认时间窗：4/08–4/21
 
 ---
 
-继续入口：[本轮最近工作核查](../references/prior-work-check.md)；[既有实现审计](2026-10-20-manuscript-implementation-audit.md)；[既有数据/评测证据](2026-10-20-unified-architecture-evaluation-evidence.md)；[10月14日字段调查](2026-10-14-datasets-evaluation-survey.md)；[现有论文](../../../../../paper/acl-2027/official-template/acl_latex.tex)。历史笔记的“SimBench作为主数据”“只补小型多轮扩展”优先级，以及把阶段路由或多轮反馈视作空白的潜在表述，以本次修订为准；不删除其历史证据。
+继续入口：[本轮最近工作核查](../references/prior-work-check.md)；[既有实现审计](2026-10-20-manuscript-implementation-audit.md)；[既有数据/评测证据](2026-10-20-unified-architecture-evaluation-evidence.md)；[10月14日字段调查](2026-10-14-datasets-evaluation-survey.md)；现有论文（当时的 TeX 文稿，未随代码仓发布）。历史笔记的“SimBench作为主数据”“只补小型多轮扩展”优先级，以及把阶段路由或多轮反馈视作空白的潜在表述，以本次修订为准；不删除其历史证据。

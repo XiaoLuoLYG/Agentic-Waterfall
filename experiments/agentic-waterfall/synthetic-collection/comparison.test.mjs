@@ -6,6 +6,10 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import test from 'node:test';
+import {spawnSync} from 'node:child_process';
+import {loadDualDataset} from './check-dual-dataset.mjs';
+import {readContentPool} from './comparison-pool.mjs';
+import {verifyWeights} from './comparison.mjs';
 import { SOURCE_SHA256 } from '../../../demos/agentic-feed-site/lib/waterfall/waterfall-version.mjs';
 import { researchPublicInput } from '../../../output/agentic-waterfall/comparison-20261106-synthetic-10x20-all-methods-v4/source/site/lib/waterfall/research-input.mjs';
 import { normalizeContent } from '../../../output/agentic-waterfall/comparison-20261106-synthetic-10x20-all-methods-v4/source/site/lib/waterfall/dataset-format.mjs';
@@ -17,6 +21,37 @@ const hard = { modality: 'video', max_duration_seconds: 300 };
 const card = { id: 'card', title: '公开卡片', summary: '公开摘要', modality: 'video', source: 'bilibili', duration: '5:0', url: 'https://www.bilibili.com/video/BV1234567890' };
 const before = '2026-11-05T00:00:00.000Z';
 const participant_id = 'offline-user', session_id = 'offline-session';
+
+test('relocated weights keep their byte checks and public release inputs load without old run directories',async t=>{
+ const root=mkdtempSync(join(tmpdir(),'waterfall-portable-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+ const write=(path,value)=>{const bytes=Buffer.isBuffer(value)?value:Buffer.from(JSON.stringify(value));writeFileSync(join(root,path),bytes);return digest(bytes);};
+ const weights={};
+ for(const model of ['bge-m3','bge-reranker-v2-m3']){mkdirSync(join(root,model));weights[model]={weight_file:'/previous-computer/'+model+'/weights.bin',sha256:write(model+'/weights.bin',Buffer.from(model))};}
+ await verifyWeights(weights,root);write('bge-m3/weights.bin',Buffer.from('changed'));
+ await assert.rejects(()=>verifyWeights(weights,root),/hash changed/);
+ for(const path of ['content-pools','dataset/main','full/users/u03/checkpoints'])mkdirSync(join(root,path),{recursive:true});
+ const files={};
+ for(const side of ['base','expansion']){
+  const rows=Array.from({length:21},(_,i)=>normalizeContent({...card,source_item_id:side+i,url:'https://www.bilibili.com/video/'+side+i}));
+  const old=rows[0].content_version_id;rows[0].summary='Published summary with tracking removed';
+  const published_versions={[old]:normalizeContent(rows[0]).content_version_id};
+  files[side+'.jsonl.gz']=write('content-pools/'+side+'.jsonl.gz',gzipSync(rows.map(JSON.stringify).join('\n')+'\n'));
+  write('content-pools/'+side+'.manifest.json',{cards_path:side+'.jsonl.gz',cards_sha256:files[side+'.jsonl.gz'],cards_count:21,selected_sources:['bilibili'],published_versions});
+ }
+ const poolHash=write('content-pools/manifest.json',{files});
+ const value=input();value.context.snapshot.available_sources=[{id:'bilibili'}];delete value.context.snapshot.hash;value.context.snapshot.hash=sha(value.context.snapshot);
+ value.context.public_input=researchPublicInput(value.context.snapshot,value.context.history,participant_id);
+ const personaHash=write('full/users/u03/persona.json',value.persona),contextHash=write('full/users/u03/checkpoints/r0004.json',value.context);
+ const cutoffHash=write('comparison-cutoffs.json',{persona_sha256:{u03:personaHash},checkpoints:[{user:'u03',round:4,subset:value.persona.subset,context_sha256:contextHash,...value.phase}]});
+ const manifestHash=write('dataset/main/manifest.json',{collection_protocol:'synthetic-collection/3',ready_for_synthetic_comparison:true,dual_evaluation_pool:{manifest_sha256:poolHash,counts:{C0:21,Cext:21}}});
+ write('manifest.json',{package:'waterfall-dataset-v1-full',packaged_sha256:{normalized_manifest:manifestHash,cutoffs:cutoffHash,pool_manifest:poolHash},counts:{users:1,evaluation_checkpoints:1,pools:{C0:21,Cext:21}}});
+ assert.equal(loadDualDataset(root).inputs.length,1);
+ const cli=spawnSync(process.execPath,[fileURLToPath(new URL('./run-dataset.mjs',import.meta.url)),'--dataset',root,'--check'],{encoding:'utf8'});
+ assert.equal(cli.status,0,cli.stderr);assert.equal(JSON.parse(cli.stdout).model_requests,0);
+ const sidecar=JSON.parse(readFileSync(join(root,'content-pools/base.manifest.json')));delete sidecar.published_versions;write('content-pools/base.manifest.json',sidecar);
+ assert.throws(()=>readContentPool(join(root,'content-pools/base.jsonl.gz'),['bilibili']),/version mismatch/);
+});
 
 function input(round = 4) {
   const snapshot = {

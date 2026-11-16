@@ -13,7 +13,9 @@ export function exportableAccountRows(store){
   if(row.study_id||row.comparison_id)return ids.has(row.study_id||row.comparison_id);
   return row.track!=='evaluation';
  });
- return {rows,unfinished:studies.length-finished.length};
+ const started=new Set(studies.map(row=>row.preparation_id));
+ const pending=new Set(store.rows.filter(row=>row.kind==='research_job'&&!started.has(row.preparation_id)&&!store.rows.some(status=>status.kind==='research_job_status'&&status.preparation_id===row.preparation_id&&['failed','interrupted'].includes(status.status))).map(row=>row.preparation_id));
+ return {rows,unfinished:studies.length-finished.length+pending.size};
 }
 export function mergeAccountDatasets(datasets,unfinished){
  check(datasets.length,'还没有可导出的数据',409);

@@ -14,3 +14,35 @@ test('clearing the feed persists an empty screen without clearing profile, histo
 test('mixed human and synthetic sessions remain explicitly ineligible after account export',async()=>{
  const f=fixture({methods}),a=await account(f.env,'mixed-origin');await a.api('/api/session',{consent:true,recordKind:'synthetic',interests:[],profile:'test-only'});const response=await a.raw('/api/export');assert.equal(response.status,200);const data=JSON.parse(gunzipSync(Buffer.from(await response.arrayBuffer())));assert.equal(data.manifest.data_origin,'mixed');assert.equal(data.manifest.eligible_for_analysis,false);assert.equal(data.tables.participants[0].data_origin,'unknown');assert.deepEqual(new Set(data.tables.sessions.map(row=>row.data_origin)),new Set(['human','synthetic']));
 });
+
+test('account export retains a completed policy comparison and its original method mapping',async()=>{
+ const f=fixture(),a=await account(f.env,'legacy-export');
+ await a.api('/api/settings',{settings:{sources:['local']}});
+ const compared=await a.api('/api/compare',{sessionId:a.sid,command:'摄影'});
+ assert.equal(compared.status,200);
+ const comparison=compared.body.comparison;
+ assert.ok(comparison.id);
+ assert.equal((await a.api('/api/evaluate',{sessionId:a.sid,comparisonId:comparison.id,choice:'A',eventTime:new Date().toISOString()})).status,201);
+ const response=await a.raw('/api/export');assert.equal(response.status,200);
+ const data=JSON.parse(gunzipSync(Buffer.from(await response.arrayBuffer())));
+ assert.equal(data.tables.studies.length,1);
+ assert.equal(data.tables.studies[0].protocol,'legacy-policy-comparison');
+ assert.equal(data.tables.blind_choices.length,1);
+ const raw=data.tables.studies[0].raw_record;
+ assert.deepEqual(raw.comparison.mapping,raw.choice.mapping);
+ assert.deepEqual(Object.keys(raw.comparison.results).sort(),['command-v1','joint-v1']);
+ assert.equal(raw.choice.choice,'A');
+});
+
+test('account export counts a running calculation once before and after study creation',async()=>{
+ const f=fixture({methods}),a=await account(f.env,'pending-export');
+ const prep=(await a.api('/api/research/prepare',{sessionId:a.sid,mode:'blind'})).body.preparation;
+ assert.equal((await a.api('/api/research/start',{sessionId:a.sid,mode:'blind',preparationId:prep.id})).status,202);
+ async function checkPending(expected){const response=await a.raw('/api/export');assert.equal(response.status,200);assert.equal(response.headers.get('X-Unfinished-Studies'),String(expected));const data=JSON.parse(gunzipSync(Buffer.from(await response.arrayBuffer())));assert.equal(data.manifest.selection.unfinished_studies,expected);}
+ await checkPending(1);
+ f.jobs.get(prep.id).status='succeeded';
+ const {study}=(await a.api(`/api/research/current?sessionId=${a.sid}&mode=blind`)).body;
+ await checkPending(1);
+ await a.api('/api/research/stop',{sessionId:a.sid,studyId:study.id});
+ await checkPending(0);
+});

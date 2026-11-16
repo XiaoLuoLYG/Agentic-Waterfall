@@ -1,6 +1,6 @@
 # 复现 2026-11-11 结果
 
-从仓库根目录执行。离线复算需要对应的冻结榜单和评价数据。TF-IDF 与 SimBench 五法的评分材料可从 GitHub Release 取用。其余实验使用团队持有的原冻结归档和有权限的基准数据。 [当前结果](README.md) · [TF-IDF 回放包](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset/releases/tag/waterfall-dataset-v1)
+从仓库根目录执行。离线复算需要对应的冻结榜单和评价数据。公开发布包提供 26 组方法与数据集的离线评分材料。优先按发布包中的 README 复算；下文保留的是原始实验归档目录的核查命令。 [当前结果](README.md) · [TF-IDF 回放包](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset/releases/tag/waterfall-dataset-v1)
 
 ```sh
 repo=$(pwd -P)
@@ -9,10 +9,9 @@ batch="$archive/contract-repair-20261103"
 scratch=$(mktemp -d)
 printf '%s  %s\n' 79d87e6b8bbc031727a43526768aba4765afec0b44c3e9bf06b2a9c39dd03905 \
   demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs | shasum -a 256 -c -
-(cd "$archive" && shasum -a 256 -c "$repo/docs/research/agentic-waterfall/results-20261111/SHA256SUMS")
 ```
 
-清单路径相对于 `archive`。评价标签与模型可见输入分开存放。先校验冻结榜单，再在评价进程中读取标签。以下步骤复算存档预测，无需模型调用。
+发布包下载后，在下载目录运行 `shasum -a 256 -c SHA256SUMS`。本目录的历史清单使用归档标签，不能直接套到发布包或原运行目录。评价标签与模型可见输入分开存放。先校验冻结榜单，再在评价进程中读取标签。以下步骤复算存档预测，无需模型调用。
 
 ## AgentRecBench
 

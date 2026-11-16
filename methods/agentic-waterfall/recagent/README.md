@@ -22,3 +22,20 @@ node methods/agentic-waterfall/recagent/mind-pilot.mjs \
 ```
 
 按顺序复验前两条边界曝光，两条都交出完整榜单后，剩余曝光进入并行队列。运行目录保存每题请求、模型回复、排名校验结果和网关回执。小批验收仅使用公开输入。
+
+## 从完整 MIND 输入开始新实验
+
+先按 [公共基准说明](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset/blob/main/dataset/docs/public-benchmarks.md) 准备 MIND-small 和公开 observation JSONL。依赖环境、作者源码和 tokenizer 缓存的安装命令见 [复现指南](../../../docs/reproduce.md#run-a-new-waterfall-dataset-comparison)。
+
+```sh
+python3 methods/agentic-waterfall/full-expansion/prepare_mind.py \
+  --source /path/to/mind-full.jsonl --output /path/to/mind-index.sqlite \
+  --expected-total 73152
+node methods/agentic-waterfall/recagent/mind-full.mjs \
+  --index /path/to/mind-index.sqlite --manifest /path/to/mind-index.manifest.json \
+  --python experiments/agentic-waterfall/agentrecbench/.venv/bin/python \
+  --transport experiments/agentic-waterfall/synthetic-collection/api.mjs \
+  --config /path/to/private-model.json --out /path/to/new-mind-run
+```
+
+新实验不需要旧队列或 `--prior-api`。运行器先验证配置中的 Flash 模型，再启动排序；这一步开始产生模型费用。索引保留全部曝光，但只有至少两条点击历史的 69,861 条进入论文队列。原来的恢复参数仍可用于已有实验。

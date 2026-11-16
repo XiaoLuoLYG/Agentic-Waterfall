@@ -28,7 +28,7 @@ export function readContentPool(path, allowedSources, { expanded = false } = {})
       typeof row.summary === 'string' && ['text', 'video'].includes(row.metadata?.modality), 'invalid frozen public card');
     const normalized = normalizeContent(row);
     assert.equal(row.content_id, normalized.content_id, 'frozen content identity mismatch');
-    assert.equal(row.content_version_id, normalized.content_version_id, 'frozen content version mismatch');
+    assert.equal(manifest.published_versions?.[row.content_version_id] ?? row.content_version_id, normalized.content_version_id, 'frozen content version mismatch');
     return {
       id: hash([row.source, row.source_item_id]).slice(0, 24), source_item_id: row.source_item_id,
       content_id: row.content_id, content_version_id: row.content_version_id, content_hash: row.content_version_id.slice(8),
@@ -49,13 +49,14 @@ export function readContentPool(path, allowedSources, { expanded = false } = {})
 }
 
 
-export function readDualContentPools({ directory, manifest_sha256, counts }, allowedSources) {
+export function readDualContentPools({ directory, manifest_sha256, counts, filenames }, allowedSources) {
   assert(typeof directory === 'string' && isAbsolute(directory), 'dual-pool directory must be absolute');
   const manifestPath = join(directory, 'manifest.json'), bytes = readFileSync(manifestPath);
   assert.equal(hash(bytes), manifest_sha256, 'dual-pool manifest hash mismatch');
   const manifest = JSON.parse(bytes);
   const pools = Object.fromEntries(['C0', 'Cext'].map(side => {
-    const name = side + '.jsonl.gz';
+    const name = filenames?.[side] ?? side + '.jsonl.gz';
+    assert.equal(basename(name), name, 'dual-pool filename must stay in its directory');
     const pool = readContentPool(join(directory, name), allowedSources, { expanded: true });
     assert.equal(pool.lineage.cards_sha256, manifest.files[name], 'dual-pool archive hash mismatch');
     assert.equal(pool.cards.length, counts[side], 'dual-pool bound count mismatch');

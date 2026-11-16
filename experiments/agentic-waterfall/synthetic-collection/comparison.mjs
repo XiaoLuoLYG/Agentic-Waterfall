@@ -306,12 +306,11 @@ async function freezeRuntime(root, catalog, model, transport, replayPilot, pool,
   return { ...runtime, ...store, salt, config_sha256: sha(frozen), weights, legacyConfig, documentCache };
 }
 
-async function verifyWeights(weights) {
+export async function verifyWeights(weights, directory = join(authors, 'fixed-retrieval/weights')) {
   await Promise.all(['bge-m3', 'bge-reranker-v2-m3'].map(async model => {
     const entry = weights[model];
-    const path = join(authors, 'fixed-retrieval/weights', model, entry.weight_file.split('/').at(-1));
+    const path = join(directory, model, entry.weight_file.split('/').at(-1));
     const digest = createHash('sha256');
-    assert.equal(realpathSync(path), entry.weight_file, 'local BGE weights path changed');
     for await (const bytes of createReadStream(path)) digest.update(bytes);
     assert.equal(digest.digest('hex'), entry.sha256, 'local BGE weights hash changed');
   }));

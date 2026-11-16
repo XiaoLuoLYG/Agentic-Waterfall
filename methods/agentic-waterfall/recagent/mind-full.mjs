@@ -20,7 +20,7 @@ const {values} = parseArgs({options: {
   'previous-capacity': {type: 'string'},
   'final-retry': {type: 'string'},
 }});
-for (const name of strings) if (!values[name]) throw Error('--' + name + ' is required');
+for (const name of strings.filter(name=>name!=='prior-api')) if (!values[name]) throw Error('--' + name + ' is required');
 const workers = Number(values.workers);
 assert(Number.isInteger(workers) && workers >= 1 && workers <= 48);
 const finalRetryPath = values['final-retry'] ? resolve(values['final-retry']) : null;
@@ -264,9 +264,10 @@ try {
   mkdirSync(launchDir, {mode: 0o700});
   const {installMeteredFetch} = await import(pathToFileURL(resolve(values.transport)).href);
   api = await installMeteredFetch({
-    configPath: resolve(values.config), outputDir: launchDir, verifiedPriorDir: resolve(values['prior-api']),
+    configPath: resolve(values.config), outputDir: launchDir, verifiedPriorDir: values['prior-api']?resolve(values['prior-api']):undefined,
     previousCapacityPath: values['previous-capacity'] ? resolve(values['previous-capacity']) : undefined,
   });
+  if(!api.stats().slots.some(slot=>slot.enabled.flash))await api.preflight({includePro:false});
   assert(api.stats().slots.some(slot => slot.enabled.flash), 'no approved Flash slot');
 
   const find = db.prepare('SELECT id,decision_id,offset,bytes FROM impressions WHERE state=? ORDER BY id LIMIT 1');

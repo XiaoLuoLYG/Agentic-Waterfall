@@ -22,7 +22,7 @@
 
 ## 1. 评估对象和事实边界
 
-**[事实] 本次从以下当前文件读取研究定义：**[贡献一页纸 v0.3](2026-10-26-waterfall-contribution-onepager.md)、[方法设计 v0.3 的附录前主体](2026-10-26-waterfall-method-differences.md)、[当前研究计划](2026-10-20-waterfall-unified-architecture-paper-plan.md)、[旧 TeX](../../../../../paper/acl-2027/official-template/acl_latex.tex)。[2026-10-20 实现审计](2026-10-20-manuscript-implementation-audit.md)只作为带日期的静态原型证据；本次没有重新审计当前产品分支。
+**[事实] 本次从以下当前文件读取研究定义：**[贡献一页纸 v0.3](2026-10-26-waterfall-contribution-onepager.md)、[方法设计 v0.3 的附录前主体](2026-10-26-waterfall-method-differences.md)、[当前研究计划](2026-10-20-waterfall-unified-architecture-paper-plan.md)、旧 TeX（当时的 TeX 文稿，未随代码仓发布）。[2026-10-20 实现审计](2026-10-20-manuscript-implementation-audit.md)只作为带日期的静态原型证据；本次没有重新审计当前产品分支。
 
 v0.3 的对象是：授权的连续操作及内容上下文、自然表达、已有状态、当前候选与执行结果进入冻结 LLM；模型提出状态修改和可执行动作；执行后的真实结果及后续行为进入下一轮。旧的“歧义对照获取”附录不是当前主方法；旧稿的数量门控也不能自动视作已经确定的新控制器。
 

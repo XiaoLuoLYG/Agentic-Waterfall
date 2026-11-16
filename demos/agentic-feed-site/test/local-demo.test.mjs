@@ -138,6 +138,21 @@ test('browser requests on localhost preserve their real origin and reject foreig
  }finally{await demo?.close();rmSync(s.directory,{recursive:true,force:true});}
 });
 
+test('reusing a data directory across sample and live modes fails without changing existing sessions',async()=>{
+ const s=setup();let demo;
+ try{
+  demo=await createLocalDemo(s.options);const human=await account(demo,'mode-owner','human');await demo.close();
+  const before=readFileSync(resolve(s.dataDir,'preview.sqlite'));
+  await assert.rejects(()=>createLocalDemo({...s.options,configFile:''}).then(other=>other.close()),/different demo mode/);
+  assert.deepEqual(readFileSync(resolve(s.dataDir,'preview.sqlite')),before);
+  demo=await createLocalDemo(s.options);
+  assert.equal((await (await client(demo,human.cookie)(`/api/session?id=${human.sid}`)).json()).session.record_kind,'human');await demo.close();
+  const sampleDir=resolve(s.directory,'sample');
+  demo=await createLocalDemo({...s.options,dataDir:sampleDir,configFile:''});await account(demo,'mode-owner','human');await demo.close();
+  await assert.rejects(()=>createLocalDemo({...s.options,dataDir:sampleDir}).then(other=>other.close()),/different demo mode/);
+ }finally{await demo?.close();rmSync(s.directory,{recursive:true,force:true});}
+});
+
 test('local storage preserves explicit human origin without silently marking it as a fixture',async()=>{
  const s=setup(),f=fixture();let demo;
  try{
