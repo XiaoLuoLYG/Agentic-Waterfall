@@ -17,7 +17,7 @@ test('rating and blind answers loaded before sealing cannot commit after identit
   const study=(await a.api(`/api/research/current?sessionId=${a.sid}&mode=${mode}`)).body.study,q=(mode==='rating'?study.items:study.pairs)[0];
   await a.api('/api/research/present',{sessionId:a.sid,studyId:study.id,questionId:q.id,itemId:mode==='rating'?q.item.id:q.A[0].id});
   let resume,announce,hold=true;const held=new Promise(r=>announce=r),gate=new Promise(r=>resume=r),prepare=f.env.DB.prepare.bind(f.env.DB);
-  f.env.DB.prepare=query=>({bind(...args){const stmt=prepare(query).bind(...args);return {...stmt,async all(){const result=await stmt.all();if(hold&&query.includes('FROM events WHERE user_id = ? ORDER BY sequence')){hold=false;announce();await gate;}return result;}};}});
+  f.env.DB.prepare=query=>({bind(...args){const stmt=prepare(query).bind(...args);return {...stmt,async all(){const result=await stmt.all();if(hold&&query==='SELECT sequence,payload FROM events WHERE user_id = ? ORDER BY sequence'){hold=false;announce();await gate;}return result;}};}});
   const answering=a.api('/api/research/answer',{sessionId:a.sid,studyId:study.id,questionId:q.id,...(mode==='rating'?{rating:3,status:'rated'}:{choice:'A'})});
   await held;
   try{assert.equal((await a.api('/api/research/stop',{sessionId:a.sid,studyId:study.id})).status,201);assert.equal((await a.api(`/api/research/details?sessionId=${a.sid}&studyId=${study.id}`)).status,200);}finally{resume();}

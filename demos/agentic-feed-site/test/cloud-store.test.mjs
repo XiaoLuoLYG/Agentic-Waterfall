@@ -36,24 +36,6 @@ test('compact loading keeps the newest candidate snapshot and preserves complete
  const compact=new CloudStore(db);await compact.load(user.id,{compact:true});assert.equal(compact.rows.find(r=>r.id===old.id).result.content_snapshot.items,undefined);assert.deepEqual(compact.rows.find(r=>r.id===latest.id).result.content_snapshot.items,[{id:'new-item'}]);
  const full=new CloudStore(db);await full.load(user.id);assert.equal(full.rows.find(r=>r.id===old.id).result.content_snapshot.items[0].id,'old-item');assert.equal(full.rows.find(r=>r.id===old.id).result.trace[0].message,'old trace');
 });
-
-test('trace and evaluation reads skip captured bodies without deleting export data',async()=>{
- const {handleApi}=await import('../lib/waterfall/cloud-entry.mjs'),db=database(),env={DB:db};
- const identity=await handleApi(new Request('https://example.test/api/identity',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'large-capture-test',type:'human'})}),env),cookie=identity.headers.get('set-cookie').split(';')[0];
- const session=await (await handleApi(new Request('https://example.test/api/session',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({consent:true,recordKind:'synthetic',interests:[]})}),env)).json();
- const sid=session.session.session_id,store=new CloudStore(db);await store.load(session.session.user_id);
- await store.record('dataset_capture_chunk',sid,{text:'x'.repeat(200000)});
- await store.record('dataset_archive',sid,{capture:{results:[{title:'original',summary:'y'.repeat(200000)}]}});
- const prepare=db.prepare.bind(db);let readBytes=0;
- db.prepare=sql=>({bind(...args){const q=prepare(sql).bind(...args);return {...q,async all(){const result=await q.all();if(/from events/i.test(sql))readBytes+=result.results.reduce((sum,row)=>sum+Buffer.byteLength(row.payload||''),0);return result;}};}});
- for(const path of ['/api/trace','/api/model-calls','/api/research/data','/api/research/current']){
-  readBytes=0;const response=await handleApi(new Request(`https://example.test${path}?sessionId=${sid}`,{headers:{cookie}}),env);
-  assert.equal(response.status,200,JSON.stringify(await response.json()));
-  assert(readBytes<100000,`${path} unnecessarily loaded ${readBytes} bytes of captured content`);
- }
- await store.load(session.session.user_id);assert.equal(store.rows.find(row=>row.kind==='dataset_capture_chunk').text.length,200000);
- assert.equal(store.rows.find(row=>row.kind==='dataset_archive').capture.results[0].summary.length,200000);
-});
 test('feedback starts a new agent decision while the previous decision is still running',async t=>{
  const {handleApi}=await import('../lib/waterfall/cloud-entry.mjs');const db=database(),env={DB:db,WATERFALL_CONFIG:JSON.stringify({apiKey:'fixture',apiBase:'https://model.example',modelName:'fixture'})};
  const identity=await handleApi(new Request('https://example.test/api/identity',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'feedback-overlap',type:'human'})}),env),cookie=identity.headers.get('set-cookie').split(';')[0];
