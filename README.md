@@ -8,7 +8,9 @@ Tell the feed, "I already bought the camera. Show me how to film from the sideli
 
 ## 🖥️ Try the demo
 
-Use Node.js 22.13 or newer.
+[Open the live demo](https://agentic-waterfall-research.scofieldlyg.chatgpt.site).
+
+To run locally, use Node.js 22.13 or newer.
 
 ```sh
 git clone https://github.com/XiaoLuoLYG/waterfall-anything.git
@@ -18,20 +20,7 @@ node demos/agentic-feed-site/scripts/local-demo.mjs
 
 Open `http://127.0.0.1:4196`. Make a local account, choose an interest, and browse the feed. Give the feed a new instruction and open the trace to see the next decision. The sample catalog runs without API keys. It uses scripted decisions so you can try the feed and the same action runtime locally.
 
-In sample mode, try: "电脑已经买好了，接下来想看新电脑怎么设置和使用。" The trace shows the purchase goal being marked complete.
-
 To use your own model and content providers, see the [demo setup](demos/agentic-feed-site/README.md).
-
-The local demo, using the sample catalog:
-
-![The Waterfall demo feed with local sample cards.](docs/assets/demo-feed.jpg)
-
-<details>
-<summary>See the decision trace</summary>
-
-![The demo's decision trace showing the actions taken for the request.](docs/assets/demo-trace.jpg)
-
-</details>
 
 ## Run the core
 
