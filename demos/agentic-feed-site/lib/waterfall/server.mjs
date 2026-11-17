@@ -174,7 +174,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, sampl
       }
       const eventInput=user&&req.method==='POST'&&path==='/api/event'?await body(req):null;
       const runInput=user&&req.method==='POST'&&path==='/api/run'?await body(req):null;
-      if(user){if(eventInput)await store.loadEvent(user.id,eventInput);else if(path.startsWith('/api/dataset/')||path==='/api/export'&&['dataset','release'].includes(url.searchParams.get('format')))await store.loadDataset(user.id,url.searchParams.get('sessionId'),{full:path==='/api/export',retry:path==='/api/dataset/retry'});else await store.load(user.id,{compact:!path.startsWith('/api/research/')&&!['/api/export','/api/trace','/api/analysis','/api/model-calls','/api/compare'].includes(path)&&!runInput?.frozenSnapshotId});}
+      if(user){if(eventInput)await store.loadEvent(user.id,eventInput);else if(path.startsWith('/api/dataset/')||path==='/api/export'&&['dataset','release'].includes(url.searchParams.get('format')))await store.loadDataset(user.id,url.searchParams.get('sessionId'),{full:path==='/api/export',retry:path==='/api/dataset/retry'});else await store.load(user.id,{compact:!path.startsWith('/api/research/')&&!['/api/export','/api/trace','/api/analysis','/api/model-calls','/api/compare'].includes(path)&&!runInput?.frozenSnapshotId,captureBodies:path==='/api/export'});}
       if (req.method === 'GET' && path === '/api/me') return send(res, 200, authInfo(user));
       if (req.method === 'POST' && path === '/api/identity') {
         const result = await accounts.selectIdentity(await body(req));
@@ -201,7 +201,7 @@ export function createCloudHandler({ db, config = null, sourceConfig = {}, sampl
         const lock=await db.prepare("INSERT INTO active_operations (user_id,owner,kind,expires_at) VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET owner=excluded.owner,kind=excluded.kind,expires_at=excluded.expires_at WHERE active_operations.expires_at<? OR (active_operations.kind='/api/run' AND excluded.kind='/api/run' AND ?=1) RETURNING owner").bind(user.id,id(),path,Date.now()+300000,Date.now(),priority?1:0).first();
         check(lock,'已有操作正在进行，请稍后再试',409);lockUser=user.id;lockOwner=lock.owner;
         if(['/api/blind/present','/api/evaluate','/api/blind/simulate'].includes(path))await store.load(user.id,{compact:true});
-        if(path.startsWith('/api/research/'))await store.load(user.id);
+        if(path.startsWith('/api/research/'))await store.load(user.id,{captureBodies:false});
       }
       if(req.method==='GET' && path==='/api/export'&&url.searchParams.has('sessionId')&&url.searchParams.get('format')!=='release') { assertResearchExportable(store,url.searchParams.get('sessionId'));const active=await db.prepare('SELECT kind FROM active_operations WHERE user_id=? AND expires_at>?').bind(user.id,Date.now()).first();check(!active || (!active.kind.startsWith('/api/blind/')&&active.kind!=='/api/research/start'),'盲选准备中，请稍后导出',409); }
       if(path.startsWith('/api/research/')) {

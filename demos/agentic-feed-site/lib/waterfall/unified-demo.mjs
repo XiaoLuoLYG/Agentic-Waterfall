@@ -44,15 +44,21 @@ export async function runDemo(snapshot,{userId,sessionId,modelCall,decide,acquir
  const items=new Map((snapshot.candidate_pool||[]).map(item=>[item.id,structuredClone(item)]));
  const acquire=async(args,context)=>{
   const found=[],seen=new Set();let remaining=args.source_ids.length;
-  const results=await Promise.all(args.source_ids.map(async source=>{
+  const results=await Promise.all(args.source_ids.map(async(source,index)=>{
    const result=await acquireSource(source,args,context);remaining--;
-   const fresh=(result.items||[]).filter(item=>!seen.has(item.id)).slice(0,Math.max(0,args.limit-found.length));
+   // Reserve each source's share so network speed cannot exclude slower sources.
+   const share=Math.floor(args.limit/args.source_ids.length)+(index<args.limit%args.source_ids.length?1:0);
+   const fresh=(result.items||[]).filter(item=>!seen.has(item.id)).slice(0,share);
    fresh.forEach(item=>{seen.add(item.id);items.set(item.id,item);found.push(item);});
    if(remaining&&fresh.length)context.onItems(fresh.map(item=>({id:item.id,title:item.title,abstract:item.summary,source_id:item.source,content_type:item.modality,url:item.url,content_hash:item.content_hash,published_at:item.published_at})));
    return result;
   }));
   const successes=results.filter(result=>result.status!=='failed');
   if(!successes.length)throw Error('all_sources_failed');
+  for(let i=0;found.length<args.limit&&i<Math.max(0,...results.map(result=>result.items?.length||0));i++)for(const result of results){
+   const item=result.items?.[i];if(!item||seen.has(item.id)||found.length>=args.limit)continue;
+   seen.add(item.id);items.set(item.id,item);found.push(item);
+  }
   return {items:found.map(item=>({id:item.id,title:item.title,abstract:item.summary,source_id:item.source,content_type:item.modality,url:item.url,content_hash:item.content_hash,published_at:item.published_at})),evidence:results.map(({items,...rest})=>rest),actual_requests:args.source_ids.length};
  };
  const runtime=await runEpisode(input,{modelCall,decide,acquire,lookupHistory,onAction:onAction?(receipt,progress)=>onAction(receipt,{...progress,items:[...items.values()],slate:(receipt.result?.queued_item_ids||[]).map(id=>items.get(id)).filter(Boolean)}):undefined});
