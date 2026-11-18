@@ -14,7 +14,7 @@
 | 通用工具 Agent | ClawRec-SimBench、KuaiRec、真人内容评分 | 单轮原型已在 KuaiRec 真实模型冒烟；新入口支持选择用户和独立记忆，第二位用户的单轮真实检索已验证；多轮真实运行、自主补查及正式评价尚缺。 |
 | RecAgent | AgentRecBench | 作者代码和 Amazon 短历史数据已在本地；候选信息漏传修复版已完成合成检查和1条真实模型冒烟，尚未与 Waterfall 正式比较；按用户决定，不设置共同模型调用上限，单独记录资源消耗。 |
 | 固定检索/排序 | MIND TF-IDF；KuaiRec 检索等 | MIND 有原 TF-IDF 入口；BM25+BGE-M3 融合与 BGE reranker 已在完整 KuaiRec 公共目录单样本跑通，正式效果仍待验证；KuaiRec 使用主方案的观察掩码，向方法暴露是否存在观察记录，须披露并确保各方法一致。 |
-| NRMS | MIND | 有源码和旧实验入口；之前长训已中止，不将短训权重当作正式实验可用权重。 |
+| [NRMS](nrms/README.md) | MIND | 源码在 `nrms/`；之前长训已中止，不将短训权重当作正式实验可用权重。数据与权重仍在工作区原 `nrms/` 目录。 |
 | SASRec | KuaiRand | 有作者源码及已有短训适配；未确认有满足正式数据切分的收敛权重。 |
 | LLM-SRec | KuaiRand | 有作者源码；训练与可用权重未完成。 |
 | LightGCN | KuaiRec | 有作者源码和数据适配；旧短训仅覆盖小子集，未确认有完整协议的匹配权重。 |
