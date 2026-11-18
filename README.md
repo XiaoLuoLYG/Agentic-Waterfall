@@ -13,8 +13,8 @@ Tell the feed, "I already bought the camera. Show me how to film from the sideli
 To run locally, use Node.js 22.13 or newer.
 
 ```sh
-git clone https://github.com/XiaoLuoLYG/waterfall-anything.git
-cd waterfall-anything
+git clone https://github.com/XiaoLuoLYG/Agentic-Waterfall.git
+cd Agentic-Waterfall
 node demos/agentic-feed-site/scripts/local-demo.mjs
 ```
 
