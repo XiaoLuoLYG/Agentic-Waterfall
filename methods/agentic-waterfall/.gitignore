@@ -18,3 +18,7 @@ kuairand/*-status.json
 kuairand/*-preflight.log
 
 recagent/cache/
+nrms/checkpoints/
+nrms/predictions/
+nrms/metrics/
+nrms/utils/
