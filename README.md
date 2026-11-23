@@ -53,3 +53,5 @@ docs/                         Setup, results, figures, and research notes
 ```
 
 The active core is `demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs`. The demo and current research adapters import it. The source files under `output/` preserve the adapters used by the archived experiments; those files are needed to reproduce the recorded runs. Data downloads and the leaderboard live in the [dataset repository](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset).
+
+The original Agentic Waterfall code is available under the [MIT License](LICENSE). Third-party software retains its own licenses.
