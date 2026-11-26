@@ -2,7 +2,7 @@
 
 Tell the feed, "I already bought the camera. Show me how to film from the sidelines." Waterfall uses the request, recent browsing, and what it knows about you to decide what to search for, what to move up in the feed, and what to remember.
 
-[Waterfall Dataset](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset) · [🏆 Leaderboard](https://xiaoluolyg.github.io/agentic-waterfall-dataset/) · [Reproduce results](docs/reproduce.md)
+[📄 Paper (arXiv)](https://arxiv.org/abs/2611.34407) · [Waterfall Dataset](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset) · [🏆 Leaderboard](https://xiaoluolyg.github.io/agentic-waterfall-dataset/) · [Reproduce results](docs/reproduce.md)
 
 ![The Waterfall agent looks up filming tips, updates the feed, and keeps the user's camera in mind.](docs/assets/waterfall-method.png)
 
