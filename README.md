@@ -2,7 +2,7 @@
 
 Tell the feed, "I already bought the camera. Show me how to film from the sidelines." Waterfall uses the request, recent browsing, and what it knows about you to decide what to search for, what to move up in the feed, and what to remember.
 
-[📄 Paper (arXiv)](https://arxiv.org/abs/2611.34407) · [Waterfall Dataset](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset) · [🏆 Leaderboard](https://xiaoluolyg.github.io/agentic-waterfall-dataset/) · [Reproduce results](docs/reproduce.md)
+[📄 Paper (arXiv)](https://arxiv.org/abs/2611.34407) · [📦 Waterfall Dataset](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset) · [🏆 Leaderboard](https://xiaoluolyg.github.io/agentic-waterfall-dataset/) · [🔁 Reproduce results](docs/reproduce.md) · [📚 Citation](#citation)
 
 ![The Waterfall agent looks up filming tips, updates the feed, and keeps the user's camera in mind.](docs/assets/waterfall-method.png)
 
@@ -55,3 +55,18 @@ docs/                         Setup, results, figures, and research notes
 The active core is `demos/agentic-feed-site/lib/waterfall/waterfall-core.mjs`. The demo and current research adapters import it. The source files under `output/` preserve the adapters used by the archived experiments; those files are needed to reproduce the recorded runs. Data downloads and the leaderboard live in the [dataset repository](https://github.com/XiaoLuoLYG/agentic-waterfall-dataset).
 
 The original Agentic Waterfall code is available under the [MIT License](LICENSE). Third-party software retains its own licenses.
+
+## Citation
+
+```bibtex
+@misc{luo2026agenticwaterfallintentdriveninformation,
+  title={Agentic Waterfall: An Intent-Driven Information Discovery Framework
+         for Reclaiming User Control in the Attention Economy},
+  author={Yige Luo and Shining Zhang and Jikun Liu and Hongjiao Qiang and Ran Guan},
+  year={2026},
+  eprint={2611.34407},
+  archivePrefix={arXiv},
+  primaryClass={cs.AI},
+  url={https://arxiv.org/abs/2611.34407},
+}
+```
